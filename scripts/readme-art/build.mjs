@@ -439,10 +439,48 @@ const sets = {
     shots: ['BagView-land.en.png', 'BagView-port-hd.en.png'],
   },
 };
+function studioCard(lang) {
+  const zh = lang === 'zh-CN';
+  const accent = C.teal;
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="-12 0 304 412" width="304" height="412" role="img" aria-label="${zh ? '前往 Lumio 官网与开发者中心 lumio.games/studio' : 'Open Lumio Studio lumio.games/studio'}">
+<defs>
+  <linearGradient id="sb" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#5DE2C6"/><stop offset="1" stop-color="#8CF0DA"/></linearGradient>
+  <linearGradient id="scard" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#1E2552"/><stop offset="1" stop-color="#131836"/></linearGradient>
+</defs>
+<rect x="1" y="1" width="278" height="410" rx="24" fill="${C.panel}" stroke="${accent}" stroke-opacity=".55" stroke-width="2"/>
+<circle cx="34" cy="33" r="5" fill="${accent}"/>
+<text x="48" y="39" font-family="${SANS}" font-size="18" font-weight="800" fill="${C.text}">${zh ? 'Lumio 开发者中心' : 'Lumio Studio'}</text>
+
+<rect x="30" y="64" width="220" height="220" rx="14" fill="url(#scard)" stroke="#fff" stroke-opacity=".12"/>
+${lumioMark(50, 84, 52, 'scMark')}
+<text x="114" y="108" font-family="${SANS}" font-size="24" font-weight="800" fill="#fff">Lumio</text>
+<text x="115" y="128" font-family="${SANS}" font-size="11" font-weight="700" letter-spacing="3.5" fill="${C.teal}">STUDIO</text>
+
+<rect x="46" y="150" width="188" height="32" rx="8" fill="#fff" fill-opacity=".06"/>
+<circle cx="62" cy="166" r="4" fill="${C.teal}"/>
+<text x="74" y="171" font-family="${SANS}" font-size="13" font-weight="600" fill="${C.text}">${zh ? '上传 ZIP 即可发布游戏' : 'Upload ZIP to publish'}</text>
+
+<rect x="46" y="190" width="188" height="32" rx="8" fill="#fff" fill-opacity=".06"/>
+<circle cx="62" cy="206" r="4" fill="${C.amber}"/>
+<text x="74" y="211" font-family="${SANS}" font-size="13" font-weight="600" fill="${C.text}">${zh ? '云存档 · 排行榜 · 成就' : 'Cloud Save · Leaderboard'}</text>
+
+<rect x="46" y="230" width="188" height="32" rx="8" fill="#fff" fill-opacity=".06"/>
+<circle cx="62" cy="246" r="4" fill="${C.violet}"/>
+<text x="74" y="251" font-family="${SANS}" font-size="13" font-weight="600" fill="${C.text}">${zh ? 'SDK 文档与作者 API 密钥' : 'SDK Docs &amp; Author API Keys'}</text>
+
+<text x="140" y="318" text-anchor="middle" font-family="${MONO}" font-size="14.5" font-weight="700" fill="${C.teal}">lumio.games/studio</text>
+<rect x="22" y="340" width="236" height="50" rx="14" fill="url(#sb)"/>
+<rect x="23" y="341" width="234" height="24" rx="13" fill="#fff" opacity=".2"/>
+<text x="122" y="371.5" text-anchor="middle" font-family="${SANS}" font-size="18" font-weight="800" fill="#0E1726">${zh ? '打开开发者中心' : 'Open Studio'}</text>
+<g transform="translate(198 359)" fill="none" stroke="#0E1726" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12L12 2M5 2H12V9"/></g>
+</svg>`;
+}
+
 for (const [lang, t] of Object.entries(sets)) {
   write(`hero.${lang}.svg`, hero(t.hero));
   write(`qr-qq.${lang}.svg`, qrCard({...t.qq, accent: QQ.accent, qr: QQ.qr, btn: {label: t.qq.label, fill: QQ.fill, ink: QQ.ink, cx: t.qq.cx, arrowX: t.qq.arrowX}}));
   write(`qr-feishu.${lang}.svg`, qrCard({...t.feishu, accent: FEISHU.accent, qr: FEISHU.qr, btn: {label: t.feishu.label, fill: FEISHU.fill, ink: FEISHU.ink, cx: t.feishu.cx, arrowX: t.feishu.arrowX}}));
+  write(`studio-card.${lang}.svg`, studioCard(lang));
   write(`brand.${lang}.svg`, brandCard(t.brand));
   write(`play.${lang}.svg`, playButton(t.play));
   await showcase(t.showcase, path.join(shotsDir, t.shots[0]), path.join(shotsDir, t.shots[1]), `showcase.${lang}.jpg`);
