@@ -65,6 +65,7 @@ function props(child, model) {
     p.frame = Number(a.frame ?? 0);
   }
   if (child.kind === 'tree') p.clickToExpand = Number(a.clickToExpand ?? 0);
+  if (child.kind === 'list') p.scrollable = a.overflow === 'scroll'; // 能不能滚动：只有能滚动的列表才用虚拟列表
   return p;
 }
 

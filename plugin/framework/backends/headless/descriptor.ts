@@ -40,7 +40,7 @@ export interface ChildDescriptor {
   /** 初始属性。 */
   props: {
     visible: boolean; enabled: boolean; touchable: boolean; customData?: string; text?: string; promptText?: string; url?: string; title?: string; icon?: string;
-    selected?: boolean; selectedIndex?: number; value?: number; max?: number; min?: number; color?: string; items?: string[]; playing?: boolean; frame?: number; clickToExpand?: number; sound?: string; soundVolume?: number;
+    selected?: boolean; selectedIndex?: number; value?: number; max?: number; min?: number; color?: string; items?: string[]; playing?: boolean; frame?: number; clickToExpand?: number; sound?: string; soundVolume?: number; scrollable?: boolean;
   };
   /** 所在的组（组的元素 ID）。 */
   group?: string | null;

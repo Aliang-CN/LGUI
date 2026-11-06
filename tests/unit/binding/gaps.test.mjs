@@ -194,3 +194,20 @@ test('列表：能滚动的才开虚拟列表，不滚动的固定几项按普�
   mount({list: {items: [{id: 'a'}], item: SlotView}});
   assert.deepEqual([virtualCalls, list.virtual], [[true], true], '能滚动：开虚拟列表');
 });
+
+test('headless：列表能不能滚动按 ui/ 里的 overflow；绑定后能滚动的是虚拟列表，不滚动的不是', async () => {
+  const {fw, backend, root, panel, mount} = await setup();
+  const {ItemView, View} = fw;
+  const bag = JSON.parse(fs.readFileSync(path.join(root, '.lgui/build/headless/Bag.json'), 'utf8'));
+  const common = JSON.parse(fs.readFileSync(path.join(root, '.lgui/build/headless/Common.json'), 'utf8'));
+  const listOf = (pkg, component) => pkg.components.find(c => c.name === component).children.find(c => c.name === 'list');
+  assert.deepEqual([listOf(bag, 'Bag/BagPanel').props.scrollable, listOf(common, 'Common/ActionHintBar').props.scrollable], [true, false], '描述里带上 scrollable');
+  class SlotView extends ItemView { static component = 'Bag/ItemSlot'; bind = {}; }
+  mount({list: {items: [{id: 'a'}], item: SlotView}});
+  assert.deepEqual([panel.child('list').scrollable, panel.child('list').virtual], [true, true], 'overflow="scroll"：虚拟列表');
+  const bar = backend.create('Common', 'ActionHintBar');
+  class HintView extends ItemView { static component = 'Common/ActionHint'; bind = {}; }
+  class BarView extends View { static component = 'Common/ActionHintBar'; static layer = 'toast'; bind = {list: {items: [{id: 'a'}, {id: 'b'}], item: HintView}}; }
+  new BarView().__mount(bar);
+  assert.deepEqual([bar.child('list').scrollable, bar.child('list').virtual, bar.child('list').numItems], [false, false, 2], '没写 overflow：普通列表，每一项都创建');
+});
