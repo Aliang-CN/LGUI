@@ -67,6 +67,7 @@ test('Check 按钮：selected 显示 Model 的值，点击交给 Controller 改�
   const button = panel.child('muteToggle');
   assert.equal(button.selected, true);
   await sim.click(backend, button);
+  await sim.advance(backend, 16);   // FairyGUI（和跟它对齐的 headless）点完自己切换一次，下一帧按 Model 写回
   assert.deepEqual([sound.get().muted, button.selected], [false, false]);
   view.__dispose();
   mount({muteToggle: {selected: pick(sound, s => s.muted), click: toggleMuted}});
@@ -79,10 +80,9 @@ test('Check 按钮：FairyGUI 点击时自己切换了选中，下一帧写回 M
   const sound = lgui.Model({muted: false});
   mount({muteToggle: {selected: pick(sound, s => s.muted), click: () => {}}});
   const button = panel.child('muteToggle');
-  // 模拟浏览器里 FairyGUI 在框架的点击处理之后自己切换选中。
-  button.onPointer(e => { if (e.type === 'up') button.selected = !button.selected; });
   await sim.click(backend, button);
-  assert.equal(button.selected, true, '这一帧被 FairyGUI 切换了');
+  // 浏览器里 FairyGUI 在框架的点击处理之后自己把它切成选中（headless 跟不跟着切都一样，这里直接摆成切过的样子）。
+  button.selected = true;
   await sim.advance(backend, 16);
   assert.equal(button.selected, false, '下一帧写回 Model 的值');
 });
