@@ -8,6 +8,7 @@ import path from 'node:path';
 import {openFairyGUI} from '../vendor.mjs';
 import {LgCliError} from '../errors.mjs';
 import {readUiProject, quiet} from './read.mjs';
+import {prepareAtlas, atlasError} from './atlas.mjs';
 
 // 一个声音在 ui/assets/ 里的文件。
 const soundFile = (assets, pkgName, sound) => path.join(assets, pkgName, sound.getPath().replace(/^\/+/, ''), sound.getFile());
@@ -18,9 +19,10 @@ export async function generateWeb(fairyPath, out) {
   document.getRoot().setProjectType(4); // Layabox
   const assets = path.join(path.dirname(fairyPath), 'assets');
   const soundsOf = pkg => pkg.listResources().filter(resource => resource instanceof core.SoundResource);
+  await prepareAtlas(document, assets); // 图集上限：没写 maxAtlasSize 的包用 LGUI 的默认值，图比上限大就报 LGUI-CLI-113
   const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'lgui-web-'));
   try {
-    const {log} = await quiet(() => functions.publishNode({document, output: temp, assetsPath: assets, compressed: false, fileExtension: 'fui', codeGeneration: false, plugins: []}));
+    const {log} = await quiet(() => functions.publishNode({document, output: temp, assetsPath: assets, compressed: false, fileExtension: 'fui', codeGeneration: false, plugins: []})).catch(error => { throw atlasError(error); });
     fs.rmSync(out, {recursive: true, force: true});
     fs.mkdirSync(out, {recursive: true});
     const manifest = {schemaVersion: 1, packages: {}};

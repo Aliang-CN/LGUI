@@ -5,6 +5,7 @@ import path from 'node:path';
 import {readUiProject} from '../generate/read.mjs';
 import {readUiModel} from '../generate/model.mjs';
 import {uiProjectPath} from '../generate/index.mjs';
+import {buildDir} from '../paths.mjs';
 import {extractTexts, generateTranslations, readTable} from '../generate/i18n.mjs';
 
 const isUiKey = key => /^[A-Z][A-Za-z0-9]*\/[A-Z][A-Za-z0-9]*\//.test(key);
@@ -25,7 +26,8 @@ export async function i18nExtract({projectRoot, project}) {
   const stale = Object.keys(table).filter(key => isUiKey(key) && !current.has(key));
   fs.mkdirSync(path.dirname(file), {recursive: true});
   fs.writeFileSync(file, JSON.stringify(table, null, 2) + '\n');
-  generateTranslations(projectRoot, model, project.languages, path.join(projectRoot, '.lgui', 'build', 'web', 'i18n'), project.defaultLanguage);
+  // 翻译文件（FairyGUI 的 <语言>.xml）和对照表 map.json 写进 .lgui/build/i18n/，方便核对；lgui dev、verify 各自生成自己用的那份
+  generateTranslations(projectRoot, model, project.languages, buildDir(projectRoot, 'i18n'), project.defaultLanguage);
   const summary = [`从 ui/ 提取了 ${entries.length} 条文字，写进 i18n/${language}.json：新增 ${added.length} 条，原文改了 ${changed.length} 条。`];
   if (added.length) summary.push(...added.map(key => `  新增 ${key}`));
   if (changed.length) summary.push(...changed.map(key => `  原文改了 ${key}`));

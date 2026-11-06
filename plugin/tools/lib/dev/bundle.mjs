@@ -29,7 +29,6 @@ export function readTexts(root, languages) {
   return texts;
 }
 
-/** 写网页端的启动入口 .lgui/build/web/boot.ts。 */
 // src/modules/ 下所有 *View.ts（给 lgui verify --view 按名字打开界面用）。
 function viewFiles(root) {
   const dir = path.join(root, 'src', 'modules');
@@ -38,10 +37,10 @@ function viewFiles(root) {
   return walk(dir);
 }
 
-/** texts：不写就读 i18n/ 下的文本表（lgui verify 的伪翻译会传进来）。 */
-export function writeWebBootstrap(root, project, {texts} = {}) {
+/** 写网页端的启动入口 <dir>/boot.ts（dir 是命令自己的生成目录，比如 .lgui/build/dev/）。texts：不写就读 i18n/ 下的文本表（lgui verify 的伪翻译会传进来）。 */
+export function writeWebBootstrap(root, project, {texts, dir = path.join(root, '.lgui', 'build', 'web')} = {}) {
   const fw = rel => JSON.stringify(path.join(root, '.lgui', 'framework', rel).split(path.sep).join('/'));
-  const file = path.join(root, '.lgui', 'build', 'web', 'boot.ts');
+  const file = path.join(dir, 'boot.ts');
   fs.mkdirSync(path.dirname(file), {recursive: true});
   fs.writeFileSync(file, `// 由 lgui dev 生成，不要手改。
 import app from ${JSON.stringify(path.join(root, 'src', 'main.ts').split(path.sep).join('/'))};
@@ -94,16 +93,16 @@ export function bundleErrors(error, root) {
 /**
  * 网页用的 esbuild 选项。dev：开发模式（lgui dev、lgui verify 都是）。框架靠 esbuild 的 define 知道是不是开发模式：
  * LGUI_DEV = true 时，代码或界面写错了（缺文本键等）直接抛错；正式构建传 dev: false（LGUI_DEV = false），只记 error 日志、界面照常显示。
- * lgui test 也定义 LGUI_DEV = true（commands/test.mjs）。
+ * lgui test 也定义 LGUI_DEV = true（commands/test.mjs）。outdir：打包出的 app.js 放在哪个目录（命令自己的生成目录）。
  */
-export function webBuildOptions(root, entry, {dev = true} = {}) {
+export function webBuildOptions(root, entry, {dev = true, outdir = path.join(root, '.lgui', 'build', 'web')} = {}) {
   return {
     entryPoints: [entry],
     bundle: true,
     format: 'esm',
     target: 'es2020',
     sourcemap: true,
-    outfile: path.join(root, '.lgui', 'build', 'web', 'app.js'),
+    outfile: path.join(outdir, 'app.js'),
     alias: {lgui: frameworkEntry(root)},
     define: {LGUI_DEV: String(dev)},
     keepNames: true, // 界面类名会出现在调试快照和报错里，不能被改名
@@ -113,6 +112,6 @@ export function webBuildOptions(root, entry, {dev = true} = {}) {
 }
 
 /** 建一个可以反复重新打包的 esbuild context。 */
-export async function createWebContext(root, entry) {
-  return esbuild().context(webBuildOptions(root, entry));
+export async function createWebContext(root, entry, {outdir} = {}) {
+  return esbuild().context(webBuildOptions(root, entry, {outdir}));
 }

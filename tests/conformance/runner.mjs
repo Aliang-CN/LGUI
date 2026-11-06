@@ -201,7 +201,7 @@ const createBackend = () => {
   const server = http.createServer((req, res) => {
     const url = decodeURIComponent(new URL(req.url, 'http://x').pathname);
     if (url === '/conf.html') res.writeHead(200, {'content-type': 'text/html; charset=utf-8'}).end(html);
-    else serveBuilt(ctx.root, url, res);
+    else serveBuilt(web, url, res);
   });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   const {screen} = await caseScreen(ctx, name);

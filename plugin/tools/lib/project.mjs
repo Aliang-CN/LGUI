@@ -43,6 +43,7 @@ export const fields = {
   sounds: {check: value => isObject(value) && (value.click === null || typeof value.click === 'string') && Object.keys(value).length === 1, type: '{ click: 音效地址 | null }', default: {click: null}},
   defaultFont: {check: value => value === null || (typeof value === 'string' && value.length > 0), type: '字体名 | null', default: null},
   devPort: {check: value => isInt(value, 1) && value <= 65535, type: '端口号 1–65535', default: 4173},
+  devWatch: {check: value => Array.isArray(value) && value.every(p => typeof p === 'string' && p.length > 0), type: 'lgui dev 额外监视的路径数组（相对工程根目录，比如 ["../Config"]）', default: []},
   editorPort: {check: value => isInt(value, 1) && value <= 65535, type: '端口号 1–65535', default: 4174},
   backend: {check: value => value === 'h5', type: '"h5"', default: 'h5'},
   unityProject: {check: value => value === null || (typeof value === 'string' && value.length > 0), type: 'Unity 工程路径 | null', default: null}

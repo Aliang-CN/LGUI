@@ -7,13 +7,17 @@ import {LgCliError} from '../errors.mjs';
 
 const require = createRequire(new URL('../../vendor/package.json', import.meta.url));
 
+// XML 的 5 个命名实体。字符引用（&#xA; 换行、&#10;）照 XML 的规定解码：fast-xml-parser 只有在 htmlEntities 不是 false 时才解码字符引用，
+// 这里传 XML 自己的实体表，就不会把 &nbsp; 这类 HTML 实体也解开。
+const XML_ENTITIES = {amp: '&', apos: "'", gt: '>', lt: '<', quot: '"'};
+
 // XML → { tag, attrs, children, line }，保留顺序。root 是工程根目录（报错里的文件写成相对它的路径）。
 function parseXml(file, root) {
   const {XMLParser} = require('fast-xml-parser');
   const text = fs.readFileSync(file, 'utf8');
   let tree;
   try {
-    tree = new XMLParser({preserveOrder: true, ignoreAttributes: false, attributeNamePrefix: '', parseAttributeValue: false, trimValues: true}).parse(text);
+    tree = new XMLParser({preserveOrder: true, ignoreAttributes: false, attributeNamePrefix: '', parseAttributeValue: false, trimValues: true, htmlEntities: XML_ENTITIES}).parse(text);
   } catch (error) {
     throw new LgCliError('LGUI-CLI-020', `XML 写错了：${error.message}`, {file: path.relative(root, file).split(path.sep).join('/'), fix: '按 UI 开发规范第 6 节的模板改。'});
   }

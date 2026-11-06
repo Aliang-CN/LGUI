@@ -23,6 +23,8 @@ const codes = async root => {
   return json.data ? json.data.findings.map(f => f.code) : json.errors.map(e => e.code);
 };
 const VIEW = 'src/modules/main/MainView.ts';
+// 动效：标题转一圈（标题没设轴心时报 LGUI-UI-067）
+const SPIN = '</displayList>\n  <transition name="spin"><item time="0" type="Rotation" target="n1" duration="12" tween="true" startValue="0" endValue="360"/></transition>';
 const CTRL = 'src/modules/main/MainController.ts';
 const MAIN_XML = 'ui/assets/Main/MainView.xml';
 const MAIN_PKG = 'ui/assets/Main/package.xml';
@@ -53,6 +55,15 @@ const cases = {
   'LGUI-UI-063': {fail: r => edit(r, 'ui/assets/Main/MainView@portrait.xml', 'text="你好，LGUI"', 'text="你好"'), warning: true},
   'LGUI-UI-064': {fail: r => edit(r, 'ui/assets/Main/MainView@portrait.xml', /\s*<graph id="n4" name="safe"[\s\S]*?<\/graph>/, '')},
   'LGUI-UI-065': {fail: r => edit(r, MAIN_XML, '<Button title="点我"/>', '<Button title="点我" sound="ui://Main/click"/>')},
+  'LGUI-UI-066': {fail: r => edit(r, 'ui/assets/Common/Button.xml', 'name="title"', 'name="label"')},
+  'LGUI-UI-067': {
+    fail: r => edit(r, MAIN_XML, '</displayList>', SPIN),
+    pass: r => { edit(r, MAIN_XML, '</displayList>', SPIN); edit(r, MAIN_XML, 'name="title" xy="360,380"', 'name="title" xy="360,380" pivot="0.5,0.5"'); }
+  },
+  'LGUI-UI-068': {
+    fail: r => edit(r, MAIN_XML, /(name="title"[^>]*?) singleLine="true"/, '$1'),
+    pass: r => edit(r, MAIN_XML, /(name="title"[^>]*?)size="1200,120"([^>]*?) singleLine="true"/, '$1size="1200,140"$2')
+  },
   'LGUI-UI-030': {fail: r => edit(r, 'i18n/en.json', /\s*"main\.hint": "[^"]*",/, '')},
   'LGUI-UI-031': {fail: r => edit(r, 'i18n/en.json', '{', '{\n  "nope.unused": "x",'), warning: true},
   'LGUI-UI-032': {fail: r => edit(r, 'i18n/en.json', 'Clicked {count} times', 'Clicked {n} times')},
@@ -243,4 +254,45 @@ test('LGUI-UI-064：全屏界面两版都要有 safe；不是全屏的界面不�
   edit(root, VIEW, '  static fullScreen = true;\n', '');
   edit(root, VIEW, "static layer = 'page' as const;", "static layer = 'popup' as const;");
   assert.ok(!(await codes(root)).includes('LGUI-UI-064'));
+});
+
+test('LGUI-UI-066：绑定表给按钮写 text、按钮组件里没有 title 子控件也报，位置在绑定表；有 title 就不报', async () => {
+  const root = await fresh();
+  edit(root, 'ui/assets/Common/Button.xml', 'name="title"', 'name="label"');
+  edit(root, MAIN_XML, '<Button title="点我"/>', '<Button/>');
+  edit(root, VIEW, "button: { click: () => mainController.click() },", "button: { text: pick(mainModel, s => String(s.clicks)), click: () => mainController.click() },");
+  const json = JSON.parse((await run(['check', '--json'], root)).stdout);
+  const found = json.data.findings.filter(f => f.code === 'LGUI-UI-066');
+  assert.ok(found.some(f => f.file === VIEW && /button 绑定了 text.*Common\/Button 里没有名为 title 的子控件/.test(f.message) && /现在的文字控件：label/.test(f.fix)), JSON.stringify(found));
+  const ok = await fresh();
+  edit(ok, VIEW, "button: { click: () => mainController.click() },", "button: { text: pick(mainModel, s => String(s.clicks)), click: () => mainController.click() },");
+  assert.ok(!(await codes(ok)).includes('LGUI-UI-066'));
+});
+
+test('LGUI-UI-067：缩放、旋转都是原样的值不报；同一个动效里设了 Pivot、按下缩放的按钮（downEffect="scale"）不报；缩放没设轴心报', async () => {
+  const root = await fresh();
+  const items = [
+    '<item time="0" type="Scale" target="n1" value="1,1"/>',                                                    // 复位成原样：不用轴心
+    '<item time="0" type="Pivot" target="n3" value="0.5,0.5"/><item time="0" type="Rotation" target="n3" duration="6" tween="true" startValue="0" endValue="90"/>',
+    '<item time="0" type="Scale" target="n2" duration="6" tween="true" startValue="1,1" endValue="1.2,1.2"/>'   // 按钮 n2，下面给它加 downEffect="scale"
+  ];
+  edit(root, MAIN_XML, '</displayList>', `</displayList>\n  <transition name="fx">${items.join('')}</transition>`);
+  edit(root, 'ui/assets/Common/Button.xml', '<Button/>', '<Button downEffect="scale" downEffectValue="0.95"/>');
+  assert.ok(!(await codes(root)).includes('LGUI-UI-067'));
+  edit(root, 'ui/assets/Common/Button.xml', '<Button downEffect="scale" downEffectValue="0.95"/>', '<Button/>');
+  const json = JSON.parse((await run(['check', '--json'], root)).stdout);
+  const found = json.data.findings.filter(f => f.code === 'LGUI-UI-067');
+  assert.equal(found.length, 1, JSON.stringify(found));
+  assert.match(found[0].message, /动效 fx 给 button 做了缩放/);
+  assert.equal(found[0].file, MAIN_XML);
+  assert.ok(found[0].line > 1);
+});
+
+test('跨包图片：<image pkg="…" src="…"> 引用别的包里导出的图片不报（没有 LGUI-UI-020）；对方没导出报 LGUI-UI-009', async () => {
+  const root = await fresh();
+  for (const file of [MAIN_XML, 'ui/assets/Main/MainView@portrait.xml']) edit(root, file, '</displayList>', '  <image id="n9" name="logo" pkg="cmn00001" src="placehd1" xy="20,20" size="64,64"/>\n  </displayList>');
+  assert.deepEqual(await codes(root), []);
+  edit(root, 'ui/assets/Common/package.xml', '<image id="placehd1" name="placeholder.png" path="/" exported="true"/>', '<image id="placehd1" name="placeholder.png" path="/"/>');
+  const json = JSON.parse((await run(['check', '--json'], root)).stdout);
+  assert.ok(json.data.findings.some(f => f.code === 'LGUI-UI-009' && /没导出的图片 Common\/placeholder/.test(f.message)), JSON.stringify(json.data.findings));
 });

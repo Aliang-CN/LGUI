@@ -63,3 +63,35 @@ test('界面工程校验不过时报 LGUI-CLI-020', async () => {
 test('找不到界面工程文件时报 LGUI-CLI-020', async () => {
   await assert.rejects(generateWeb(path.join(temp(), 'UI.fairy'), temp()), error => error.code === 'LGUI-CLI-020');
 });
+
+test('图集上限：没写 maxAtlasSize 的包默认 4096，竖屏的 1080×2600 背景能生成（网页和 Unity）；比上限大的图报 LGUI-CLI-113，写了 <publish maxAtlasSize> 的包按它的', async () => {
+  const {sharp} = await import('../../plugin/tools/lib/vendor.mjs');
+  const ui = path.join(temp(), 'ui');
+  fs.cpSync(path.dirname(projects.template), ui, {recursive: true});
+  const main = path.join(ui, 'assets', 'Main');
+  const descriptor = path.join(main, 'package.xml');
+  const original = fs.readFileSync(descriptor, 'utf8');
+  const png = (w, h, file) => sharp()({create: {width: w, height: h, channels: 4, background: {r: 20, g: 40, b: 80, alpha: 1}}}).png().toFile(path.join(main, file));
+  await png(1080, 2600, 'bg.png');
+  fs.writeFileSync(descriptor, original.replace('</resources>', '  <image id="bg000001" name="bg.png" path="/" exported="true"/>\n  </resources>'));
+  const fairy = path.join(ui, 'UI.fairy');
+  await generateWeb(fairy, temp());
+  await generateUnity(fairy, temp());
+
+  await png(5000, 64, 'strip.png');
+  fs.writeFileSync(descriptor, original.replace('</resources>', '  <image id="bg000001" name="bg.png" path="/" exported="true"/>\n    <image id="strip001" name="strip.png" path="/" exported="true"/>\n  </resources>'));
+  for (const generate of [generateWeb, generateUnity]) {
+    const error = await generate(fairy, temp()).then(() => null, e => e);
+    assert.deepEqual(error?.errors?.map(e => e.code), ['LGUI-CLI-113'], String(error?.stack ?? error));
+    assert.match(error.errors[0].message, /包 Main 的图片 strip\.png（5000×64）比图集上限 4096×4096 大/);
+    assert.match(error.errors[0].fix, /<publish name="Main" maxAtlasSize="8192"\/>/);
+  }
+  fs.writeFileSync(descriptor, fs.readFileSync(descriptor, 'utf8').replace('</resources>', '</resources>\n  <publish name="Main" maxAtlasSize="8192"/>'));
+  await generateWeb(fairy, temp());
+
+  const {atlasError} = await import('../../plugin/tools/lib/generate/atlas.mjs');
+  const converted = atlasError(new Error('atlas: Could not pack every input for package "Lobby".'));
+  assert.deepEqual([converted.code, converted.file], ['LGUI-CLI-113', 'ui/assets/Lobby/package.xml']);
+  const other = new Error('别的错');
+  assert.equal(atlasError(other), other);
+});
