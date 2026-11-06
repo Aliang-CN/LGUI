@@ -304,3 +304,71 @@ test('动效目标是组：高级组在浏览器里能动；普通组生成时�
     await closeAll(browser);
   }
 });
+
+// 九宫格细线：走真实的 H5 后端（applyDesignSize 缩放根节点），手机尺寸下截图，整张青色的九宫格里出现别的颜色就是缝。
+// GImage 和 Loader 两种 DOM 形式都查。根因是根节点用 transform 缩放（platform/index.ts），改成 zoom 后为 0；
+// 那一处不在 P1 的文件里，改之前这条标成 todo（照常运行、报告结果，不算失败）。
+const NINE_SLICE_TODO = '根节点缩放改成 zoom（plugin/framework/backends/h5/platform/index.ts）之后去掉 todo，见 PATCHES.md 第 12 条';
+test('九宫格在分数缩放下没有细线（原生 GImage 和 Loader）', {todo: NINE_SLICE_TODO}, async t => {
+  const browser = await launchBrowser();
+  if (!browser) { t.skip('未找到 Chrome 或 Edge'); return; }
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'lgui-seam-'));
+  const pkg = path.join(root, 'ui/assets/Test');
+  fs.mkdirSync(pkg, {recursive: true});
+  fs.writeFileSync(path.join(root, 'ui/UI.fairy'), xml('<projectDescription id="seam" type="Layabox" version="3.0"/>'));
+  await sharp()({create: {width: 96, height: 96, channels: 4, background: {r: 0, g: 160, b: 160, alpha: 1}}}).png().toFile(path.join(pkg, 'panel.png'));
+  fs.writeFileSync(path.join(pkg, 'package.xml'), xml(`<packageDescription id="test0001"><resources>
+    <component id="main0001" name="Main.xml" path="/" exported="true"/>
+    <image id="panel001" name="panel.png" path="/" exported="true" scale="9grid" scale9grid="30,30,36,36"/>
+  </resources></packageDescription>`));
+  let items = '';
+  for (let i = 0; i < 8; i++) {
+    const x = 20 + (i % 4) * 260, y = 20 + Math.floor(i / 4) * 240, w = 200 + i * 7, h = 180 + i * 5;
+    items += `<image id="g${i}" name="g${i}" src="panel001" xy="${x},${y}" size="${w},${h}"/>`;
+    items += `<loader id="l${i}" name="l${i}" xy="${x},${y + 520}" size="${w},${h}" url="ui://test0001panel001" fill="scaleFree"/>`;
+  }
+  fs.writeFileSync(path.join(pkg, 'Main.xml'), xml(`<component size="1080,1100"><displayList>${items}</displayList></component>`));
+  await generateWeb(path.join(root, 'ui/UI.fairy'), path.join(root, 'web/ui'));
+  const entry = path.join(root, 'entry.ts');
+  fs.writeFileSync(entry, `import {createH5Backend} from ${JSON.stringify(path.join(h5, 'index.ts'))};
+    (async () => {
+      const backend = createH5Backend();
+      await backend.init({projectName: 'seam', defaultFont: null, uiBase: '/ui'});
+      await backend.loadPackage('Test');
+      backend.platform.screen.applyDesignSize({width: 1080, height: 2340});
+      const view = backend.create('Test', 'Main');
+      backend.root.addChild(view);
+      Object.assign(window, {view: (view as any).native, ready: true});
+    })().catch(error => { (window as any).failure = String(error); });`);
+  await esbuild().build({entryPoints: [entry], bundle: true, format: 'esm', target: 'es2020', outfile: path.join(root, 'web/app.js'), logLevel: 'silent'});
+  fs.writeFileSync(path.join(root, 'web/index.html'), '<!doctype html><meta charset="utf-8"><style>body{margin:0;background:#fff}</style><body><script type="module" src="/app.js"></script>');
+  const server = await serve({'/': path.join(root, 'web')});
+  try {
+    const seams = {};
+    for (const [width, height, dpr] of [[375, 812, 3], [390, 844, 3], [320, 568, 2], [414, 896, 2]]) {
+      const context = await browser.newContext({viewport: {width, height}, deviceScaleFactor: dpr});
+      const page = await context.newPage();
+      await page.goto(server.url + '/index.html');
+      await page.waitForFunction(() => window.ready || window.failure, null, {timeout: 15000});
+      assert.equal(await page.evaluate(() => window.failure ?? null), null);
+      await page.evaluate(() => new Promise(r => setTimeout(r, 200)));
+      const boxes = await page.evaluate(() => { const out = []; for (let i = 0; i < window.view.numChildren; i++) { const r = window.view.getChildAt(i).element.getBoundingClientRect(); out.push([r.x, r.y, r.width, r.height]); } return out; });
+      const {data, info} = await sharp()(await page.screenshot()).raw().toBuffer({resolveWithObject: true});
+      let bad = 0;
+      for (const [bx, by, bw, bh] of boxes) {
+        for (let y = Math.ceil(by * dpr) + 2; y < Math.min(Math.floor((by + bh) * dpr) - 2, info.height); y++) {
+          for (let x = Math.ceil(bx * dpr) + 2; x < Math.min(Math.floor((bx + bw) * dpr) - 2, info.width); x++) {
+            const k = (y * info.width + x) * info.channels;
+            if (Math.abs(data[k]) + Math.abs(data[k + 1] - 160) + Math.abs(data[k + 2] - 160) > 12) bad++;
+          }
+        }
+      }
+      seams[`${width}x${height}@${dpr}`] = bad;
+      await context.close();
+    }
+    assert.deepEqual(Object.values(seams).filter(n => n > 0), [], `九宫格里出现了细线（不是青色的像素数）：${JSON.stringify(seams)}`);
+  } finally {
+    await server.close();
+    await browser.close();
+  }
+});
