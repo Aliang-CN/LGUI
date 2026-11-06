@@ -42,6 +42,8 @@ export interface HeadlessState {
   audioPaused: boolean;
   /** 全部日志。 */
   logs: HeadlessLogRecord[];
+  /** 剪贴板里的文字（writeText 写进来，测试里可以直接读、也可以先放好）。 */
+  clipboard: string;
   /** 当前告诉游戏场景的输入模式。 */
   inputMode: 'ui' | 'game' | 'all';
   /** 已加载的包。 */
@@ -100,7 +102,7 @@ export function createHeadlessBackend(packages: readonly PackageDescriptor[], tr
     return found ?? null;
   };
   const state: HeadlessState = {
-    now: 0, screen: {width: 1920, height: 1080}, safeArea: {top: 0, right: 0, bottom: 0, left: 0}, languages: ['zh-CN'], storage: new Map(), sounds: [], music: null, audioPaused: false, logs: [], inputMode: 'ui', loaded: new Set(),
+    now: 0, screen: {width: 1920, height: 1080}, safeArea: {top: 0, right: 0, bottom: 0, left: 0}, languages: ['zh-CN'], storage: new Map(), sounds: [], music: null, audioPaused: false, logs: [], clipboard: '', inputMode: 'ui', loaded: new Set(),
     handlers: {frame: new Handlers(), visibility: new Handlers(), pointer: new Handlers(), key: new Handlers(), wheel: new Handlers(), resize: new Handlers()}
   };
   let prefix = '';
@@ -146,7 +148,9 @@ export function createHeadlessBackend(packages: readonly PackageDescriptor[], tr
     },
     locale: {systemLanguages: () => [...state.languages]},
     log: recorder(state, 'game', {}),
-    net: {fetch: () => { throw notImplemented('网络（测试里用 Service 的假实现）', 'headless'); }, webSocket: () => { throw notImplemented('WebSocket（测试里用 Service 的假实现）', 'headless'); }}
+    net: {fetch: () => { throw notImplemented('网络（测试里用 Service 的假实现）', 'headless'); }, webSocket: () => { throw notImplemented('WebSocket（测试里用 Service 的假实现）', 'headless'); }},
+    // 剪贴板存在内存里（state.clipboard）。
+    clipboard: {writeText: async text => { state.clipboard = text; }, readText: async () => state.clipboard}
   };
   return {
     name: 'headless',
