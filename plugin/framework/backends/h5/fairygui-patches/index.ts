@@ -10,6 +10,7 @@ import {installTextShadow, installTextStroke, textFields} from './text-format';
 import {installTextShrink, shrinkFields} from './text-shrink';
 import {installButtonPress, buttonFields} from './button-press';
 import {installTransitionStage} from './transition-stage';
+import {installNineSlice, nineSliceFields} from './nine-slice';
 
 let installed = false;
 
@@ -23,6 +24,7 @@ export function installFairyGuiPatches(): void {
   installTextShrink();
   installButtonPress();
   installTransitionStage();
+  installNineSlice();
   checkFields();
   installed = true;
 }
@@ -35,6 +37,9 @@ function checkFields(): void {
   fields(8, text.element, 'TextField', shrinkFields);
   fields(4, Reflect.get(text.element, '_textFormat') as object, 'TextFormat', ['shadowOffset', 'shadowColor', 'outline', 'outlineColor', 'size', 'lineSpacing']);
   text.dispose();
+  const image = new fgui.GImage();
+  fields(12, image.element, 'Image', nineSliceFields);
+  image.dispose();
   const button = new fgui.GButton();
   fields(9, button, 'GButton', buttonFields);
   button.dispose();

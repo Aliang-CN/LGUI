@@ -305,29 +305,42 @@ test('动效目标是组：高级组在浏览器里能动；普通组生成时�
   }
 });
 
-// 九宫格细线：走真实的 H5 后端（applyDesignSize 缩放根节点），手机尺寸下截图，整张青色的九宫格里出现别的颜色就是缝。
-// GImage 和 Loader 两种 DOM 形式都查。Blink 下根节点用 transform 缩放时几乎每个都有细线（WebKit 没有）；根节点改用 zoom 能消掉，
-// 但 WebKit 会放大缩放后不到 9 像素的文字，不能用。修法待定，这条先标成 todo（照常运行、报告结果，不算失败）。
-const NINE_SLICE_TODO = 'Blink 下的九宫格细线还没修，修法待定，见 PATCHES.md 第 12 条';
-test('九宫格在分数缩放下没有细线（原生 GImage 和 Loader）', {todo: NINE_SLICE_TODO}, async t => {
-  const browser = await launchBrowser();
-  if (!browser) { t.skip('未找到 Chrome 或 Edge'); return; }
+// 九宫格细线（补丁 12）：走真实的 H5 后端（applyDesignSize 用 transform 缩放根节点），手机尺寸下截图。
+// 细线是「比左右（或上下）两侧都亮的 1 像素」，叠深是「比两侧都暗的 1 像素」。GImage 和 Loader 两种 DOM 形式都查。
+// 不透明的面板（纯色、外框 + 渐变）修后没有细线；整张半透明的、九宫格平铺的照旧用上游的 border-image（不叠深，也不改）。
+async function ninePage(browser, patched) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'lgui-seam-'));
   const pkg = path.join(root, 'ui/assets/Test');
   fs.mkdirSync(pkg, {recursive: true});
   fs.writeFileSync(path.join(root, 'ui/UI.fairy'), xml('<projectDescription id="seam" type="Layabox" version="3.0"/>'));
-  await sharp()({create: {width: 96, height: 96, channels: 4, background: {r: 0, g: 160, b: 160, alpha: 1}}}).png().toFile(path.join(pkg, 'panel.png'));
+  const S = 96;
+  const image = async (name, pixel) => {
+    const raw = Buffer.alloc(S * S * 4);
+    for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) raw.set(pixel(x, y), (y * S + x) * 4);
+    await sharp()(raw, {raw: {width: S, height: S, channels: 4}}).png().toFile(path.join(pkg, name + '.png'));
+  };
+  await image('opaque', () => [0, 160, 160, 255]);
+  await image('frame', (x, y) => (x < 8 || y < 8 || x >= S - 8 || y >= S - 8) ? [30, 60, 90, 255] : [120, 160 + Math.round(y * 0.6), 220, 255]);
+  await image('half', () => [0, 160, 160, 128]);
+  const kinds = ['opaque', 'frame', 'half', 'tiled'];
   fs.writeFileSync(path.join(pkg, 'package.xml'), xml(`<packageDescription id="test0001"><resources>
     <component id="main0001" name="Main.xml" path="/" exported="true"/>
-    <image id="panel001" name="panel.png" path="/" exported="true" scale="9grid" scale9grid="30,30,36,36"/>
+    <image id="img00000" name="opaque.png" path="/" exported="true" scale="9grid" scale9grid="30,30,36,36"/>
+    <image id="img10000" name="frame.png" path="/" exported="true" scale="9grid" scale9grid="30,30,36,36"/>
+    <image id="img20000" name="half.png" path="/" exported="true" scale="9grid" scale9grid="30,30,36,36"/>
+    <image id="img30000" name="frame.png" path="/tile/" exported="true" scale="9grid" scale9grid="30,30,36,36" gridTile="15"/>
   </resources></packageDescription>`));
+  fs.mkdirSync(path.join(pkg, 'tile'));
+  fs.copyFileSync(path.join(pkg, 'frame.png'), path.join(pkg, 'tile/frame.png'));
   let items = '';
-  for (let i = 0; i < 8; i++) {
-    const x = 20 + (i % 4) * 260, y = 20 + Math.floor(i / 4) * 240, w = 200 + i * 7, h = 180 + i * 5;
-    items += `<image id="g${i}" name="g${i}" src="panel001" xy="${x},${y}" size="${w},${h}"/>`;
-    items += `<loader id="l${i}" name="l${i}" xy="${x},${y + 520}" size="${w},${h}" url="ui://test0001panel001" fill="scaleFree"/>`;
-  }
-  fs.writeFileSync(path.join(pkg, 'Main.xml'), xml(`<component size="1080,1100"><displayList>${items}</displayList></component>`));
+  kinds.forEach((kind, k) => {
+    for (let i = 0; i < 4; i++) {
+      const x = 20 + i * 262, y = 20 + k * 500, w = 230 + i * 7, h = 200 + i * 5;
+      items += `<image id="g${kind}${i}" name="g${kind}${i}" src="img${k}0000" xy="${x},${y}" size="${w},${h}"/>`;
+      items += `<loader id="l${kind}${i}" name="l${kind}${i}" xy="${x},${y + 230}" size="${w},${h}" url="ui://test0001img${k}0000" fill="scaleFree"/>`;
+    }
+  });
+  fs.writeFileSync(path.join(pkg, 'Main.xml'), xml(`<component size="1080,2100"><displayList>${items}</displayList></component>`));
   await generateWeb(path.join(root, 'ui/UI.fairy'), path.join(root, 'web/ui'));
   const entry = path.join(root, 'entry.ts');
   fs.writeFileSync(entry, `import {createH5Backend} from ${JSON.stringify(path.join(h5, 'index.ts'))};
@@ -335,40 +348,71 @@ test('九宫格在分数缩放下没有细线（原生 GImage 和 Loader）', {t
       const backend = createH5Backend();
       await backend.init({projectName: 'seam', defaultFont: null, uiBase: '/ui'});
       await backend.loadPackage('Test');
-      backend.platform.screen.applyDesignSize({width: 1080, height: 2340});
+      backend.platform.screen.applyDesignSize({width: 1080, height: 2100});
       const view = backend.create('Test', 'Main');
       backend.root.addChild(view);
       Object.assign(window, {view: (view as any).native, ready: true});
     })().catch(error => { (window as any).failure = String(error); });`);
-  await esbuild().build({entryPoints: [entry], bundle: true, format: 'esm', target: 'es2020', outfile: path.join(root, 'web/app.js'), logLevel: 'silent'});
+  // 复现用：把补丁 12 换成空的
+  const stub = path.join(root, 'no-nine-slice.ts');
+  fs.writeFileSync(stub, 'export const nineSliceFields = [] as const; export function installNineSlice(): void {} export function setNineSliceOverlap(_: number): void {}');
+  const plugins = patched ? [] : [{name: 'no-nine-slice', setup(b) { b.onResolve({filter: /nine-slice$/}, () => ({path: stub})); }}];
+  await esbuild().build({entryPoints: [entry], bundle: true, format: 'esm', target: 'es2020', outfile: path.join(root, 'web/app.js'), logLevel: 'silent', plugins});
   fs.writeFileSync(path.join(root, 'web/index.html'), '<!doctype html><meta charset="utf-8"><style>body{margin:0;background:#fff}</style><body><script type="module" src="/app.js"></script>');
   const server = await serve({'/': path.join(root, 'web')});
+  const sizes = [[375, 812, 3], [390, 844, 3], [320, 568, 2], [414, 896, 2], [1280, 720, 1]];
+  const result = {};
   try {
-    const seams = {};
-    for (const [width, height, dpr] of [[375, 812, 3], [390, 844, 3], [320, 568, 2], [414, 896, 2]]) {
+    for (const [width, height, dpr] of sizes) {
       const context = await browser.newContext({viewport: {width, height}, deviceScaleFactor: dpr});
       const page = await context.newPage();
+      const errors = [];
+      page.on('pageerror', e => errors.push(String(e)));
       await page.goto(server.url + '/index.html');
       await page.waitForFunction(() => window.ready || window.failure, null, {timeout: 15000});
       assert.equal(await page.evaluate(() => window.failure ?? null), null);
-      await page.evaluate(() => new Promise(r => setTimeout(r, 200)));
-      const boxes = await page.evaluate(() => { const out = []; for (let i = 0; i < window.view.numChildren; i++) { const r = window.view.getChildAt(i).element.getBoundingClientRect(); out.push([r.x, r.y, r.width, r.height]); } return out; });
-      const {data, info} = await sharp()(await page.screenshot()).raw().toBuffer({resolveWithObject: true});
-      let bad = 0;
-      for (const [bx, by, bw, bh] of boxes) {
-        for (let y = Math.ceil(by * dpr) + 2; y < Math.min(Math.floor((by + bh) * dpr) - 2, info.height); y++) {
-          for (let x = Math.ceil(bx * dpr) + 2; x < Math.min(Math.floor((bx + bw) * dpr) - 2, info.width); x++) {
-            const k = (y * info.width + x) * info.channels;
-            if (Math.abs(data[k]) + Math.abs(data[k + 1] - 160) + Math.abs(data[k + 2] - 160) > 12) bad++;
+      await page.evaluate(() => new Promise(r => setTimeout(r, 500)));
+      const boxes = await page.evaluate(() => { const out = []; for (let i = 0; i < window.view.numChildren; i++) { const c = window.view.getChildAt(i); const el = c.element.matches('fgui-img') ? c.element : c.element.firstElementChild; const r = c.element.getBoundingClientRect(); out.push({name: c.name, x: r.x, y: r.y, w: r.width, h: r.height, pieces: el.querySelectorAll('[data-lgui-nine]').length, borderImage: getComputedStyle(el).borderImageSource !== 'none', repeat: getComputedStyle(el).borderImageRepeat}); } return out; });
+      const {data, info} = await sharp()(await page.screenshot({fullPage: true})).raw().toBuffer({resolveWithObject: true});
+      const lum = k => data[k] + data[k + 1] + data[k + 2];
+      for (const b of boxes) {
+        const kind = b.name.slice(1).replace(/\d+$/, '');
+        const r = result[kind] ??= {light: 0, dark: 0, pieces: new Set(), borderImage: new Set(), repeat: new Set()};
+        r.pieces.add(b.pieces); r.borderImage.add(b.borderImage); r.repeat.add(b.repeat);
+        for (let y = Math.ceil(b.y * dpr) + 2; y < Math.min(Math.floor((b.y + b.h) * dpr) - 2, info.height - 1); y++) {
+          for (let x = Math.ceil(b.x * dpr) + 2; x < Math.min(Math.floor((b.x + b.w) * dpr) - 2, info.width - 1); x++) {
+            const k = (y * info.width + x) * info.channels, c = lum(k), step = info.channels, row = info.width * info.channels;
+            if ((c > lum(k - step) + 15 && c > lum(k + step) + 15) || (c > lum(k - row) + 15 && c > lum(k + row) + 15)) r.light++;
+            if ((c < lum(k - step) - 15 && c < lum(k + step) - 15) || (c < lum(k - row) - 15 && c < lum(k + row) - 15)) r.dark++;
           }
         }
       }
-      seams[`${width}x${height}@${dpr}`] = bad;
+      assert.deepEqual(errors, []);
       await context.close();
     }
-    assert.deepEqual(Object.values(seams).filter(n => n > 0), [], `九宫格里出现了细线（不是青色的像素数）：${JSON.stringify(seams)}`);
   } finally {
     await server.close();
-    await browser.close();
+  }
+  for (const r of Object.values(result)) for (const key of ['pieces', 'borderImage', 'repeat']) r[key] = [...r[key]];
+  return result;
+}
+
+test('补丁 12：九宫格在分数缩放下没有细线（不透明的面板），半透明、平铺的照旧', async t => {
+  const browser = await launchBrowser();
+  if (!browser) { t.skip('未找到 Chrome 或 Edge'); return; }
+  try {
+    // 复现：不装补丁 12，5 种尺寸下纯色和外框面板都有细线
+    const before = await ninePage(browser, false);
+    assert.ok(before.opaque.light > 1000 && before.frame.light > 1000, `没修时有细线：${JSON.stringify(before)}`);
+
+    const after = await ninePage(browser, true);
+    assert.deepEqual([after.opaque.light, after.frame.light], [0, 0], `不透明的面板没有细线：${JSON.stringify(after)}`);
+    assert.deepEqual([after.opaque.pieces, after.frame.pieces], [[9], [9]], '不透明的面板分成 9 块画');
+    // 半透明、平铺：照旧一个元素的 border-image，结果和不装补丁一样（不叠深）
+    assert.deepEqual([after.half.pieces, after.half.borderImage, after.tiled.pieces, after.tiled.borderImage, after.tiled.repeat], [[0], [true], [0], [true], ['repeat']]);
+    assert.deepEqual([after.half.light, after.half.dark, after.tiled.dark], [before.half.light, before.half.dark, before.tiled.dark], '半透明、平铺的和不装补丁时一样');
+    for (const kind of ['opaque', 'frame']) assert.ok(after[kind].dark <= before[kind].dark, `${kind} 没有叠出深线：${after[kind].dark} ≤ ${before[kind].dark}`);
+  } finally {
+    await closeAll(browser);
   }
 });
