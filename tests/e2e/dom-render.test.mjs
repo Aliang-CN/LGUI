@@ -306,9 +306,9 @@ test('动效目标是组：高级组在浏览器里能动；普通组生成时�
 });
 
 // 九宫格细线：走真实的 H5 后端（applyDesignSize 缩放根节点），手机尺寸下截图，整张青色的九宫格里出现别的颜色就是缝。
-// GImage 和 Loader 两种 DOM 形式都查。根因是根节点用 transform 缩放（platform/index.ts），改成 zoom 后为 0；
-// 那一处不在 P1 的文件里，改之前这条标成 todo（照常运行、报告结果，不算失败）。
-const NINE_SLICE_TODO = '根节点缩放改成 zoom（plugin/framework/backends/h5/platform/index.ts）之后去掉 todo，见 PATCHES.md 第 12 条';
+// GImage 和 Loader 两种 DOM 形式都查。Blink 下根节点用 transform 缩放时几乎每个都有细线（WebKit 没有）；根节点改用 zoom 能消掉，
+// 但 WebKit 会放大缩放后不到 9 像素的文字，不能用。修法待定，这条先标成 todo（照常运行、报告结果，不算失败）。
+const NINE_SLICE_TODO = 'Blink 下的九宫格细线还没修，修法待定，见 PATCHES.md 第 12 条';
 test('九宫格在分数缩放下没有细线（原生 GImage 和 Loader）', {todo: NINE_SLICE_TODO}, async t => {
   const browser = await launchBrowser();
   if (!browser) { t.skip('未找到 Chrome 或 Edge'); return; }
