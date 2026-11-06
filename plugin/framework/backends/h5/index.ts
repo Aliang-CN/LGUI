@@ -3,6 +3,7 @@ import * as fgui from './vendor/fairygui.module.js';
 import type {Backend, BackendConfig, Platform, UIComponent} from '../../core/index';
 import {LgRuntimeError} from '../../core/index';
 import {createH5Platform} from './platform/index';
+import {installFairyGuiPatches} from './fairygui-patches/index';
 import {setComponentName, wrap, wrapComponent} from './objects/index';
 
 const parseUrl = (url: string): [string, string] | null => { const m = /^ui:\/\/([^/]+)\/(.+)$/.exec(url); return m ? [m[1], m[2]] : null; };
@@ -20,6 +21,7 @@ export function createH5Backend(): Backend {
   return {
     name: 'h5',
     async init(config: BackendConfig) {
+      installFairyGuiPatches(); // 在创建任何 FairyGUI 对象之前
       if (config.defaultFont) fgui.UIConfig.defaultFont = config.defaultFont;
       i18nBase = config.i18nBase;
       uiBaseUrl = config.uiBase;

@@ -115,6 +115,9 @@ LGUI 的每条报错都带错误码，并写明：哪个文件哪一行（如果
 | `LGUI-RT-211` | 动效同时写了 `playing` 和 `play`，或者在 `ItemView` 里写了 `play` | 二选一；`ItemView` 里用 `playing: it => …` |
 | `LGUI-RT-220` | 写了 `dragData` 的控件不是加载器或按钮，又没写 `dragIcon`，拖起时没有图标 | 加上 `dragIcon`，或者把 `dragData` 写在加载器、按钮上 |
 | `LGUI-RT-221` | 写了 `dragIcon` 但没写 `dragData` | 加上 `dragData`，或者去掉 `dragIcon` |
+| `LGUI-RT-230` | 网页端启动时 FairyGUI-dom 补丁装不上：上游没有要挂钩子的方法、属性或字段了（升级了上游，或者改了框架副本里的 `vendor/fairygui.module.js`）。错误里写着补丁编号 | 用户工程：不要改 `.lgui/framework/`，运行 `lgui upgrade` 换回插件带的框架。维护 LGUI：对照 `framework/backends/h5/vendor/PATCHES.md` 里那个编号重看补丁 |
+| `LGUI-RT-231` | 网页端启动时 FairyGUI-dom 补丁要加的方法，上游已经有同名的了 | 同 `LGUI-RT-230`；维护 LGUI 时判断上游是否已经实现了同样的功能，决定改用上游的还是去掉这个补丁 |
+| `LGUI-RT-232` | 网页端量 `autoSize="shrink"` 文字的宽度时浏览器给不出 Canvas 2D | 换一个支持 Canvas 2D 的浏览器或 WebView |
 | `LGUI-RT-027` | 后端还没启动就开始用 | 先调用 `backend.init(config)`（框架启动时会自动调用） |
 | `LGUI-RT-160` | Unity 启动脚本或 Resources 文本缺失、PuerTS 启动失败、每帧回调或宿主驱动、退出清理失败 | 每帧回调出错时按堆栈修正该回调，其他回调和后续帧继续运行；宿主启动失败时核对导出文件、PuerTS 3.0.3 本地包后重新启动场景 |
 | `LGUI-RT-161` | Unity 平台存储、HTTP、音频等服务失败 | 按日志检查存储权限、请求参数、资源地址或本地 PuerTS 环境 |

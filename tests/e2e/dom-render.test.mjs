@@ -1,0 +1,306 @@
+// FairyGUI-dom 渲染补丁（plugin/framework/backends/h5/vendor/PATCHES.md 第 7–12 条）的浏览器测试：每条都先复现问题，再验证修好了。
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import {fileURLToPath} from 'node:url';
+import {generateWeb} from '../../plugin/tools/lib/generate/index.mjs';
+import {sharp, esbuild} from '../../plugin/tools/lib/vendor.mjs';
+import {serve, launchBrowser} from '../helpers/browser.mjs';
+
+const repo = fileURLToPath(new URL('../..', import.meta.url));
+const h5 = path.join(repo, 'plugin/framework/backends/h5');
+const xml = body => `<?xml version="1.0" encoding="utf-8"?>\n${body}\n`;
+const opened = new Set();
+async function closeAll(browser) { for (const close of [...opened]) await close(); await browser.close(); }
+
+// 一个 Test 包：resources 是 package.xml 里的条目，files 是组件 XML，images 是 {文件名: [宽, 高, [r, g, b]]}。
+// patched=false 时不装钩子（上游原样 + .patch），用来证明问题确实存在。
+async function open(browser, {resources, files, images = {}, patched = true, viewport = {width: 800, height: 600}, deviceScaleFactor = 1}) {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'lgui-render-'));
+  const pkg = path.join(root, 'ui/assets/Test');
+  fs.mkdirSync(pkg, {recursive: true});
+  fs.writeFileSync(path.join(root, 'ui/UI.fairy'), xml('<projectDescription id="render" type="Layabox" version="3.0"/>'));
+  for (const [name, [w, h, [r, g, b]]] of Object.entries(images)) {
+    await sharp()({create: {width: w, height: h, channels: 4, background: {r, g, b, alpha: 1}}}).png().toFile(path.join(pkg, name));
+  }
+  fs.writeFileSync(path.join(pkg, 'package.xml'), xml(`<packageDescription id="test0001"><resources>\n${resources}\n</resources></packageDescription>`));
+  for (const [name, body] of Object.entries(files)) fs.writeFileSync(path.join(pkg, name), xml(body));
+  await generateWeb(path.join(root, 'ui/UI.fairy'), path.join(root, 'web/ui'));
+  const entry = path.join(root, 'entry.ts');
+  fs.writeFileSync(entry, `import * as fgui from ${JSON.stringify(path.join(h5, 'vendor/fairygui.module.js'))};
+    import {installFairyGuiPatches} from ${JSON.stringify(path.join(h5, 'fairygui-patches/index.ts'))};
+    (async () => {
+      if (${patched}) installFairyGuiPatches();
+      else (fgui.UIPackage as any).setImageManifest ??= () => {};
+      if (${patched}) await (fgui.UIPackage as any).loadImageManifest('/ui/manifest.json');
+      const pkg = await fgui.UIPackage.loadPackage('/ui/Test');
+      if (!${patched}) for (const item of (pkg as any)._items) if (item.type === 0) item.file = '/ui/Test/' + item.id + '.png';
+      const view = fgui.UIPackage.createObject('Test', 'Main');
+      fgui.GRoot.inst.addChild(view);
+      document.body.style.margin = '0';
+      Object.assign(window, {fgui, view, ready: true});
+    })().catch(error => { (window as any).failure = String(error); });`);
+  await esbuild().build({entryPoints: [entry], bundle: true, format: 'esm', target: 'es2020', outfile: path.join(root, 'web/app.js'), logLevel: 'silent'});
+  fs.writeFileSync(path.join(root, 'web/index.html'), '<!doctype html><meta charset="utf-8"><style>body{margin:0;background:#fff}</style><body><script type="module" src="/app.js"></script>');
+  const server = await serve({'/': path.join(root, 'web')});
+  const context = await browser.newContext({viewport, deviceScaleFactor});
+  const close = async () => { if (!opened.delete(close)) return; await context.close(); await server.close(); };
+  opened.add(close);
+  const page = await context.newPage();
+  const errors = [];
+  page.on('pageerror', e => errors.push(String(e)));
+  await page.goto(server.url + '/index.html');
+  await page.waitForFunction(() => window.ready || window.failure, null, {timeout: 15000});
+  assert.equal(await page.evaluate(() => window.failure ?? null), null);
+  await page.evaluate(() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))));
+  return {page, errors, close};
+}
+
+// 截一块区域，数像素：match(r, g, b) 为真的有几个，以及它们的外接矩形（CSS 像素，相对截图区域）。
+async function pixels(page, clip, match, scale = 1) {
+  const {data, info} = await sharp()(await page.screenshot({clip})).raw().toBuffer({resolveWithObject: true});
+  let count = 0, x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (let y = 0; y < info.height; y++) for (let x = 0; x < info.width; x++) {
+    const k = (y * info.width + x) * info.channels;
+    if (!match(data[k], data[k + 1], data[k + 2])) continue;
+    count++; x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y);
+  }
+  return {count, box: count ? {x0: x0 / scale, y0: y0 / scale, x1: (x1 + 1) / scale, y1: (y1 + 1) / scale} : null};
+}
+
+const near = (r, g, b, [R, G, B], tolerance = 60) => Math.abs(r - R) + Math.abs(g - G) + Math.abs(b - B) <= tolerance;
+const BLACK = [0, 0, 0], RED = [255, 0, 0];
+
+test('补丁 7：粗描边画在字外，不吃笔画（paint-order: stroke fill，露在字外的宽度 = outline）', async t => {
+  const browser = await launchBrowser();
+  if (!browser) { t.skip('未找到 Chrome 或 Edge'); return; }
+  const text = '1436 START 开始';
+  const files = {'Main.xml': `<component size="800,300"><displayList>
+    <text id="n0" name="plain" xy="10,10" size="700,80" fontSize="48" color="#000000" text="${text}"/>
+    <text id="n1" name="stroked" xy="10,110" size="700,80" fontSize="48" color="#000000" strokeColor="#ff0000" strokeSize="4" text="${text}"/>
+  </displayList></component>`};
+  const resources = '<component id="main0001" name="Main.xml" path="/" exported="true"/>';
+  try {
+    const fill = async page => ({
+      plain: (await pixels(page, {x: 0, y: 0, width: 760, height: 100}, (r, g, b) => near(r, g, b, BLACK))).count,
+      stroked: (await pixels(page, {x: 0, y: 100, width: 760, height: 100}, (r, g, b) => near(r, g, b, BLACK))).count
+    });
+    // 复现：不装补丁，4 像素描边压进笔画，黑色的字面只剩一小半
+    const before = await open(browser, {resources, files, patched: false});
+    const lost = await fill(before.page);
+    await before.close();
+    assert.ok(lost.stroked < lost.plain * 0.5, `没修时字面被描边吃掉：${JSON.stringify(lost)}`);
+
+    const after = await open(browser, {resources, files});
+    const kept = await fill(after.page);
+    const style = await after.page.evaluate(() => { const s = getComputedStyle(window.view.getChild('stroked').element.querySelector('span.fgui-text')); return [s.paintOrder, s.webkitTextStrokeWidth]; });
+    assert.deepEqual(style, ['stroke', '8px'], '先画描边再画字，描边宽度 2 × outline');
+    assert.ok(kept.stroked > kept.plain * 0.9, `字面完整：${JSON.stringify(kept)}`);
+    // 描边露在字外：红色像素外接框比字面大出约 outline（4 像素）
+    const ink = await pixels(after.page, {x: 0, y: 100, width: 760, height: 100}, (r, g, b) => near(r, g, b, BLACK));
+    const red = await pixels(after.page, {x: 0, y: 100, width: 760, height: 100}, (r, g, b) => near(r, g, b, RED, 120));
+    assert.ok(Math.abs((ink.box.x0 - red.box.x0) - 4) <= 1.5 && Math.abs((red.box.x1 - ink.box.x1) - 4) <= 1.5, `描边露在字外 4 像素：字面 ${JSON.stringify(ink.box)}，描边 ${JSON.stringify(red.box)}`);
+    assert.deepEqual(after.errors, []);
+    await after.close();
+  } finally {
+    await closeAll(browser);
+  }
+});
+
+test('补丁 8：autoSize="shrink" 缩小字号塞进框里（实际字面和描边都在控件框内），只在文字、尺寸、格式变化时测量', async t => {
+  const browser = await launchBrowser();
+  if (!browser) { t.skip('未找到 Chrome 或 Edge'); return; }
+  const long = '这是一段很长很长的按钮标题 Long Title';
+  const files = {'Main.xml': `<component size="800,600"><displayList>
+    <graph id="g0" name="box0" xy="20,20" size="200,50" type="rect" lineSize="0" fillColor="#ffffff"/>
+    <text id="n0" name="title" xy="20,20" size="200,50" fontSize="32" color="#000000" align="center" vAlign="middle" autoSize="shrink" singleLine="true" text="${long}"/>
+    <text id="n1" name="stroked" xy="20,100" size="200,50" fontSize="32" color="#000000" strokeColor="#ff0000" strokeSize="3" align="center" vAlign="middle" autoSize="shrink" singleLine="true" text="${long}"/>
+    <text id="n2" name="short" xy="20,180" size="200,50" fontSize="32" color="#000000" align="center" vAlign="middle" autoSize="shrink" singleLine="true" text="确定"/>
+    <text id="n3" name="wrap" xy="300,20" size="200,120" fontSize="32" color="#000000" autoSize="shrink" text="多行文字自动换行，超出框的高度时也要缩小字号，直到整段都放得下为止。"/>
+  </displayList></component>`};
+  const resources = '<component id="main0001" name="Main.xml" path="/" exported="true"/>';
+  const span = name => `window.view.getChild('${name}').element.querySelector('span.fgui-text')`;
+  try {
+    // 复现：不装补丁，字号不变，内容比框宽，被裁掉
+    const before = await open(browser, {resources, files, patched: false});
+    const clipped = await before.page.evaluate(`(() => { const s = ${span('title')}; return {font: s.style.fontSize, overflow: s.scrollWidth > s.clientWidth + 1}; })()`);
+    await before.close();
+    assert.deepEqual(clipped, {font: '32px', overflow: true}, '没修时只是裁掉');
+
+    const {page, errors, close} = await open(browser, {resources, files});
+    const state = name => page.evaluate(`(() => { const s = ${span(name)}; return {font: parseFloat(s.style.fontSize), overflow: getComputedStyle(s).overflow, scrollWidth: s.scrollWidth, scrollHeight: s.scrollHeight, width: s.clientWidth}; })()`);
+    const title = await state('title');
+    assert.ok(title.font < 32 && title.font > 10, `缩小了字号：${title.font}`);
+    assert.ok(title.scrollWidth <= 200 + 1, `内容宽度不超过控件框：${title.scrollWidth}`);
+    assert.equal((await state('short')).font, 32, '放得下的不缩');
+    // 实际字面（黑色像素）和描边（红色像素）都在控件框内
+    const dark = (r, g, b) => r + g + b < 450;
+    const red = (r, g, b) => r > 150 && g < 120 && b < 120;
+    for (const [name, y, match] of [['title', 20, dark], ['stroked', 100, red]]) {
+      const ink = await pixels(page, {x: 0, y: y - 15, width: 260, height: 80}, match);
+      assert.ok(ink.count > 100, `${name} 画出来了`);
+      assert.ok(ink.box.x0 >= 20 - 0.5 && ink.box.x1 <= 220 + 0.5 && ink.box.y0 >= 15 - 0.5 && ink.box.y1 <= 15 + 50 + 0.5, `${name} 的字面在控件框里：${JSON.stringify(ink.box)}`);
+    }
+    // 多行：按整数字号缩到高度放得下
+    const wrap = await state('wrap');
+    assert.ok(wrap.font < 32 && Number.isInteger(wrap.font) && wrap.scrollHeight <= 120, `多行缩到放得下：${JSON.stringify(wrap)}`);
+
+    // 只在变化时测：空等几帧不测；改文字、改尺寸、改字号各测一次（改尺寸用上次的结果，不再测）
+    await page.evaluate(() => {
+      window.measures = 0;
+      const original = CanvasRenderingContext2D.prototype.measureText;
+      CanvasRenderingContext2D.prototype.measureText = function (text) { window.measures++; return original.call(this, text); };
+    });
+    await page.evaluate(() => new Promise(r => { let n = 10; const step = () => (--n ? requestAnimationFrame(step) : r()); requestAnimationFrame(step); }));
+    assert.equal(await page.evaluate(() => window.measures), 0, '没有变化时不测');
+    await page.evaluate(() => { window.view.getChild('title').text = '短'; });
+    assert.equal((await state('title')).font, 32, '文字变短，字号回到原值');
+    await page.evaluate(() => { window.view.getChild('title').text = '又变成了一段很长很长很长的标题文字'; });
+    const narrow = (await state('title')).font;
+    await page.evaluate(() => { window.view.getChild('title').setSize(400, 50); });
+    const wide = (await state('title')).font;
+    assert.ok(wide > narrow, `框变宽，字号跟着变大：${narrow} → ${wide}`);
+    const measured = await page.evaluate(() => window.measures);
+    assert.equal(measured, 2, '两次改文字各测一次，改尺寸不测');
+    await page.evaluate(() => { window.view.getChild('title').setProp(window.fgui.ObjectPropID.FontSize, 40); });
+    assert.equal(await page.evaluate(() => window.measures), measured + 1, '改字号重新测');
+    // 改回不缩：字号回到原值、不再改
+    await page.evaluate(() => { window.view.getChild('title').autoSize = window.fgui.AutoSizeType.Ellipsis; });
+    assert.equal((await state('title')).font, 40);
+    assert.deepEqual(errors, []);
+    await close();
+  } finally {
+    await closeAll(browser);
+  }
+});
+
+test('补丁 9：downEffect="scale" 的按压只是视觉效果，按钮跟兄弟控件一起拉宽时位置不变', async t => {
+  const browser = await launchBrowser();
+  if (!browser) { t.skip('未找到 Chrome 或 Edge'); return; }
+  const files = {
+    'Btn.xml': `<component size="200,60" extention="Button">
+      <controller name="button" pages="0,up,1,down" selected="0"/>
+      <displayList><graph id="n0" name="bg" xy="0,0" size="200,60" type="rect" lineSize="0" fillColor="#3366ff"><relation target="" sidePair="width-width,height-height"/></graph></displayList>
+      <Button downEffect="scale" downEffectValue="0.8"/>
+    </component>`,
+    // chat 跟 safe 一起变宽（宽度关联兄弟控件，左边对齐）
+    'Main.xml': `<component size="800,400"><displayList>
+      <graph id="n0" name="safe" xy="0,0" size="400,100" type="rect" lineSize="0" fillColor="#eeeeee"/>
+      <component id="n1" name="chat" src="btn00001" xy="100,20" size="200,60"><relation target="n0" sidePair="width-width,left-left"/></component>
+    </displayList></component>`
+  };
+  const resources = `<component id="main0001" name="Main.xml" path="/" exported="true"/>
+    <component id="btn00001" name="Btn.xml" path="/" exported="true"/>`;
+  const run = async patched => {
+    const {page, errors, close} = await open(browser, {resources, files, patched});
+    const result = await page.evaluate(() => {
+      const chat = window.view.getChild('chat');
+      const safe = window.view.getChild('safe');
+      safe.width = 600; // 宽屏：safe 变宽 200
+      return {x: chat.x, width: chat.width, pivot: [chat.pivotX, chat.pivotY]};
+    });
+    return {page, errors, close, result};
+  };
+  try {
+    // 复现：上游把轴心改成 0.5，按钮变宽时往左跑了一半宽度差
+    const before = await run(false);
+    await before.close();
+    assert.deepEqual(before.result, {x: 0, width: 400, pivot: [0.5, 0.5]}, '没修时按钮往左跑了 100');
+
+    const {page, errors, close, result} = await run(true);
+    assert.deepEqual(result, {x: 100, width: 400, pivot: [0, 0]}, '修好后位置不变、轴心是 XML 里的');
+    // 按下：元素视觉缩到 0.8，GObject 的位置、尺寸、scale 不变；松开恢复
+    const box = await page.evaluate(() => { const r = window.view.getChild('chat').element.getBoundingClientRect(); return {x: r.x + r.width / 2, y: r.y + r.height / 2, width: r.width}; });
+    await page.mouse.move(box.x, box.y);
+    await page.mouse.down();
+    const down = await page.evaluate(() => { const c = window.view.getChild('chat'); return {scale: c.element.style.scale, x: c.x, width: c.width, scaleX: c.scaleX, visual: Math.round(c.element.getBoundingClientRect().width)}; });
+    await page.mouse.up();
+    const up = await page.evaluate(() => { const c = window.view.getChild('chat'); return {scale: c.element.style.scale, x: c.x, scaleX: c.scaleX}; });
+    assert.deepEqual(down, {scale: '0.8', x: 100, width: 400, scaleX: 1, visual: Math.round(box.width * 0.8)});
+    assert.deepEqual(up, {scale: '', x: 100, scaleX: 1});
+    assert.deepEqual(errors, []);
+    await close();
+  } finally {
+    await closeAll(browser);
+  }
+});
+
+test('补丁 10：界面离开舞台再回来（换版重排、齿轮藏起来又显示），代码放的动效暂停后接着放，不停在半路', async t => {
+  const browser = await launchBrowser();
+  if (!browser) { t.skip('未找到 Chrome 或 Edge'); return; }
+  // fly：12 帧（0.5 秒）从 y=400 飞到 y=0；loop：一直来回改透明度；atEnd：options=4，离开舞台时照上游跳到结束
+  const files = {'Main.xml': `<component size="800,600"><displayList>
+      <graph id="n0" name="coin" xy="0,0" size="20,20" type="rect" lineSize="0" fillColor="#ffcc00"/>
+      <graph id="n1" name="glow" xy="100,0" size="20,20" type="rect" lineSize="0" fillColor="#ffffff"/>
+      <graph id="n2" name="gem" xy="200,0" size="20,20" type="rect" lineSize="0" fillColor="#00ccff"/>
+    </displayList>
+    <transition name="fly"><item time="0" type="XY" target="n0" duration="12" tween="true" startValue="0,400" endValue="0,0"/></transition>
+    <transition name="loop"><item time="0" type="Alpha" target="n1" duration="12" tween="true" startValue="1" endValue="0.2" repeat="-1" yoyo="true"/></transition>
+    <transition name="atEnd" options="4"><item time="0" type="XY" target="n2" duration="12" tween="true" startValue="200,400" endValue="200,0"/></transition>
+  </component>`};
+  const resources = '<component id="main0001" name="Main.xml" path="/" exported="true"/>';
+  const scenario = async patched => {
+    const {page, errors, close} = await open(browser, {resources, files, patched});
+    await page.evaluate(() => { for (const name of ['fly', 'loop', 'atEnd']) window.view.getTransition(name).play(null, name === 'loop' ? -1 : 1); });
+    await page.waitForTimeout(150);
+    // UIManager 重排层内顺序时就是这样：从容器里拿出来再放回去
+    const removed = await page.evaluate(() => { const v = window.view; window.fgui.GRoot.inst.removeChild(v); window.fgui.GRoot.inst.addChild(v); return {coin: v.getChild('coin').y, gem: v.getChild('gem').y}; });
+    const alphas = [];
+    for (let i = 0; i < 4; i++) { alphas.push(await page.evaluate(() => window.view.getChild('glow').alpha)); await page.waitForTimeout(130); }
+    await page.waitForTimeout(200);
+    const result = await page.evaluate(() => ({coin: window.view.getChild('coin').y, gem: window.view.getChild('gem').y, fly: window.view.getTransition('fly').playing, loop: window.view.getTransition('loop').playing}));
+    await close();
+    return {removed, result, loopMoved: Math.max(...alphas) - Math.min(...alphas) > 0.05, errors};
+  };
+  try {
+    // 复现：不装补丁，fly 停在半路，loop 停了
+    const before = await scenario(false);
+    assert.ok(before.result.coin > 50, `没修时金币停在半路：y=${before.result.coin}`);
+    assert.equal(before.result.loop, false, '没修时循环动效停了');
+    assert.equal(before.removed.gem, 0, 'options=4 离开舞台时跳到结束');
+
+    const after = await scenario(true);
+    assert.equal(after.result.coin, 0, '接着放到结束');
+    assert.equal(after.result.fly, false);
+    assert.equal(after.result.loop, true);
+    assert.ok(after.loopMoved, '循环动效还在动');
+    assert.equal(after.removed.gem, 0, 'options=4 照上游跳到结束');
+    assert.deepEqual(after.errors, []);
+  } finally {
+    await closeAll(browser);
+  }
+});
+
+test('动效目标是组：高级组在浏览器里能动；普通组生成时就被去掉了（连同指向它的动效条目），运行时拿不到', async t => {
+  const browser = await launchBrowser();
+  if (!browser) { t.skip('未找到 Chrome 或 Edge'); return; }
+  const files = {'Main.xml': `<component size="400,600"><displayList>
+      <graph id="n0" name="a" xy="0,100" size="50,50" group="n1" type="rect" fillColor="#ff0000"/>
+      <group id="n1" name="plain" xy="0,100" size="50,50"/>
+      <graph id="n2" name="c" xy="200,100" size="50,50" group="n3" type="rect" fillColor="#0000ff"/>
+      <group id="n3" name="adv" xy="200,100" size="50,50" advanced="true"/>
+    </displayList>
+    <transition name="moveP"><item time="0" type="XY" target="n1" duration="6" tween="true" startValue="0,400" endValue="0,100"/></transition>
+    <transition name="moveA"><item time="0" type="XY" target="n3" duration="6" tween="true" startValue="200,400" endValue="200,100"/></transition>
+  </component>`};
+  try {
+    const {page, errors, close} = await open(browser, {resources: '<component id="main0001" name="Main.xml" path="/" exported="true"/>', files});
+    const state = await page.evaluate(async () => {
+      const v = window.view;
+      const items = name => v.getTransition(name)._items.length;
+      v.getTransition('moveA').play();
+      await new Promise(r => setTimeout(r, 100));
+      return {plain: v.getChild('plain'), plainItems: items('moveP'), advItems: items('moveA'), middle: v.getChild('c').y};
+    });
+    assert.equal(state.plain, null, '普通组只在编辑器里有');
+    assert.equal(state.plainItems, 0, '指向普通组的动效条目生成时去掉了（要靠 lgui check 提前报出来）');
+    assert.equal(state.advItems, 1);
+    assert.ok(state.middle > 100 && state.middle < 400, `高级组带着组里的控件动：y=${state.middle}`);
+    assert.deepEqual(errors, []);
+    await close();
+  } finally {
+    await closeAll(browser);
+  }
+});

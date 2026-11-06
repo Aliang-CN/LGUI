@@ -1,0 +1,34 @@
+--- a/fairygui.module.js
++++ b/fairygui.module.js
+@@ -4752,7 +4752,8 @@
+     static loadPackage(url) {
+         if (!url.endsWith("/"))
+             url += "/";
+-        return new Promise(resolve => {
++        // LGUI patch: 6 加载失败时 reject：原来请求失败后 Promise 一直不结束，读包出错时异常抛在事件回调里。
++        return new Promise((resolve, reject) => {
+             let pkg = _instById[url];
+             if (pkg) {
+                 resolve(pkg);
+@@ -4760,13 +4761,21 @@
+             }
+             let request = new HttpRequest();
+             request.send(url + "package.xml", null, "get", "arraybuffer");
++            request.on("error", (evt) => {
++                reject(new Error("LGUI-RT-011  界面包 " + url + "package.xml 加载失败：" + (evt && evt.data !== undefined ? evt.data : evt) + "。  → 确认包名对，并重新运行 lgui dev 生成界面包。"));
++            });
+             request.on("complete", (evt) => {
++              try {
+                 let pkg = new UIPackage();
+                 pkg.loadPackage(new ByteBuffer(evt.data), url);
+                 _instById[pkg.id] = pkg;
+                 _instByName[pkg.name] = pkg;
+                 _instById[pkg.path] = pkg;
+                 resolve(pkg);
++              }
++              catch (error) {
++                reject(error);
++              }
+             });
+         });
+     }

@@ -1,0 +1,56 @@
+--- a/fairygui.module.js
++++ b/fairygui.module.js
+@@ -15722,7 +15722,8 @@
+     }
+ }
+ 
+-class UIElement extends HTMLDivElement {
++// LGUI patch: 5 —— Safari（含 iPhone 上所有浏览器和微信）不支持扩展内置元素（extends: "div" + is），改成独立的自定义元素
++class UIElement extends HTMLElement {
+     constructor() {
+         super();
+         this._timerID = 0;
+@@ -17065,11 +17066,16 @@
+                 font-family : ${UIConfig.defaultFont};
+             }
+ 
+-            .fgui-stage div {
++            /* LGUI patch: 5 —— 独立自定义元素默认是 inline，样式按元素名也要写一份 */
++            fgui-div, fgui-img, fgui-movieclip, fgui-text, fgui-input, fgui-shape, fgui-stage {
++                display: block;
++            }
++
++            .fgui-stage div, .fgui-stage fgui-div, .fgui-stage fgui-img, .fgui-stage fgui-movieclip, .fgui-stage fgui-text, .fgui-stage fgui-input, .fgui-stage fgui-shape {
+                 position: absolute;
+             }
+ 
+-            .fgui-stage div:focus {
++            .fgui-stage div:focus, .fgui-stage fgui-div:focus, .fgui-stage fgui-img:focus, .fgui-stage fgui-movieclip:focus, .fgui-stage fgui-text:focus, .fgui-stage fgui-input:focus, .fgui-stage fgui-shape:focus {
+                 outline: none;
+             }
+ 
+@@ -17690,15 +17696,16 @@
+ }
+ globalThis.createUIElement = function (tagName, owner) {
+     if (!customElements.get("fgui-div")) {
+-        customElements.define("fgui-div", UIElement, { extends: "div" });
+-        customElements.define("fgui-img", Image, { extends: "div" });
+-        customElements.define("fgui-movieclip", MovieClip, { extends: "div" });
+-        customElements.define("fgui-text", TextField, { extends: "div" });
+-        customElements.define("fgui-input", InputTextField, { extends: "div" });
+-        customElements.define("fgui-shape", Shape, { extends: "div" });
+-        customElements.define("fgui-stage", Stage, { extends: "div" });
++        // LGUI patch: 5 —— 独立自定义元素，不再 extends: "div"
++        customElements.define("fgui-div", UIElement);
++        customElements.define("fgui-img", Image);
++        customElements.define("fgui-movieclip", MovieClip);
++        customElements.define("fgui-text", TextField);
++        customElements.define("fgui-input", InputTextField);
++        customElements.define("fgui-shape", Shape);
++        customElements.define("fgui-stage", Stage);
+     }
+-    let ele = document.createElement("div", { is: tagName });
++    let ele = document.createElement(tagName); // LGUI patch: 5
+     ele.$owner = owner;
+     ele.init();
+     return ele;
