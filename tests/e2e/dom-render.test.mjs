@@ -73,35 +73,50 @@ async function pixels(page, clip, match, scale = 1) {
 const near = (r, g, b, [R, G, B], tolerance = 60) => Math.abs(r - R) + Math.abs(g - G) + Math.abs(b - B) <= tolerance;
 const BLACK = [0, 0, 0], RED = [255, 0, 0];
 
-test('补丁 7：粗描边画在字外，不吃笔画（paint-order: stroke fill，露在字外的宽度 = outline）', async t => {
+// 「露在字外多宽」只能保证下限，不能要求正好等于 outline：
+// - 按颜色数像素时，字面（黑）和描边（红）的抗锯齿边各会少算 0–1 像素，所以量出来的宽度比真实的最多少 1 像素；
+// - 文字描边在尖角处是斜接（miter），字形的尖角（「1」的旗、「A」的尖）处描边会比 outline 伸得更远，伸多少看字体。
+//   Mac 上各字体各字形量出来每边 3–5 像素（outline 4），Windows（默认字体 Times New Roman，DirectWrite）是左 6、上 4、右 5、下 5。
+// 所以断言每一边都 ≥ outline - 1，并用同一种量法证明没修时（描边一半压在字里）达不到：没修时每边 ≤ outline / 2 + 1。
+// outline 取 6，两者之间留出足够的间隔（≥ 5 对 ≤ 4）。描边宽度是不是 2 × outline 由计算后的样式断言。
+const OUTLINE = 6;
+test('补丁 7：粗描边画在字外，不吃笔画（paint-order: stroke fill，每一边露在字外至少 outline）', async t => {
   const browser = await launchBrowser();
   if (!browser) { t.skip('未找到 Chrome 或 Edge'); return; }
   const text = '1436 START 开始';
   const files = {'Main.xml': `<component size="800,300"><displayList>
     <text id="n0" name="plain" xy="10,10" size="700,80" fontSize="48" color="#000000" text="${text}"/>
-    <text id="n1" name="stroked" xy="10,110" size="700,80" fontSize="48" color="#000000" strokeColor="#ff0000" strokeSize="4" text="${text}"/>
+    <text id="n1" name="stroked" xy="10,110" size="700,80" fontSize="48" color="#000000" strokeColor="#ff0000" strokeSize="${OUTLINE}" text="${text}"/>
   </displayList></component>`};
   const resources = '<component id="main0001" name="Main.xml" path="/" exported="true"/>';
+  const area = {x: 0, y: 100, width: 760, height: 100};
+  const fill = async page => ({
+    plain: (await pixels(page, {x: 0, y: 0, width: 760, height: 100}, (r, g, b) => near(r, g, b, BLACK))).count,
+    stroked: (await pixels(page, area, (r, g, b) => near(r, g, b, BLACK))).count
+  });
+  // 描边的外接框比字面的外接框每边大出多少（左、上、右、下）。字面取上面那行没描边的同一段字（同字体、同位置，描边不影响排版）：
+  // 没修时描边压住了大半笔画，带描边那行几乎找不到纯黑的像素。
+  const outside = async page => {
+    const ink = (await pixels(page, {...area, y: 0}, (r, g, b) => near(r, g, b, BLACK))).box;
+    const red = (await pixels(page, area, (r, g, b) => near(r, g, b, RED, 120))).box;
+    return {sides: [ink.x0 - red.x0, ink.y0 - red.y0, red.x1 - ink.x1, red.y1 - ink.y1], ink, red};
+  };
   try {
-    const fill = async page => ({
-      plain: (await pixels(page, {x: 0, y: 0, width: 760, height: 100}, (r, g, b) => near(r, g, b, BLACK))).count,
-      stroked: (await pixels(page, {x: 0, y: 100, width: 760, height: 100}, (r, g, b) => near(r, g, b, BLACK))).count
-    });
-    // 复现：不装补丁，4 像素描边压进笔画，黑色的字面只剩一小半
+    // 复现：不装补丁，描边一半压进笔画，黑色的字面只剩一小半；露在字外的只有一半宽
     const before = await open(browser, {resources, files, patched: false});
     const lost = await fill(before.page);
+    const half = await outside(before.page);
     await before.close();
     assert.ok(lost.stroked < lost.plain * 0.5, `没修时字面被描边吃掉：${JSON.stringify(lost)}`);
+    assert.ok(Math.max(...half.sides) <= OUTLINE / 2 + 1, `没修时每边露在字外不超过 outline / 2 + 1：${JSON.stringify(half)}`);
 
     const after = await open(browser, {resources, files});
     const kept = await fill(after.page);
     const style = await after.page.evaluate(() => { const s = getComputedStyle(window.view.getChild('stroked').element.querySelector('span.fgui-text')); return [s.paintOrder, s.webkitTextStrokeWidth]; });
-    assert.deepEqual(style, ['stroke', '8px'], '先画描边再画字，描边宽度 2 × outline');
+    assert.deepEqual(style, ['stroke', `${OUTLINE * 2}px`], '先画描边再画字，描边宽度 2 × outline');
     assert.ok(kept.stroked > kept.plain * 0.9, `字面完整：${JSON.stringify(kept)}`);
-    // 描边露在字外：红色像素外接框比字面大出约 outline（4 像素）
-    const ink = await pixels(after.page, {x: 0, y: 100, width: 760, height: 100}, (r, g, b) => near(r, g, b, BLACK));
-    const red = await pixels(after.page, {x: 0, y: 100, width: 760, height: 100}, (r, g, b) => near(r, g, b, RED, 120));
-    assert.ok(Math.abs((ink.box.x0 - red.box.x0) - 4) <= 1.5 && Math.abs((red.box.x1 - ink.box.x1) - 4) <= 1.5, `描边露在字外 4 像素：字面 ${JSON.stringify(ink.box)}，描边 ${JSON.stringify(red.box)}`);
+    const out = await outside(after.page);
+    assert.ok(out.sides.every(side => side >= OUTLINE - 1), `每一边露在字外至少 outline - 1：${JSON.stringify(out)}`);
     assert.deepEqual(after.errors, []);
     await after.close();
   } finally {
