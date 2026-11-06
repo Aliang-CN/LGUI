@@ -69,7 +69,8 @@ export function createFakeBackend(): Backend {
     audio: {play: () => {}, music: () => {}, setPaused: () => {}},
     locale: {systemLanguages: () => ['zh-CN']},
     log: silentLog,
-    net: {fetch: () => unsupported('网络'), webSocket: () => unsupported('WebSocket')}
+    net: {fetch: () => unsupported('网络'), webSocket: () => unsupported('WebSocket')},
+    clipboard: {writeText: async () => unsupported('剪贴板'), readText: async () => unsupported('剪贴板')}
   };
   return {
     name: 'headless',

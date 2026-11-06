@@ -238,6 +238,7 @@ export function createObjectAdapter(fgui: NativeFairyGUI, now: () => number, toP
       this.native.itemRenderer = value ? (index, item) => value(index, wrapComponent(item)) : null;
       if (value) activeLists.add(this); else activeLists.delete(this);
     }
+    get scrollable(): boolean { return this.native.scrollPane != null; }
     get virtual(): boolean { return this.isVirtual; }
     set virtual(value: boolean) {
       if (value === this.isVirtual) return;

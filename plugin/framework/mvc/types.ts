@@ -85,7 +85,7 @@ export interface CommonBinding {
   enabled?: Value<boolean>;
   /** 只在这些输入类型下显示。 */
   visibleOn?: readonly InputType[];
-  /** 红点路径（控件里要有 redDot 子控件）。 */
+  /** 红点路径（控件里要有 redDot 子控件）。ItemView 里可以写成函数，按这一项返回路径。 */
   redDot?: string;
   /** 点击。 */
   click?: Action;
@@ -125,12 +125,20 @@ export interface InputBinding extends TextBinding {
   input?: Action<[string]>;
 }
 
-/** 按钮、标签。 */
-export interface ButtonBinding extends CommonBinding {
+/** 标签（扩展类型 Label）。 */
+export interface LabelBinding extends CommonBinding {
   /** 标题。 */
   text?: Value<string>;
   /** 图标地址。 */
   icon?: Value<string>;
+  /** 交给一个部件 View（按钮、标签做成的部件，比如货币栏、弹窗边框）。 */
+  view?: PartViewClass;
+}
+
+/** 按钮。 */
+export interface ButtonBinding extends LabelBinding {
+  /** 是否选中：只用于 Check（开关）、Radio（单选）按钮，显示 Model 的值；用户点击时 click 交给 Controller 改。 */
+  selected?: Value<boolean>;
 }
 
 /** 加载器。 */
@@ -225,7 +233,7 @@ export type BindingFor<X> =
   X extends UIList ? ListBinding :
   X extends UIComboBox ? ComboBoxBinding :
   X extends UIButton ? ButtonBinding :
-  X extends UILabel ? ButtonBinding :
+  X extends UILabel ? LabelBinding :
   X extends UISlider ? SliderBinding :
   X extends UIProgress ? ProgressBinding :
   X extends UILoader ? LoaderBinding :
@@ -243,8 +251,16 @@ export type Bind<UI> = {[K in Exclude<keyof UI, '__component'>]?: BindingFor<UI[
 /** ItemView 里的值：传入这一项的数据，返回要显示的内容。 */
 export type ItemValue<Data, T> = T | ((item: Data) => T);
 
-/** 把一种绑定里的 Value 换成 ItemValue。 */
-type ForItem<B, Data> = {[K in keyof B]: B[K] extends Value<infer T> | undefined ? (K extends 'visibleOn' | 'redDot' | 'placeholder' | 'lockWhilePending' | 'hold' | 'drop' ? B[K] : ItemValue<Data, T> | undefined) : B[K]};
+/** ItemView 里原样写的词（不是显示类的值）。 */
+type ItemKeep = 'visibleOn' | 'placeholder' | 'lockWhilePending' | 'drop' | 'drag' | 'swipe' | 'pinch' | 'wheel' | 'hover' | 'input' | 'change' | 'select' | 'view' | 'item' | 'key' | 'done';
+
+/** 把一种绑定里的 Value 换成 ItemValue；点击、双击、长按的动作参数是这一项的数据；红点路径可以按这一项算。 */
+type ForItem<B, Data> = {[K in keyof B]:
+  K extends 'click' | 'doubleClick' ? Action<[Data]> :
+  K extends 'hold' ? {ms: number; action: Action<[Data]>} :
+  K extends 'redDot' ? ItemValue<Data, string> :
+  K extends ItemKeep ? B[K] :
+  B[K] extends Value<infer T> | undefined ? ItemValue<Data, T> | undefined : B[K]};
 
 /** ItemView 的绑定表。 */
 export type ItemBind<UI, Data> = {[K in Exclude<keyof UI, '__component'>]?: ForItem<BindingFor<UI[K]>, Data>};

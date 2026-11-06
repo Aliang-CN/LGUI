@@ -73,7 +73,7 @@ export function createUnityBackend(bridge?: NativeBridge): Backend {
         }, component => { containers.delete(component); });
       nativePlatform = createUnityPlatform({
         projectName: options.projectName, uiBase: options.uiBase, host: found.LGUI.Platform,
-        fgui, objects, createLoader: () => new found.LGUI.LGUIResourceLoader(), scale
+        fgui, objects, createLoader: () => new found.LGUI.LGUIResourceLoader(), scale, clipboard: () => found.UnityEngine.GUIUtility ?? null
       });
       objects.setComponentName(fgui.GRoot.inst, 'root');
       root = objects.wrapComponent(fgui.GRoot.inst);

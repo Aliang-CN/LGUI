@@ -8,6 +8,7 @@ import {fitDesign, stage, toDesign} from '../scale';
 import {pointerEventTypes, toPointerInput} from '../pointer';
 import {createH5Audio} from './audio';
 import {consoleLogger} from './log';
+import {createH5Clipboard} from './clipboard';
 
 // 一组回调，返回取消函数。传了 onError 时，一个回调出错交给 onError，其余回调照常调用。
 class Handlers<T> {
@@ -123,6 +124,7 @@ export function createH5Platform(projectName: string, uiBase: string): Platform 
     audio: audio.service,
     locale: {systemLanguages: () => navigator.languages.length ? [...navigator.languages] : [navigator.language]},
     log: consoleLogger(),
+    clipboard: createH5Clipboard(),
     net: {
       async fetch(url, init = {}): Promise<NetResponse> {
         const response = await fetch(url, init);

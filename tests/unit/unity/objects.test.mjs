@@ -196,6 +196,8 @@ test('Unity list maps virtual child indices, keeps non-button selection and disp
   native.onClickItem.Call(item); assert.deepEqual(clicks, [4]); assert.equal(list.selectedIndex, 4);
   assert.strictEqual(list.itemAt(4), a.wrapComponent(item)); assert.equal(list.itemAt(3), null);
   list.scrollPosition = {x: 12, y: 33}; assert.deepEqual(list.scrollPosition, {x: 12, y: 33});
+  assert.equal(list.scrollable, true, '有滚动面板的列表能滚动');
+  const fixed = new List(); fixed.scrollPane = null; assert.equal(a.wrap(fixed).scrollable, false, '没有滚动面板（overflow 不是 scroll）的列表不能滚动');
   list.virtual = true; list.virtual = true; assert.equal(native.virtualCalls, 1);
   assert.throws(() => { list.virtual = false; }, {code: 'LGUI-RT-021'});
   list.numItems = 2; assert.equal(list.selectedIndex, -1);
