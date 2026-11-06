@@ -140,7 +140,9 @@ export interface UIList extends UIObject {
   numItems: number;
   /** 渲染第 index 项时调用；item 是从对象池取出的子项组件。 */
   itemRenderer: ((index: number, item: UIComponent) => void) | null;
-  /** 是否虚拟列表（只创建看得见的子项）。 */
+  /** 能不能滚动：ui/ 里列表的 overflow 是 scroll（FairyGUI 给它建了滚动面板）。只有能滚动的列表才能设成虚拟列表。 */
+  readonly scrollable: boolean;
+  /** 是否虚拟列表（只创建看得见的子项）。列表要能滚动（scrollable）。 */
   virtual: boolean;
   /** 滚动位置（像素，设计尺寸）。 */
   scrollPosition: { x: number; y: number };

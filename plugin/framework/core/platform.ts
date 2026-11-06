@@ -1,4 +1,4 @@
-// 接口层的平台服务：每个后端各实现一份。游戏代码只通过 lgui.platform 用到其中的网络和存储；日志和声音的出口可以在 lgui.app({ platform }) 里换掉。
+// 接口层的平台服务：每个后端各实现一份。游戏代码只通过 lgui.platform 用到其中的网络、存储和剪贴板；日志、声音和剪贴板的出口可以在 lgui.app({ platform }) 里换掉。
 import type {PointerInput, Rect, Unsubscribe} from './ui';
 
 /** 时间。 */
@@ -166,6 +166,14 @@ export interface NetService {
   webSocket(url: string): NetSocket;
 }
 
+/** 剪贴板：系统剪贴板里的文字。h5 用浏览器的剪贴板（只有 https 或 localhost 的页面能用，读的时候浏览器可能先问用户），Unity 用系统剪贴板，headless 存在内存里。读写不了时 Promise 失败，报 LGUI-RT-241。 */
+export interface ClipboardService {
+  /** 把文字放进剪贴板。 */
+  writeText(text: string): Promise<void>;
+  /** 读剪贴板里的文字；里面没有文字时是空字符串。 */
+  readText(): Promise<string>;
+}
+
 /** 平台服务全集。 */
 export interface Platform {
   /** 时间。 */
@@ -188,4 +196,6 @@ export interface Platform {
   log: Logger;
   /** 网络。 */
   net: NetService;
+  /** 剪贴板。 */
+  clipboard: ClipboardService;
 }

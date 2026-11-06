@@ -489,12 +489,13 @@ test('返回键不关 hud 层的界面；keys.back 写成函数时照常调用�
   assert.deepEqual([called, lgui.ui.isOpen(HudView)], [1, true]);
 });
 
-test('对已经打开（或正在打开）的界面再 open：返回同一个 Promise，参数被忽略；又登记 onClose 时报 LGUI-RT-084', async () => {
+test('对已经打开（或正在打开）的界面再 open：参数相同返回同一个 Promise，参数不同报 LGUI-RT-240；又登记 onClose 时报 LGUI-RT-084', async () => {
   const {fw, views: {MainView, DetailView}} = await setup();
   const {lgui} = fw;
   await lgui.ui.open(MainView);
   const opening = lgui.ui.open(DetailView);
-  assert.equal(lgui.ui.open(DetailView, {id: 2}), opening, '参数被忽略，合并成一次');
+  assert.equal(lgui.ui.open(DetailView), opening, '参数相同，合并成一次');
+  assert.throws(() => lgui.ui.open(DetailView, {id: 2}), e => e.code === 'LGUI-RT-240', '参数不同不静默丢掉');
   assert.throws(() => lgui.ui.open(DetailView, undefined, {onClose: () => {}}), e => e.code === 'LGUI-RT-084');
   await opening;
   assert.throws(() => lgui.ui.open(DetailView, undefined, {onClose: () => {}}), e => e.code === 'LGUI-RT-084');

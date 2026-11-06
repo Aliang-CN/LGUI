@@ -223,7 +223,9 @@ export class HeadlessList extends HeadlessComponent implements UIList {
   }
   readonly clicks = new Handlers<number>();
   private count = 0;
-  constructor(name: string, private readonly itemName: string | null, private readonly lookup: Lookup, private readonly tr?: Translate) { super(name, '', 'list'); }
+  constructor(name: string, private readonly itemName: string | null, private readonly lookup: Lookup, private readonly tr: Translate | undefined, private readonly canScroll: boolean) { super(name, '', 'list'); }
+  /** 能不能滚动：ui/ 里列表的 overflow 是 scroll（描述里的 scrollable）。 */
+  get scrollable(): boolean { return this.canScroll; }
   get numItems(): number { return this.count; }
   set numItems(value: number) {
     // 不模拟虚拟列表的回收：按数量生成全部子项，结果和真实后端一致即可。
@@ -417,7 +419,7 @@ function buildChild(child: ChildDescriptor, lookup: Lookup, owner: string | unde
     case 'image': object = new HeadlessImage(child.name, 'image'); break;
     case 'loader': { const l = new HeadlessLoader(child.name, 'loader'); if (p.url) l.url = p.url; object = l; break; }
     case 'graph': { const g = new HeadlessGraph(child.name, 'graph'); g.color = p.color ?? '#ffffff'; object = g; break; }
-    case 'list': object = new HeadlessList(child.name, child.defaultItem, lookup, tr); break;
+    case 'list': object = new HeadlessList(child.name, child.defaultItem, lookup, tr, p.scrollable === true); break;
     case 'tree': { const t = new HeadlessTree(child.name, child.defaultItem, lookup, tr); t.clickToExpand = p.clickToExpand ?? 0; object = t; break; }
     case 'movieclip': { const m = new HeadlessMovieClip(child.name, 'movieclip'); m.playing = p.playing ?? true; m.frame = p.frame ?? 0; object = m; break; }
     default: {

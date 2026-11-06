@@ -12,6 +12,7 @@ import {validateViewClass} from '../view';
 import {asActor, currentActor} from '../actor';
 import {bus, builtinEvents} from '../events';
 import {fault, notice} from '../log';
+import {languageSettled, languageSwitching, later, updatesHeld} from '../language-switch';
 
 /** 从下到上的 5 层。 */
 export const LAYERS: readonly Layer[] = ['hud', 'page', 'popup', 'modal', 'toast'];
@@ -56,6 +57,23 @@ function restoreLists(component: UIComponent, states: Map<string, {scroll: {x: n
   }
 }
 
+/** 两次 open 的参数是不是一样：普通对象和数组逐项比较（不管键的顺序），其余的值要是同一个。 */
+function sameParams(a: unknown, b: unknown): boolean {
+  if (Object.is(a, b)) return true;
+  if (typeof a !== 'object' || typeof b !== 'object' || a === null || b === null) return false;
+  const plain = (x: object): boolean => [Object.prototype, Array.prototype, null].includes(Object.getPrototypeOf(x));
+  if (!plain(a) || !plain(b) || Array.isArray(a) !== Array.isArray(b)) return false;
+  const keysA = Object.keys(a);
+  const keysB = Object.keys(b);
+  return keysA.length === keysB.length && keysA.every(k => Object.prototype.hasOwnProperty.call(b, k) && sameParams((a as Record<string, unknown>)[k], (b as Record<string, unknown>)[k]));
+}
+
+/** 报错里写参数。 */
+function describe(params: unknown): string {
+  if (params === undefined) return '（没传）';
+  try { return JSON.stringify(params) ?? String(params); } catch { return String(params); }
+}
+
 type Hook = 'onOpen' | 'onActivate' | 'onDeactivate' | 'onCovered' | 'onRevealed' | 'onClose' | 'onOrientationChange';
 
 /** View 实例在框架里需要的部分。 */
@@ -90,6 +108,8 @@ export interface Entry {
   cached?: Cached;
   /** 排队中的 modal：轮到它时调用。 */
   show?: () => void;
+  /** 打开时实际用的参数（没传就是 static params 的默认值），再 open 时比较。 */
+  params: object | undefined;
   /** 包引用已经释放了（或者交给了界面缓存），不再重复释放。 */
   released?: boolean;
 }
@@ -110,6 +130,8 @@ export class UIManager {
 
   /** 当前方向。 */
   orientation: Orientation;
+  private readonly refreshHints = (): void => this.updateHints();
+  private readonly reorient = (): void => this.applyOrientation();
 
   constructor(private readonly backend: Backend, private readonly deps: Record<string, string[]>, private readonly settings: OrientationSettings) {
     this.orientation = this.decideOrientation();
@@ -180,6 +202,8 @@ export class UIManager {
   /** 内部用：重新算操作提示栏的内容（激活界面、输入类型、语言变化时）。 */
   updateHints(): void {
     if (!this.hintBar) return;
+    // 换语言的空窗里包不在：切完再算（重建界面时也会算一次）。
+    if (updatesHeld()) { later(this.refreshHints); return; }
     const active = this.all().find(x => x.active);
     this.hintBar.update(active ? hintsFor(active.view.keys, this.canGoBack(active), this.backend.name, this.settings.keyMap ?? {}) : [], this.visible);
   }
@@ -268,6 +292,8 @@ export class UIManager {
 
   /** 内部用：现在就按屏幕尺寸判方向并换版（平时由尺寸变化触发，测试里可以直接调用）。 */
   applyOrientation(): void {
+    // 换语言的空窗里包不在、建不了新版组件：切完再换版。
+    if (updatesHeld()) { later(this.reorient); return; }
     const next = this.decideOrientation();
     const changed = next !== this.orientation;
     this.orientation = next;
@@ -294,6 +320,8 @@ export class UIManager {
 
   private async acquire(packages: string[]): Promise<void> {
     for (const pkg of packages) this.refs.set(pkg, (this.refs.get(pkg) ?? 0) + 1);
+    // 正在换语言：后端正在卸包、装包，等它装完再加载（引用数已经记上，期间关掉照常释放）。
+    if (languageSwitching()) await languageSettled();
     for (const pkg of packages) {
       if (this.backend.platform.resource.hasPackage(pkg)) continue;
       let pending = this.loading.get(pkg);
@@ -388,9 +416,13 @@ export class UIManager {
 
   open(cls: ViewClass, params?: object, options: {onClose?: (result: unknown) => void} = {}): Promise<object> {
     validateViewClass(cls);
+    const effective = params ?? (cls.params ? {...cls.params} : undefined);
     const existing = this.entryOf(cls);
     if (existing) {
-      // 正在打开或已经打开：合并成一次，这次的参数不用。又登记了 onClose 就报错：它不会被调用。
+      // 正在打开或已经打开：参数相同就合并成一次。参数不同、又登记了 onClose 都报错：这次的参数不会用，onClose 不会被调用。
+      if (!sameParams(existing.params ?? {}, effective ?? {})) {
+        throw new LgRuntimeError('LGUI-RT-240', `${cls.name} 已经打开（或正在打开），参数是 ${describe(existing.params)}；这次 open 的参数 ${describe(effective)} 和它不同，不会生效。`, `同一个界面同时只开一个：先用 lgui.ui.isOpen(${cls.name}) 判断，要换内容就改它绑定的 Model；要依次显示好几份（比如几份奖励），在 Controller 里排队，前一个关了再开下一个（open 时登记 onClose）。`);
+      }
       if (options.onClose) throw new LgRuntimeError('LGUI-RT-084', `${cls.name} 已经打开（或正在打开），这次 open 登记的 onClose 不会被调用。`, `先用 lgui.ui.isOpen(${cls.name}) 判断；要知道它什么时候关，在第一次打开时登记 onClose，或者收听 lgui.events.viewClosed。`);
       return existing.ready;
     }
@@ -400,10 +432,11 @@ export class UIManager {
     const view = new cls() as ViewInstance;
     const entry: Entry = {
       cls, view, layer, fullScreen: cls.fullScreen === true, component: null, version: '', state: 'opening', active: false, covered: false,
-      opener, onClose: options.onClose ?? null, packages: this.packagesOf(pkg), ready: Promise.resolve(view)
+      opener, onClose: options.onClose ?? null, packages: this.packagesOf(pkg), ready: Promise.resolve(view), params: effective
     };
     this.stacks[layer].push(entry);
-    const cachedIndex = this.cache.findIndex(c => c.cls === cls);
+    // 正在换语言时不用缓存的组件：它是旧语言的（切完会清空缓存），等切完按新语言重新建。
+    const cachedIndex = languageSwitching() ? -1 : this.cache.findIndex(c => c.cls === cls);
     if (cachedIndex >= 0) [entry.cached] = this.cache.splice(cachedIndex, 1);
     entry.ready = (async () => {
       // 打开失败或被取消：不留半成品，资源只释放一次，排在后面的 modal 照常放出。
@@ -420,6 +453,8 @@ export class UIManager {
       };
       try {
         if (!entry.cached) await this.acquire(entry.packages); // 缓存里的组件还占着包引用
+        // 加载期间开始换语言（包不在）：等切换完成再显示。
+        if (languageSwitching()) await languageSettled();
       } catch (error) {
         abandon();
         throw new LgRuntimeError('LGUI-RT-080', `打开 ${cls.name} 失败：${error instanceof Error ? error.message : String(error)}`, '确认界面包已经生成（lgui dev 会自动生成），包名和组件名都对。');

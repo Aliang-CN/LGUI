@@ -63,7 +63,7 @@ export function t(key: string, params: Record<string, string | number> = {}): st
 }
 
 type IntlLike = {
-  NumberFormat?: new (lang: string, options?: Record<string, unknown>) => {format(n: number): string};
+  NumberFormat?: new (lang: string, options?: Record<string, unknown>) => {format(n: number): string; resolvedOptions?(): {notation?: string}};
   DateTimeFormat?: new (lang: string, options?: Record<string, unknown>) => {format(d: Date): string};
 };
 const intl = (): IntlLike | undefined => (globalThis as {Intl?: IntlLike}).Intl;
@@ -75,7 +75,29 @@ const groups = (n: number): string => {
 };
 const pad = (n: number): string => String(n).padStart(2, '0');
 
-/** 按当前语言格式化数字、日期、货币。有 Intl 时用它，没有时用内置实现（千分位、固定的日期格式）。 */
+// 没有 Intl（或它不支持 compact）时的数字缩写：中文、日文、韩文按万、亿，其余按千（K）、百万（M）、十亿（B）、万亿（T），保留一位小数。
+function compactUnits(language: string): [number, string][] {
+  if (/^zh-(TW|HK|MO|Hant)/i.test(language)) return [[1e8, '億'], [1e4, '萬']];
+  if (/^zh\b/i.test(language)) return [[1e8, '亿'], [1e4, '万']];
+  if (/^ja\b/i.test(language)) return [[1e8, '億'], [1e4, '万']];
+  if (/^ko\b/i.test(language)) return [[1e8, '억'], [1e4, '만'], [1e3, '천']];
+  return [[1e12, 'T'], [1e9, 'B'], [1e6, 'M'], [1e3, 'K']];
+}
+const oneDecimal = (n: number): number => Math.round(n * 10) / 10;
+function compactFallback(value: number, language: string): string {
+  if (!Number.isFinite(value)) return String(value);
+  const abs = Math.abs(value);
+  const units = compactUnits(language);
+  const index = units.findIndex(([size]) => abs >= size);
+  if (index < 0) return String(oneDecimal(value));
+  let [size, suffix] = units[index];
+  let shown = oneDecimal(abs / size);
+  // 进位到上一个单位：999950 → 1M，不写成 1000K。
+  if (index > 0 && shown * size >= units[index - 1][0]) { [size, suffix] = units[index - 1]; shown = oneDecimal(abs / size); }
+  return (value < 0 ? '-' : '') + String(shown) + suffix;
+}
+
+/** 按当前语言格式化数字、数字缩写、日期、货币。有 Intl 时用它，没有时用内置实现（千分位、万 / K 缩写、固定的日期格式）。 */
 export const format = {
   /** 数字，带千分位。 */
   number(value: number): string {
@@ -88,6 +110,15 @@ export const format = {
     const DateTimeFormat = intl()?.DateTimeFormat;
     if (DateTimeFormat) return new DateTimeFormat(state.language, {year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit'}).format(d);
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  },
+  /** 数字缩写，按当前语言：中文 1.6万、1.2亿，英文 16.3K、1.2M；最多一位小数，不到缩写的单位时原样显示（中文 9999、英文 999）。 */
+  compact(value: number): string {
+    const NumberFormat = intl()?.NumberFormat;
+    if (NumberFormat) {
+      const formatter = new NumberFormat(state.language, {notation: 'compact', maximumFractionDigits: 1});
+      if (formatter.resolvedOptions?.().notation === 'compact') return formatter.format(value);
+    }
+    return compactFallback(value, state.language);
   },
   /** 货币，currency 是 ISO 代码（CNY、USD）。 */
   currency(value: number, currency: string): string {

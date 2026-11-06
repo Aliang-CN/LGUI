@@ -187,6 +187,7 @@ class H5List extends H5Object implements UIList {
     this.renderer = value;
     this.native.itemRenderer = value ? (index, item) => value(index, wrapComponent(item)) : null;
   }
+  get scrollable(): boolean { return this.native.scrollPane != null; }
   get virtual(): boolean { return this.isVirtual; }
   set virtual(value: boolean) {
     if (value === this.isVirtual) return;

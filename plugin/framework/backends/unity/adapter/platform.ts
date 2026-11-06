@@ -67,10 +67,19 @@ export function unityLogger(host: NativePlatformHost, alive: () => void, categor
 const unregistered = (url: string): LgRuntimeError => new LgRuntimeError('LGUI-RT-170', `声音 ${url} 没有登记在 ui/ 的包里。`, '把 mp3 放进包目录，在 package.xml 里登记成 <sound … exported="true"/>，地址写成 ui://包名/声音名。');
 const imageError = (url: string, detail = ''): LgRuntimeError => new LgRuntimeError('LGUI-RT-025', `图片 ${url} 加载失败。${detail}`, '确认地址对、资源存在；远程图片需要可访问的 HTTP(S) 地址。');
 const requestError = (url: string, detail: string): LgRuntimeError => new LgRuntimeError('LGUI-RT-101', `HTTP 请求 ${url} 失败：${detail}`, '确认服务器地址、网络连接和请求参数。');
+const clipboardError = (what: string, detail: string): LgRuntimeError => new LgRuntimeError('LGUI-RT-241', `剪贴板${what}失败：${detail}`, 'Unity 用 UnityEngine.GUIUtility.systemCopyBuffer（系统剪贴板）；确认目标平台支持系统剪贴板，并且 PuerTS 能访问 UnityEngine.GUIUtility。');
 
 /** 创建一个独立的 Unity 平台；Boot 通过返回的 tick / visibility 驱动它。 */
 export function createUnityPlatform(options: UnityPlatformOptions): {platform: Platform; tick(deltaMs: number): void; visibility(visible: boolean): void; dispose(): void} {
-  const {projectName, uiBase, host, fgui, objects, createLoader, scale} = options;
+  const {projectName, uiBase, host, fgui, objects, createLoader, scale, clipboard} = options;
+  // 系统剪贴板：每次用的时候再取，运行环境里没有就报 LGUI-RT-241。
+  const systemClipboard = (what: string): NonNullable<ReturnType<typeof clipboard>> => {
+    alive();
+    let found: ReturnType<typeof clipboard>;
+    try { found = clipboard(); } catch (error) { throw clipboardError(what, String(error)); }
+    if (!found) throw clipboardError(what, '运行环境里没有 UnityEngine.GUIUtility。');
+    return found;
+  };
   const frame = new Handlers<number>();
   const visible = new Handlers<boolean>();
   const pointers = new Handlers<PointerInput>();
@@ -248,6 +257,16 @@ export function createUnityPlatform(options: UnityPlatformOptions): {platform: P
         });
       },
       webSocket() { throw notImplemented('WebSocket', 'unity'); }
+    },
+    clipboard: {
+      async writeText(text) {
+        const native = systemClipboard('写入');
+        try { native.systemCopyBuffer = text; } catch (error) { throw clipboardError('写入', String(error)); }
+      },
+      async readText() {
+        const native = systemClipboard('读取');
+        try { return native.systemCopyBuffer ?? ''; } catch (error) { throw clipboardError('读取', String(error)); }
+      }
     }
   };
 
