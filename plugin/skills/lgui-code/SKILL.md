@@ -20,7 +20,7 @@ license: MIT
 | 给已有模块加界面和 View | `lgui new view <包>/<组件> --pattern <模式>` |
 | 类型检查和规范检查 | `lgui check`（`LGUI-MVC-xxx`、`LGUI-UI-03x`、`TSxxxx`），报错全部改掉 |
 | ui/ 里的固定文字提取到文本表 | `lgui i18n extract`，再翻译其他语言的 `i18n/<语言>.json` |
-| 跑测试 | `lgui test`（headless 后端、假时钟） |
+| 跑测试 | `lgui test`（headless 后端、假时钟）；只跑一部分：`lgui test tests/bag.test.ts`、`--name 出售`；测位置、尺寸、文字排版：`--browser`（真浏览器，规范第 12 节） |
 
 **要点：** 只 `import` 自 `lgui` 和 `lgui/ui`；Model 只放数据和规则；View 只写绑定表（显示类用 `pick`，动作只调用一个 Controller 方法）；Controller 改 Model、调服务、开关界面；Service 先写接口，再写真实实现和测试用的假实现。用户看得到的文字都用文本键。测试之间 Model 不重置，加 `reset()` 并在 `beforeEach` 里调用（规范第 12 节）。
 

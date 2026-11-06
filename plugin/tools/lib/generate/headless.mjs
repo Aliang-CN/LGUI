@@ -27,11 +27,16 @@ function props(child, model) {
   const p = {visible: bool(a.visible, true), enabled: !bool(a.grayed, false), touchable: bool(a.touchable, true)};
   if (a.customData) p.customData = a.customData;
   if (['text', 'richtext', 'input'].includes(child.kind)) p.text = a.text ?? '';
+  // 文字的自动大小：不写是 both（和 FairyGUI 一样），both、height 时尺寸由文字排版决定，headless 不算。
+  if (child.kind === 'text' || child.kind === 'richtext') p.autoSize = a.autoSize ?? 'both';
   if (child.kind === 'input') p.promptText = a.prompt ?? '';
+  // 输入框最多能输入几个字（UTF-16 长度，和浏览器的 maxlength 一样），0 是不限。
+  if (child.kind === 'input' && Number(a.maxLength) > 0) p.maxLength = Number(a.maxLength);
   if (child.kind === 'loader') p.url = a.url ?? '';
   if (child.kind === 'button') {
     const button = child.children.find(node => node.tag === 'Button')?.attrs ?? {};
-    p.title = button.title ?? '';
+    // 没写 title 时显示按钮组件里 title 子控件自己的文字（和 FairyGUI 一样），所以不写就不放。
+    if (button.title !== undefined) p.title = button.title;
     p.icon = button.icon ?? '';
     p.selected = button.checked === 'true';
     Object.assign(p, buttonSound(model, button));
@@ -65,6 +70,7 @@ function props(child, model) {
     p.frame = Number(a.frame ?? 0);
   }
   if (child.kind === 'tree') p.clickToExpand = Number(a.clickToExpand ?? 0);
+  if (child.kind === 'list') p.scrollable = a.overflow === 'scroll'; // 能不能滚动：只有能滚动的列表才用虚拟列表
   return p;
 }
 
@@ -84,6 +90,16 @@ function describeTransition(node) {
     name: a.name, ms: frames === Infinity ? -1 : Math.round((frames / fps) * 1000), autoPlay: a.autoPlay === 'true',
     times: Number(a.autoPlayRepeat ?? a.autoPlayTimes ?? 1), delay: Math.round(Number(a.autoPlayDelay ?? 0) * 1000)
   };
+}
+
+// 位置和尺寸由谁决定（headless 不算布局，读到这些控件的位置、尺寸时报不支持）：关联（relation 的 sidePair）、改位置和尺寸的齿轮。
+function layoutOf(node) {
+  const relations = node.children.filter(n => n.tag === 'relation').flatMap(n => (n.attrs.sidePair ?? '').split(',').filter(Boolean));
+  const result = {};
+  if (relations.length) result.relations = relations;
+  if (node.children.some(n => n.tag === 'gearXY')) result.gearXY = true;
+  if (node.children.some(n => n.tag === 'gearSize')) result.gearSize = true;
+  return Object.keys(result).length ? result : undefined;
 }
 
 // 齿轮：gearDisplay、gearDisplay2 控制显示（页 ID 换成页名）；其他齿轮 headless 不模拟。
@@ -114,7 +130,9 @@ export function describeComponent(component, model) {
     transitions: component.root.children.filter(child => child.tag === 'transition').map(describeTransition),
     // 组（group）：不进控件树，只记显示状态，组里的控件跟着它显隐。
     groups: component.children.filter(child => child.tag === 'group').map(group => ({
-      id: group.id, name: group.name ?? '', visible: bool(group.attrs.visible, true), group: group.attrs.group ?? null, gears: gears(group, component)
+      id: group.id, name: group.name ?? '', visible: bool(group.attrs.visible, true), group: group.attrs.group ?? null, gears: gears(group, component),
+      // 组的自动排布（hz、vt）和组自己的关联会挪动组里的控件
+      layout: group.attrs.layout && group.attrs.layout !== 'none' ? group.attrs.layout : undefined, relations: layoutOf(group)?.relations
     })),
     children: component.children.filter(child => child.kind && child.name).map(child => ({
       name: child.name,
@@ -126,6 +144,7 @@ export function describeComponent(component, model) {
       props: props(child, model),
       group: child.attrs.group ?? null,
       gears: gears(child, component),
+      layout: layoutOf(child),
       // 按钮自带的 button 控制器、组件实例上覆写的控制器页面
       overrides: child.children.filter(node => node.tag === 'Button' || node.tag === 'ProgressBar').map(node => ({tag: node.tag, attrs: node.attrs}))
     }))

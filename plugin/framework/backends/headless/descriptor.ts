@@ -9,6 +9,16 @@ export interface GearsDescriptor {
   display2?: {controller: string; pages: string[]; condition: number};
 }
 
+/** 位置和尺寸由谁决定（headless 不算这些布局，读到受影响的位置、尺寸时报 LGUI-RT-260）。 */
+export interface LayoutDescriptor {
+  /** 关联（relation 的 sidePair，比如 left-left、width-width）。 */
+  relations?: string[];
+  /** 有改位置的齿轮（gearXY）。 */
+  gearXY?: boolean;
+  /** 有改尺寸的齿轮（gearSize）。 */
+  gearSize?: boolean;
+}
+
 /** 一个组（不进控件树，只管组里控件的显隐）。 */
 export interface GroupDescriptor {
   /** 元素 ID（控件的 group 写它）。 */
@@ -21,6 +31,10 @@ export interface GroupDescriptor {
   group: string | null;
   /** 齿轮。 */
   gears?: GearsDescriptor;
+  /** 组的自动排布（hz 横排、vt 竖排），排布会挪动组里的控件。 */
+  layout?: string;
+  /** 组自己的关联（组挪动时组里的控件跟着动）。 */
+  relations?: string[];
 }
 
 /** 一个子控件。 */
@@ -40,12 +54,18 @@ export interface ChildDescriptor {
   /** 初始属性。 */
   props: {
     visible: boolean; enabled: boolean; touchable: boolean; customData?: string; text?: string; promptText?: string; url?: string; title?: string; icon?: string;
-    selected?: boolean; selectedIndex?: number; value?: number; max?: number; min?: number; color?: string; items?: string[]; playing?: boolean; frame?: number; clickToExpand?: number; sound?: string; soundVolume?: number;
+    selected?: boolean; selectedIndex?: number; value?: number; max?: number; min?: number; color?: string; items?: string[]; playing?: boolean; frame?: number; clickToExpand?: number; sound?: string; soundVolume?: number; scrollable?: boolean;
+    /** 文字的自动大小（none、both、height、shrink、ellipsis）。 */
+    autoSize?: string;
+    /** 输入框最多能输入几个字（UTF-16 长度），不写是不限。 */
+    maxLength?: number;
   };
   /** 所在的组（组的元素 ID）。 */
   group?: string | null;
   /** 齿轮。 */
   gears?: GearsDescriptor;
+  /** 位置和尺寸由谁决定。 */
+  layout?: LayoutDescriptor;
 }
 
 /** 一个组件。 */
