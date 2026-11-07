@@ -13,6 +13,8 @@ const AUTO_STOP_DISABLED = 2;
 const AUTO_STOP_AT_END = 4;
 
 type StageTransition = fgui.Transition & {_options?: number; _paused?: boolean};
+/** 不在构造函数里设的字段：[上游设它的方法, 字段]。_options 是读包时 setup() 设的，_paused 由 setPaused() 设。 */
+export const transitionAssigned = [['setup', '_options'], ['setPaused', '_paused']] as const;
 /** 离开舞台时由这里暂停的动效。 */
 const pausedByStage = new WeakSet<fgui.Transition>();
 

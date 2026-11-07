@@ -2,7 +2,7 @@
 
 上游：FairyGUI-dom 提交 `fade49fc33bdcd5673351e04637d4cc08d2297f3` 的 `dist/fairygui.module.js`（版本和 SHA-256 见同目录 `VERSION.md`）。**上游文件一个字节不改**，我们的改动都在 `../fairygui-patches/`：
 
-- **钩子**：H5 后端启动时由 `../fairygui-patches/index.ts` 的 `installFairyGuiPatches()` 装上。先调上游原方法，再补我们的改动，不整段替换。装的时候检查要挂的方法、属性还在不在、上游有没有已经加了同名的，实例字段建一个对象查；不在就报 `LGUI-RT-230`（上游已经有同名的报 `LGUI-RT-231`），错误里写着补丁编号，回到这张表重看。
+- **钩子**：H5 后端启动时由 `../fairygui-patches/index.ts` 的 `installFairyGuiPatches()` 装上。先调上游原方法，再补我们的改动，不整段替换。装的时候（装钩子之前）检查要挂的方法、属性还在不在、上游有没有已经加了同名的；钩子读的上游字段，构造函数里设的建一个对象查，不在构造函数里设的（比如 `_src`、`_options`）查上游设它的 setter 或方法里还写着 `this.字段 =`。不在就报 `LGUI-RT-230`（上游已经有同名的报 `LGUI-RT-231`），错误里写着补丁编号，回到这张表重看。装不上以后再调用，原样再报同一个错，不会把已经装上的钩子再包一层。
 - **.patch**：挂不上钩子的（改的是模块内部的函数、没导出的类、模块加载时就执行的代码），写成 `../fairygui-patches/<编号>-<名字>.patch`，由仓库的 `node scripts/fairygui-dom/build.mjs` 按文件名顺序打到上游原文件上，生成同目录的 `fairygui.module.js`（生成文件，不手改）。每一段都要在原位置逐行对上，上游改了就停下报错。`npm run check` 会比较生成文件和「上游 + 补丁」。
 
 测试在仓库的 `tests/e2e/dom-patches.test.mjs`、`tests/e2e/dom-render.test.mjs`（Chrome 或 Edge）和 `tests/unit/fairygui-patches.test.mjs`。凡是「复现」的测试，都先在不装钩子的页面上证明问题存在，再验证修好了。
