@@ -59,6 +59,9 @@ LGUI 的每条报错都带错误码，并写明：哪个文件哪一行（如果
 | `LGUI-CLI-103` | 编辑器拒绝了查询或修改 | 按编辑器的提示改；内容刚变过就再运行一次 |
 | `LGUI-CLI-104` | 插件里没有编辑器文件 | 重新安装插件 |
 | `LGUI-CLI-110` | `lgui editor` 的端口（工程配置 `editorPort`，默认 4174）已经被占用，常见原因是另一个 `lgui editor` 还开着 | 先关掉占用它的程序；要换端口就改 `editorPort`（换了端口，浏览器要重新授权 `ui/` 文件夹） |
+| `LGUI-CLI-130` | `lgui test` 指定的文件或目录不存在、不在 `tests/` 里，或者不是测试文件（`*.test.ts`）、目录里没有测试文件 | 写 `tests/` 里的测试文件或目录（路径按当前目录算），比如 `lgui test tests/bag.test.ts`；不写就跑全部 |
+| `LGUI-CLI-131` | `lgui test --name` 一个测试也没匹配到 | `--name` 按测试名（和所在 `describe` 的名字）里的一段文字筛选，区分大小写；不写就跑全部 |
+| `LGUI-CLI-132` | `lgui test --browser` 没找到 Chrome 或 Edge | 装一个 Chrome 或 Edge；或者先不加 `--browser`，用 headless 跑 |
 | `LGUI-CLI-999` | 命令行内部错误（LGUI 自己的缺陷） | 把输出报告给维护者 |
 
 ## LGUI-RT-xxx
@@ -81,7 +84,7 @@ LGUI 的每条报错都带错误码，并写明：哪个文件哪一行（如果
 | `LGUI-RT-026` | 声音文件加载失败（外部失败，记 `warn`） | 确认地址对、文件存在 |
 | `LGUI-RT-030` | 列表没有设置子项组件（`defaultItem`）就给了数据 | 在 `ui/` 里给列表设置 `defaultItem` |
 | `LGUI-RT-031` | 子组件引用的组件不存在 | 在 `ui/` 里修好引用，再重新生成 |
-| `LGUI-RT-032` | 测试里点了一个点不到的控件（自己或上级没显示、被齿轮或组藏起来、不可用或不接收输入；文字、图片和序列帧动画本身收不到点击） | 检查控件和它所在的界面是不是显示、可用、激活，齿轮藏起来的控件先切到它显示的页；点击和手势绑在按钮、组件、列表或有填充的图形上 |
+| `LGUI-RT-032` | 测试里点了一个点不到的控件（自己或上级没显示、被齿轮或组藏起来、不可用或不接收输入；文字、图片和序列帧动画本身收不到点击）；`lgui test --browser` 里还做真实的命中测试：控件中心被别的控件挡住、在屏幕外也报 | 检查控件和它所在的界面是不是显示、可用、激活，齿轮藏起来的控件先切到它显示的页；点击和手势绑在按钮、组件、列表或有填充的图形上；被挡住时检查上面盖着的遮罩、弹窗、同级控件 |
 | `LGUI-RT-040` | 同一个事件名声明了两次 | 换一个名字，或者 import 已经声明的那个 |
 | `LGUI-RT-050` | 框架还没启动就用了需要后端的功能（时间、界面等） | 用 `lgui dev` 预览，或者在测试里先调用 `lgui.testing.start(app)` |
 | `LGUI-RT-060` | View 缺少必填的 static（`component`、`layer`），或者值不对 | 照 mvc-spec.md 第 6.2 节写 |
@@ -121,6 +124,10 @@ LGUI 的每条报错都带错误码，并写明：哪个文件哪一行（如果
 | `LGUI-RT-240` | 对已经打开（或正在打开）的界面再 `open`，这次的参数和打开时的不同（不会生效，不静默丢掉） | 同一个界面同时只开一个：先用 `lgui.ui.isOpen` 判断，要换内容就改它绑定的 Model；要依次显示好几份（比如几份奖励），在 Controller 里排队，前一个关了再开下一个 |
 | `LGUI-RT-241` | 剪贴板读写失败（外部失败）：网页不是 https 或 localhost、浏览器拒绝，Unity 运行环境没有系统剪贴板 | 网页用 https 或 localhost；写入放在点击动作里直接调用；用 `lgui.request` 包一层，失败时拿到 `{ ok: false }` 并记 `warn` |
 | `LGUI-RT-242` | `selected` 绑在普通按钮（Common 模式）上，显示不出选中 | 在 `ui/` 里把按钮组件的模式改成 Check（开关）或 Radio（单选），或者去掉 `selected` |
+| `LGUI-RT-260` | headless 不算布局：`lgui.ui.find` 要读的位置或尺寸由关联（relation）、列表或组的排布、文字自动大小（`autoSize` 是 both、height）、`gearXY` / `gearSize` 决定（报错里写明是哪个控件、哪个原因），`ui/` 里写的初始值不是网页上的结果 | 要测位置和尺寸，用 `lgui test --browser` 在真浏览器里跑这个测试；只看样子用 `lgui verify` 截图 |
+| `LGUI-RT-261` | 列表不能滚动（`ui/` 里没写 `overflow="scroll"`）却设成了虚拟列表（浏览器里 FairyGUI 报 `Virtual list must be scrollable!`，headless 照样报） | 要虚拟列表就给列表写 `overflow="scroll"`（不想显示滚动条再加 `scrollBar="hidden"`）；项数固定的短列表不用虚拟列表 |
+| `LGUI-RT-262` | 测试里用 `t.text` 读按钮或标签的文字，但组件里没有名为 `title` 的子控件：文字写进去了也不显示（浏览器里一样） | 在 `ui/` 里给这个组件加一个名为 `title` 的文字控件；要读组件里别的文字，路径写到那个子控件 |
+| `LGUI-RT-263` | `lgui test --browser` 不支持的写法：子测试（`t.test`）、`mock`、`done` 回调、`async` 的 `describe`、`t.advance` 一次超过 10 秒（浏览器里是真的等） | 浏览器里的测试只用 `test` / `describe`、`before` / `after` / `beforeEach` / `afterEach` 和 `node:assert/strict`；跨天这类长时间用 `lgui.time.setServerOffset`；必须用这些写法的测试不加 `--browser` |
 | `LGUI-RT-027` | 后端还没启动就开始用 | 先调用 `backend.init(config)`（框架启动时会自动调用） |
 | `LGUI-RT-160` | Unity 启动脚本或 Resources 文本缺失、PuerTS 启动失败、每帧回调或宿主驱动、退出清理失败 | 每帧回调出错时按堆栈修正该回调，其他回调和后续帧继续运行；宿主启动失败时核对导出文件、PuerTS 3.0.3 本地包后重新启动场景 |
 | `LGUI-RT-161` | Unity 平台存储、HTTP、音频等服务失败 | 按日志检查存储权限、请求参数、资源地址或本地 PuerTS 环境 |

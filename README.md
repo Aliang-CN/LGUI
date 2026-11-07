@@ -119,7 +119,7 @@ LGUI 是 [LumioGames](https://lumio.games/) 出品的游戏 UI 框架，给 AI A
 | :-- | :-- |
 | `lgui dev` | 网页预览，改了界面或代码自动刷新 |
 | `lgui check` | TypeScript 类型检查，加上 UI、MVC、多语言规范检查 |
-| `lgui test` | 用 headless 后端在 Node 里跑界面流程测试，不开浏览器；用假时钟，倒计时不用真等 |
+| `lgui test` | 用 headless 后端在 Node 里跑界面流程测试，不开浏览器；用假时钟，倒计时不用真等。可以只跑指定的文件或 `--name` 匹配的测试；`--browser` 把同一套测试放到真浏览器里跑，测布局和文字排版 |
 | `lgui verify` | 在真浏览器里按手机、平板、电脑的标准尺寸，横竖两个方向各截一张 |
 | 调试快照 | 预览里按 F8 看当前界面树，代码里用 `lgui.debug.snapshot()` |
 | 给 Agent 读 | 所有命令都支持 `--json`；错误码统一编号，见[错误码](plugin/references/error-codes.md) |

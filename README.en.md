@@ -119,7 +119,7 @@ Once it is installed, open a new session and try "use LGUI to build a shop scree
 | :-- | :-- |
 | `lgui dev` | Web preview that reloads when the UI or code changes |
 | `lgui check` | TypeScript type check plus UI, MVC and localization rules |
-| `lgui test` | Runs UI flow tests in Node on the headless backend, no browser; a fake clock means countdowns don't need real waiting |
+| `lgui test` | Runs UI flow tests in Node on the headless backend, no browser; a fake clock means countdowns don't need real waiting. Run only some files or tests matching `--name`; `--browser` runs the same tests in a real browser to check layout and text |
 | `lgui verify` | Takes screenshots in a real browser at standard phone, tablet and desktop sizes, in both orientations |
 | Debug snapshot | Press F8 in the preview to see the current view tree; call `lgui.debug.snapshot()` from code |
 | For agents | Every command supports `--json`; error codes are listed in [error codes](plugin/references/error-codes.md) |
