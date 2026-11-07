@@ -76,7 +76,8 @@ export function createUnityPlatform(options: UnityPlatformOptions): {platform: P
   const clipboardCall = <T>(what: string, name: 'ClipboardGet' | 'ClipboardSet', call: () => T): T => {
     alive();
     if (typeof (host as unknown as Record<string, unknown>)[name] !== 'function') throw clipboardError(what, `LGUI.Platform 没有 ${name}（Unity 包不是这一版的 LGUI）。`);
-    try { return call(); } catch (error) { throw clipboardError(what, String(error)); }
+    // C# 的报错经 PuerTS 变成 JS 的 Error：只取它的 message（C# 那边只写出了什么错），建议用剪贴板自己的。
+    try { return call(); } catch (error) { throw clipboardError(what, error instanceof Error ? error.message : String(error)); }
   };
   const frame = new Handlers<number>();
   const visible = new Handlers<boolean>();

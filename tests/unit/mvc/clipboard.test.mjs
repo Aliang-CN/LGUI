@@ -56,8 +56,8 @@ test('Unity：走 LGUI.Platform 的 ClipboardGet / ClipboardSet；C# 抛错、�
   assert.equal(copied, 'UID-1');
   dispose();
   await assert.rejects(platform.clipboard.readText(), e => e.code === 'LGUI-RT-027', '后端停止以后照常报 RT-027');
-  const failing = createUnityPlatform(unityOptions({ClipboardGet: () => { throw new Error('读取系统剪贴板失败：不支持'); }, ClipboardSet: () => { throw new Error('写入系统剪贴板失败：不支持'); }}));
-  await assert.rejects(failing.platform.clipboard.readText(), e => e.code === 'LGUI-RT-241' && /读取/.test(e.message) && /不支持/.test(e.message));
+  const failing = createUnityPlatform(unityOptions({ClipboardGet: () => { throw new Error('GUIUtility.systemCopyBuffer 读取出错：不支持'); }, ClipboardSet: () => { throw new Error('GUIUtility.systemCopyBuffer 写入出错：不支持'); }}));
+  await assert.rejects(failing.platform.clipboard.readText(), e => e.code === 'LGUI-RT-241' && e.message.includes('剪贴板读取失败：GUIUtility.systemCopyBuffer 读取出错：不支持') && !/Error:/.test(e.message));
   await assert.rejects(failing.platform.clipboard.writeText('x'), e => e.code === 'LGUI-RT-241' && /写入/.test(e.message));
   failing.dispose();
   const old = createUnityPlatform(unityOptions({}));
@@ -72,6 +72,7 @@ test('Unity 包：C# 有 ClipboardGet / ClipboardSet（读写 GUIUtility.systemC
   assert.match(cs, /public static string ClipboardGet\(\)/);
   assert.match(cs, /public static void ClipboardSet\(string text\)/);
   assert.match(cs, /GUIUtility\.systemCopyBuffer/);
+  assert.doesNotMatch(cs, /\bFailure\(|LGUI-RT-161/, '剪贴板不借用 RT-161 的报错（它带着资源、网络的建议），用自己的');
   assert.match(fs.readFileSync(pkg + 'Platform/Clipboard.cs.meta', 'utf8'), /^guid: [a-f0-9]{32}$/m);
   assert.match(fs.readFileSync(pkg + 'link.xml', 'utf8'), /<assembly fullname="UnityEngine\.IMGUIModule">\s*<type fullname="UnityEngine\.GUIUtility" preserve="all" \/>/);
 });

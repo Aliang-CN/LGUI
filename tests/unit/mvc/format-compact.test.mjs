@@ -33,3 +33,18 @@ test('有没有 Intl 结果都一样（不用 Intl）：中文按万、亿，英
     });
   }
 });
+
+test('中日韩的万亿：1e12 起是 万亿 / 兆 / 조，不写成 10000亿；亿进位到万亿', async () => {
+  const {format, setTexts} = await loadFramework();
+  const cases = {
+    'zh-CN': [[1e12, '1万亿'], [1.25e12, '1.3万亿'], [3.4e15, '3400万亿'], [999995e6, '1万亿'], [9.99e11, '9990亿']],
+    'zh-TW': [[1e12, '1兆'], [999995e6, '1兆']],
+    ja: [[1e12, '1兆'], [2.5e12, '2.5兆']],
+    ko: [[1e12, '1조'], [999995e6, '1조']],
+    en: [[1e12, '1T'], [999995e6, '1T']]
+  };
+  for (const [language, list] of Object.entries(cases)) {
+    setTexts({}, language);
+    assert.deepEqual(list.map(([n]) => format.compact(n)), list.map(([, s]) => s), language);
+  }
+});

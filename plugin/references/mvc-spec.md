@@ -340,7 +340,7 @@ keys: Keys = {
 | `lgui.loading.show()` / `hide()` | 加载中，按次数计数，最后一次 `hide` 才消失 |
 | `lgui.redDot.set('bag.newItem', true \| false \| 3)` | 红点；上层路径自动汇总，数字显示合计 |
 | `lgui.t('bag.sold', { count })` | 取文本，占位符写成 `{count}` |
-| `format.number(n)`、`format.compact(n)`、`format.date(d)`、`format.currency(n, 'CNY')` | 按当前语言格式化；`compact` 是数字缩写：中文 `1.6万`、`1.2亿`，英文 `16.3K`、`1.2M`，最多一位小数，四舍五入后够到下一个单位就进位（`999.95` → `1K`，中文 `9999.95` → `1万`），不到缩写的单位时原样（中文 `9999`、英文 `999`）；三端都用框架内置的规则、不用 Intl，同一个数各端显示一样 |
+| `format.number(n)`、`format.compact(n)`、`format.date(d)`、`format.currency(n, 'CNY')` | 按当前语言格式化；`compact` 是数字缩写：中文 `1.6万`、`1.2亿`、`1万亿`（日文、繁体中文是 `兆`，韩文 `조`），英文 `16.3K`、`1.2M`、`1T`，最多一位小数，四舍五入后够到下一个单位就进位（`999.95` → `1K`，中文 `9999.95` → `1万`），不到缩写的单位时原样（中文 `9999`、英文 `999`）；三端都用框架内置的规则、不用 Intl，同一个数各端显示一样 |
 | `lgui.setLanguage('en')` | 切换语言，已打开的界面自动重建。同时调用几次按调用顺序一个一个切；切换期间（后端换界面包的那一段）已打开的界面先不刷新，切完按当时的数据显示，期间打开的界面（包括排队轮到的 modal）等切完再显示 |
 | `lgui.time.now()`、`lgui.time.setServerOffset(毫秒)` | 当前时间（和服务器对齐） |
 | `await lgui.time.wait(毫秒)` | 等一段时间（Service 模拟延迟、重试间隔用；界面上的定时器用 View 的 `this.after`）。按帧累计，切到后台时不走；请求超时也是这样算的 |

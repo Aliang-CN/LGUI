@@ -32,9 +32,12 @@ function targetAt(x: number, y: number): DropTarget | null {
   let found: DropTarget | null = null;
   let best = Infinity;
   for (const t of targets) {
-    if (!t.ctx.isActive() || !t.object.enabled) continue;
+    // 先看松手的点在不在它上面，再看它能不能接：不相干的落点不去读它的状态（headless 读不了 gearLook 管的可用状态）。
     const depth = t.object.hitDepth(x, y);
-    if (depth >= 0 && depth < best) { found = t; best = depth; }
+    if (depth < 0 || depth >= best) continue;
+    if (!t.ctx.isActive() || !t.object.enabled) continue;
+    found = t;
+    best = depth;
   }
   return found;
 }

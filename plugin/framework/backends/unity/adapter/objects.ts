@@ -178,6 +178,14 @@ export function createObjectAdapter(fgui: NativeFairyGUI, now: () => number, toP
     set promptText(value: string) { this.native.promptText = value; }
     onChange(handler: (value: string) => void): Unsubscribe { return this.listen(this.native.onChanged, () => handler(this.native.text)); }
   }
+  /** FairyGUI.ButtonMode 的名字。不假定 PuerTS 给的是数字：数字按序号，字符串按名字，枚举对象用它的 ToString()；认不出的原样写出来。 */
+  const buttonModeName = (value: unknown): string => {
+    const names = ['Common', 'Check', 'Radio'];
+    let name: unknown = value;
+    if (typeof value === 'number') name = names[value];
+    else if (value !== null && typeof value === 'object' && typeof (value as {ToString?: unknown}).ToString === 'function') name = (value as {ToString(): unknown}).ToString();
+    return typeof name === 'string' && names.includes(name) ? name : `ButtonMode ${String(name ?? value)}`;
+  };
   class UnityButton extends UnityComponent implements UIButton {
     constructor(readonly native: NativeButton, name: string) { super(native, name); }
     get title(): string { return this.native.title; }
@@ -186,8 +194,7 @@ export function createObjectAdapter(fgui: NativeFairyGUI, now: () => number, toP
     set icon(value: string) { this.native.icon = value; }
     get selected(): boolean { return this.native.selected; }
     set selected(value: boolean) { this.native.selected = value; }
-    // FairyGUI.ButtonMode 经 PuerTS 读出来是数字：0 Common、1 Check、2 Radio。
-    get mode(): string { return ['Common', 'Check', 'Radio'][this.native.mode] ?? `ButtonMode ${this.native.mode}`; }
+    get mode(): string { return buttonModeName(this.native.mode); }
     get sound(): string { return services.buttonSound(this.native); }
     get soundVolume(): number { return this.native.soundVolumeScale; }
   }

@@ -31,9 +31,22 @@ test('h5：被盖住时关闭进了缓存，再打开时自动播放的循环动
 import {boot} from ${f('mvc/boot.ts')};
 import {defaultConfig} from ${f('mvc/runtime.ts')};
 import {lgui, View} from ${f('index.ts')};
+import {Timers} from ${f('backends/h5/vendor/fairygui.module.js')};
 class BagView extends View<any> { static component = 'Bag/BagPanel'; static layer = 'popup' as const; bind = {}; }
 class CoverView extends View<any> { static component = 'Common/Loading'; static layer = 'modal' as const; static fullScreen = true; static bothOrientations = true; }
 let component: any = null;
+// 按动效自己的时钟（FairyGUI 每帧更新的 Timers.time）取样：每一帧记一次透明度，直到这个时钟走过 ms 毫秒、至少取了 3 帧。
+// 不按墙上时间：机器忙时一段时间里可能一帧都没出，那样「在走」会读成没走，「停住」也会假通过。
+const sample = (ms: number) => new Promise<{advanced: number; alphas: number[]}>(resolve => {
+  const start = Timers.time;
+  const alphas: number[] = [];
+  const step = () => {
+    alphas.push(component.child('gold').native.alpha);
+    if (Timers.time - start >= ms && alphas.length >= 3) resolve({advanced: Timers.time - start, alphas});
+    else requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
+});
 (async () => {
   const backend = createH5Backend();
   await backend.init({projectName: 'demo', defaultFont: null, uiBase: '/ui'});
@@ -42,7 +55,7 @@ let component: any = null;
     open: async () => { component = (await lgui.ui.open(BagView) as any).__component; },
     close: () => lgui.ui.close(BagView),
     cover: async (on: boolean) => { if (on) await lgui.ui.open(CoverView); else lgui.ui.close(CoverView); },
-    alpha: () => component.child('gold').native.alpha,
+    sample,
     component: () => component,
     ready: true
   });
@@ -57,11 +70,11 @@ let component: any = null;
       await page.goto(server.url + '/index.html');
       await page.waitForFunction(() => window.ready || window.failure, null, {timeout: 20000});
       assert.equal(await page.evaluate(() => window.failure ?? null), null);
-      // 透明度在变（隔 150 毫秒取一次，连取几次里有不一样的值）就是动效在走。
+      // 动效的时钟走过 300 毫秒（不到循环一遍的 500 毫秒）：透明度跟着变 = 在走，一直不变 = 停住。
       const moving = async () => {
-        const samples = [];
-        for (let i = 0; i < 4; i++) { samples.push(await page.evaluate(() => window.alpha())); await page.waitForTimeout(150); }
-        return new Set(samples.map(a => a.toFixed(3))).size > 1;
+        const {advanced, alphas} = await page.evaluate(() => window.sample(300));
+        assert.ok(advanced >= 300 && alphas.length >= 3, `动效时钟走过 ${advanced} 毫秒、取了 ${alphas.length} 帧`);
+        return new Set(alphas.map(a => a.toFixed(3))).size > 1;
       };
       await page.evaluate(() => window.open());
       assert.equal(await page.evaluate(() => window.component().child('sellButton').mode), 'Common', '按钮模式按 FairyGUI 的 ButtonMode 读出来');
