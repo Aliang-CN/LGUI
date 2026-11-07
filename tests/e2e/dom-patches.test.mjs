@@ -1,4 +1,4 @@
-// FairyGUI-dom 补丁的端到端测试（plugin/framework/backends/h5/vendor/PATCHES.md）。
+// FairyGUI-dom 补丁的端到端测试（plugin/framework/backends/h5/vendor/PATCHES.md）：生成的 fairygui.module.js 加 fairygui-patches/ 的钩子。
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -6,11 +6,11 @@ import os from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {generateWeb} from '../../plugin/tools/lib/generate/index.mjs';
-import {sharp} from '../../plugin/tools/lib/vendor.mjs';
+import {sharp, esbuild} from '../../plugin/tools/lib/vendor.mjs';
 import {serve, launchBrowser} from '../helpers/browser.mjs';
 
 const repo = fileURLToPath(new URL('../..', import.meta.url));
-const runtime = path.join(repo, 'plugin/framework/backends/h5/vendor/fairygui.module.js');
+const h5 = path.join(repo, 'plugin/framework/backends/h5');
 const xml = body => `<?xml version="1.0" encoding="utf-8"?>\n${body}\n`;
 
 async function fixture() {
@@ -34,16 +34,19 @@ async function fixture() {
   </displayList></component>`));
   const out = path.join(root, 'web/ui');
   await generateWeb(path.join(root, 'ui/UI.fairy'), out);
-  fs.writeFileSync(path.join(root, 'web/index.html'), `<!doctype html><meta charset="utf-8"><body><script type="module">
-    import * as fgui from '/fairygui.module.js';
-    try {
+  const entry = path.join(root, 'entry.ts');
+  fs.writeFileSync(entry, `import * as fgui from ${JSON.stringify(path.join(h5, 'vendor/fairygui.module.js'))};
+    import {installFairyGuiPatches} from ${JSON.stringify(path.join(h5, 'fairygui-patches/index.ts'))};
+    (async () => {
+      installFairyGuiPatches();
       await fgui.UIPackage.loadImageManifest('/ui/manifest.json');
       const pkg = await fgui.UIPackage.loadPackage('/ui/Test');
       const view = fgui.UIPackage.createObject('Test', 'Main');
       fgui.GRoot.inst.addChild(view);
-      window.fgui = fgui; window.view = view; window.pkg = pkg; window.ready = true;
-    } catch (error) { window.failure = String(error); }
-  </script>`);
+      Object.assign(window, {fgui, view, pkg, ready: true});
+    })().catch(error => { (window as any).failure = String(error); });`);
+  await esbuild().build({entryPoints: [entry], bundle: true, format: 'esm', target: 'es2020', outfile: path.join(root, 'web/app.js'), logLevel: 'silent'});
+  fs.writeFileSync(path.join(root, 'web/index.html'), '<!doctype html><meta charset="utf-8"><body><script type="module" src="/app.js"></script>');
   return path.join(root, 'web');
 }
 
@@ -51,7 +54,7 @@ test('FairyGUI-dom 补丁：fill、散图映射、文字阴影、文字颜色', 
   const browser = await launchBrowser();
   if (!browser) { t.skip('未找到 Chrome 或 Edge'); return; }
   const web = await fixture();
-  const server = await serve({'/fairygui.module.js': runtime, '/': web});
+  const server = await serve({'/': web});
   try {
     const page = await browser.newPage();
     await page.goto(server.url + '/index.html');
@@ -106,7 +109,7 @@ test('包不在散图映射里、包地址错误时明确报错', async t => {
   const browser = await launchBrowser();
   if (!browser) { t.skip('未找到 Chrome 或 Edge'); return; }
   const web = await fixture();
-  const server = await serve({'/fairygui.module.js': runtime, '/': web});
+  const server = await serve({'/': web});
   try {
     const page = await browser.newPage();
     await page.goto(server.url + '/index.html');

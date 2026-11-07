@@ -1,9 +1,10 @@
-// 发版前校验：发布面 plugin/ 里不能混入开发文件、Markdown 相对链接都能打开、生成文件一致，最后打印 plugin/ 大小。
+// 发版前校验：发布面 plugin/ 里不能混入开发文件、Markdown 相对链接都能打开、生成文件一致（含 FairyGUI-dom 打补丁的结果），最后打印 plugin/ 大小。
 // 用法：node scripts/check.mjs。有任何问题就逐条列出并以退出码 1 结束。
 import fs from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {staleFiles} from './generate.mjs';
+import {staleFairyGui} from './fairygui-dom/build.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const pluginDir = path.join(root, 'plugin');
@@ -62,6 +63,11 @@ for (const file of markdownFiles) {
 
 // 3. generate.mjs --check。
 for (const file of staleFiles()) problems.push(`${file}  和 plugin/plugin.json 不一致  → 运行 npm run generate`);
+try {
+  for (const file of staleFairyGui()) problems.push(`${file}  和「上游 FairyGUI-dom + fairygui-patches/*.patch」不一致（生成文件不手改）  → 运行 node scripts/fairygui-dom/build.mjs`);
+} catch (error) {
+  problems.push(`FairyGUI-dom 补丁打不上：${error instanceof Error ? error.message : String(error)}`);
+}
 
 // 4. plugin/ 总大小（只记录，不设上限）。
 let bytes = 0, count = 0;

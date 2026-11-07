@@ -1,3 +1,4 @@
+// 生成文件，不要手改：FairyGUI-dom fade49fc33bdcd5673351e04637d4cc08d2297f3 的 dist/fairygui.module.js 按顺序打上 fairygui-patches/*.patch（scripts/fairygui-dom/build.mjs）。补丁台账见同目录 PATCHES.md。
 var ButtonMode;
 (function (ButtonMode) {
     ButtonMode[ButtonMode["Common"] = 0] = "Common";
@@ -4749,23 +4750,10 @@ class UIPackage {
     static getByName(name) {
         return _instByName[name];
     }
-    // LGUI patch: 2 散图映射：lgui 生成的 manifest.json 记着每个包里每张图片对应的散图文件名。
-    // 设置以后，loadPackage 读完包会把图片资源的地址改成「包目录 + 散图文件名」。
-    static setImageManifest(manifest) {
-        if (!manifest || manifest.schemaVersion !== 1 || typeof manifest.packages !== "object")
-            throw new Error("LGUI-RT-010  散图映射 manifest.json 的格式不对（要求 schemaVersion 1）。  → 重新运行 lgui dev 生成界面包。");
-        _imageManifest = manifest;
-    }
-    static async loadImageManifest(url) {
-        let response = await fetch(url);
-        if (!response.ok)
-            throw new Error("LGUI-RT-010  读不到散图映射 " + url + "（HTTP " + response.status + "）。  → 重新运行 lgui dev 生成界面包。");
-        UIPackage.setImageManifest(await response.json());
-    }
     static loadPackage(url) {
         if (!url.endsWith("/"))
             url += "/";
-        // LGUI patch: 2 加载失败时 reject（原来请求失败后 Promise 一直不结束）。
+        // LGUI patch: 6 加载失败时 reject：原来请求失败后 Promise 一直不结束，读包出错时异常抛在事件回调里。
         return new Promise((resolve, reject) => {
             let pkg = _instById[url];
             if (pkg) {
@@ -4781,20 +4769,6 @@ class UIPackage {
               try {
                 let pkg = new UIPackage();
                 pkg.loadPackage(new ByteBuffer(evt.data), url);
-                // LGUI patch: 2 按散图映射改图片地址。包在映射里却缺图片时明确报错。
-                if (_imageManifest) {
-                    let entry = _imageManifest.packages[pkg.id];
-                    if (!entry)
-                        throw new Error("LGUI-RT-010  散图映射里没有包 " + pkg.name + "（" + pkg.id + "）。  → 重新运行 lgui dev 生成界面包。");
-                    for (let item of pkg._items) {
-                        if (item.type != PackageItemType.Image)
-                            continue;
-                        let file = entry.images[item.id];
-                        if (!file)
-                            throw new Error("LGUI-RT-010  散图映射里没有包 " + pkg.name + " 的图片 " + item.id + "。  → 重新运行 lgui dev 生成界面包。");
-                        item.file = url + file;
-                    }
-                }
                 _instById[pkg.id] = pkg;
                 _instByName[pkg.name] = pkg;
                 _instById[pkg.path] = pkg;
@@ -5055,8 +5029,6 @@ class UIPackage {
 }
 var _instById = {};
 var _instByName = {};
-// LGUI patch: 2 散图映射。
-var _imageManifest = null;
 var _branch = "";
 var _vars = {};
 
@@ -16325,11 +16297,6 @@ class TextField extends UIElement {
         else if (this._span.style.webkitTextStroke)
             this._span.style.webkitTextStroke = "unset";
         this._span.style.textAlign = this._textFormat.align;
-        // LGUI patch: 4 文字阴影：shadowColor 和 shadowOffset 原来只读进来、不显示。
-        if (this._textFormat.shadowOffset.x != 0 || this._textFormat.shadowOffset.y != 0)
-            this._span.style.textShadow = this._textFormat.shadowOffset.x + "px " + this._textFormat.shadowOffset.y + "px 0 " + convertToHtmlColor(this._textFormat.shadowColor);
-        else if (this._span.style.textShadow)
-            this._span.style.textShadow = "";
     }
     get text() {
         return this._text;
@@ -16737,82 +16704,25 @@ class Image extends UIElement {
             this.refresh();
         }
     }
-    // LGUI patch: 1 图片 fill（原来是空实现）。水平、垂直用 clip-path，径向用 conic-gradient 做 mask-image。
     get fillMethod() {
-        return this._fillMethod || FillMethod.None;
+        return FillMethod.None;
     }
     set fillMethod(value) {
-        if (this._fillMethod != value) {
-            this._fillMethod = value;
-            this.updateFill();
-        }
     }
     get fillOrigin() {
-        return this._fillOrigin || 0;
+        return 0;
     }
     set fillOrigin(value) {
-        if (this._fillOrigin != value) {
-            this._fillOrigin = value;
-            this.updateFill();
-        }
     }
     get fillClockwise() {
-        return this._fillClockwise !== false;
+        return true;
     }
     set fillClockwise(value) {
-        if (this.fillClockwise != value) {
-            this._fillClockwise = value;
-            this.updateFill();
-        }
     }
     get fillAmount() {
-        return this._fillAmount === undefined ? 1 : this._fillAmount;
+        return 0;
     }
     set fillAmount(value) {
-        if (this._fillAmount != value) {
-            this._fillAmount = value;
-            this.updateFill();
-        }
-    }
-    // LGUI patch: 1 按 fillMethod / fillOrigin / fillClockwise / fillAmount 刷新裁剪。
-    updateFill() {
-        const method = this.fillMethod, origin = this.fillOrigin, cw = this.fillClockwise;
-        const a = Math.min(1, Math.max(0, this.fillAmount));
-        const hidden = ((1 - a) * 100) + "%";
-        this.style.clipPath = "";
-        this.style.maskImage = this.style.webkitMaskImage = "";
-        if (method == FillMethod.None)
-            return;
-        if (method == FillMethod.Horizontal) {
-            // 0 从左边开始填，1 从右边开始填
-            this.style.clipPath = origin == 1 ? "inset(0 0 0 " + hidden + ")" : "inset(0 " + hidden + " 0 0)";
-            return;
-        }
-        if (method == FillMethod.Vertical) {
-            // 0 从上边开始填，1 从下边开始填
-            this.style.clipPath = origin == 1 ? "inset(" + hidden + " 0 0 0)" : "inset(0 0 " + hidden + " 0)";
-            return;
-        }
-        // 径向：圆心、顺时针方向的起始角（0 度朝上）、总角度
-        let center, start, span;
-        if (method == FillMethod.Radial90) {
-            span = 90;
-            [center, start] = [["0% 0%", 90], ["100% 0%", 180], ["0% 100%", 0], ["100% 100%", 270]][origin] || ["0% 0%", 90];
-        }
-        else if (method == FillMethod.Radial180) {
-            span = 180;
-            [center, start] = [["50% 0%", 90], ["50% 100%", 270], ["0% 50%", 0], ["100% 50%", 180]][origin] || ["50% 0%", 90];
-        }
-        else {
-            span = 360;
-            center = "50% 50%";
-            start = [0, 180, 270, 90][origin] || 0;
-        }
-        const filled = a * span;
-        const gradient = cw
-            ? "conic-gradient(from " + start + "deg at " + center + ", #000 0deg " + filled + "deg, transparent " + filled + "deg 360deg)"
-            : "conic-gradient(from " + start + "deg at " + center + ", transparent 0deg " + (span - filled) + "deg, #000 " + (span - filled) + "deg " + span + "deg, transparent " + span + "deg 360deg)";
-        this.style.maskImage = this.style.webkitMaskImage = gradient;
     }
     updateFilters() {
         let filter = "";

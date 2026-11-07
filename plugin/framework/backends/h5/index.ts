@@ -3,6 +3,9 @@ import * as fgui from './vendor/fairygui.module.js';
 import type {Backend, BackendConfig, Platform, UIComponent} from '../../core/index';
 import {LgRuntimeError} from '../../core/index';
 import {createH5Platform} from './platform/index';
+import {installFairyGuiPatches} from './fairygui-patches/index';
+import {setNineSliceOverlap} from './fairygui-patches/nine-slice';
+import {stage} from './scale';
 import {setComponentName, wrap, wrapComponent} from './objects/index';
 
 const parseUrl = (url: string): [string, string] | null => { const m = /^ui:\/\/([^/]+)\/(.+)$/.exec(url); return m ? [m[1], m[2]] : null; };
@@ -20,11 +23,16 @@ export function createH5Backend(): Backend {
   return {
     name: 'h5',
     async init(config: BackendConfig) {
+      installFairyGuiPatches(); // 在创建任何 FairyGUI 对象之前
       if (config.defaultFont) fgui.UIConfig.defaultFont = config.defaultFont;
       i18nBase = config.i18nBase;
       uiBaseUrl = config.uiBase;
       await fgui.UIPackage.loadImageManifest(`${config.uiBase}/manifest.json`);
       platform = createH5Platform(config.projectName, config.uiBase);
+      // 九宫格的块要互相重叠 1 个设备像素（补丁 12）：根节点缩放变了就更新重叠宽度
+      const screen = platform.screen;
+      const applyDesignSize = screen.applyDesignSize.bind(screen);
+      screen.applyDesignSize = design => { const visible = applyDesignSize(design); setNineSliceOverlap(stage.scale * devicePixelRatio); return visible; };
       setComponentName(fgui.GRoot.inst, 'root');
       root = wrapComponent(fgui.GRoot.inst);
     },

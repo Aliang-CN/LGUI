@@ -1,4 +1,4 @@
-// fairygui.module.js 里 h5 后端用到的那一部分的类型声明（上游没有附带声明文件）。
+// fairygui.module.js 里 h5 后端（含 ../fairygui-patches/ 的钩子）用到的那一部分的类型声明（上游没有附带声明文件）。
 
 export interface FguiEvent {
   /** 事件附带的数据（比如 click_item 是被点的那一项）。 */
@@ -204,6 +204,17 @@ export class UIPackage {
 export class UIConfig {
   static defaultFont: string;
 }
+
+export declare const FillMethod: {readonly None: 0; readonly Horizontal: 1; readonly Vertical: 2; readonly Radial90: 3; readonly Radial180: 4; readonly Radial360: 5};
+export declare const AutoSizeType: {readonly None: 0; readonly Both: 1; readonly Height: 2; readonly Shrink: 3; readonly Ellipsis: 4};
+export declare const PackageItemType: {readonly Image: number; readonly Component: number};
+export function convertToHtmlColor(rgb: number): string;
+
+/** DOM 元素类（fgui-div 等），补丁在它们的原型上挂钩子。 */
+export class UIElement extends HTMLElement {}
+export class Image extends UIElement {}
+export class MovieClip extends Image {}
+export class TextField extends UIElement {}
 
 export class XML {
   constructor(source: string);
