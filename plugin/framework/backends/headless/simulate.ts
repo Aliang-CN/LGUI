@@ -2,7 +2,7 @@
 import type {Insets, PointerInput, UIObject, WheelInput} from '../../core/index';
 import {LgRuntimeError} from '../../core/index';
 import type {HeadlessBackend} from './index';
-import {HeadlessComboBox, HeadlessInput, HeadlessList, HeadlessObject, HeadlessSlider, HeadlessTree, asHeadless} from './objects';
+import {HeadlessButton, HeadlessComboBox, HeadlessInput, HeadlessList, HeadlessObject, HeadlessSlider, HeadlessTree, asHeadless} from './objects';
 
 const FRAME = 16;
 
@@ -64,12 +64,20 @@ function notifyList(backend: HeadlessBackend, o: HeadlessObject): void {
   }
 }
 
+/** 点击冒泡到的每个按钮：和 FairyGUI 一样切换 Check、Radio 的选中（列表、树的子项按钮由列表管选中）。 */
+function notifyButtons(o: HeadlessObject): void {
+  for (let p: HeadlessObject | null = o; p; p = p.parent) {
+    if (p instanceof HeadlessButton && !(p.parent instanceof HeadlessList) && !(p.parent instanceof HeadlessTree)) p.clicked();
+  }
+}
+
 /** 点击（按下到抬起，中间等 holdMs 毫秒；默认 50 毫秒）。 */
 export async function click(backend: HeadlessBackend, object: UIObject, holdMs = 50, pointerType: PointerInput['pointerType'] = 'mouse'): Promise<void> {
   const {o, x, y} = target(object);
   send(backend, o, 'down', 1, x, y, pointerType);
   await advance(backend, holdMs);
   send(backend, o, 'up', 1, x, y, pointerType);
+  notifyButtons(o);
   notifyList(backend, o);
   await advance(backend, 0);
 }
@@ -150,7 +158,8 @@ const wrongControl = (o: HeadlessObject, what: string, kind: string): never => {
   throw new LgRuntimeError('LGUI-RT-150', `${what}只能用在${kind}上，${o.name} 不是${kind}。`, `换一个${kind}的路径（lgui ui list 里能看到控件类型）。`);
 };
 
-/** 打字：先点一下输入框、全选，再一个字一个字地输入（和真的键盘一样：第一个字替换原来的文字，之后每个字接在框里现在的文字后面，每个字通知一次）；text 是空字符串时清空（框里本来就空时不通知）。 */
+/** 打字：先点一下输入框、全选，再一个字一个字地输入（和真的键盘一样：第一个字替换原来的文字，之后每个字接在框里现在的文字后面，每个字通知一次）；text 是空字符串时清空（框里本来就空时不通知）。
+ * 和浏览器一样遵守 ui/ 里的 maxLength（UTF-16 长度）：满了以后再打的字进不去，也不通知。 */
 export async function type(backend: HeadlessBackend, object: UIObject, text: string): Promise<void> {
   const o = asHeadless(object);
   if (!(o instanceof HeadlessInput)) wrongControl(o, '打字（t.type）', '输入框');
@@ -158,7 +167,12 @@ export async function type(backend: HeadlessBackend, object: UIObject, text: str
   const input = o as HeadlessInput;
   const chars = [...text];
   if (!chars.length && input.text) { input.text = ''; input.changes.emit(''); }
-  chars.forEach((char, i) => { input.text = (i === 0 ? '' : input.text) + char; input.changes.emit(input.text); });
+  chars.forEach((char, i) => {
+    const before = i === 0 ? '' : input.text;
+    if (input.maxLength > 0 && before.length + char.length > input.maxLength) return;
+    input.text = before + char;
+    input.changes.emit(input.text);
+  });
   await advance(backend, 0);
 }
 

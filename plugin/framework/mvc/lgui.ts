@@ -1,5 +1,5 @@
 // lgui 对象：游戏代码用到的全部框架功能。写法见 references/mvc-spec.md。
-import type {Logger, NetService, Rect, StorageService} from '../core/index';
+import type {ClipboardService, Logger, NetService, Rect, StorageService} from '../core/index';
 import {LgRuntimeError} from '../core/index';
 import type {InputMode, InputType, Layer, Orientation, ParamsOf, Readable, ResultOf, ViewClass} from './types';
 import {todo} from './todo';
@@ -21,6 +21,7 @@ import {log} from './log';
 import * as sound from './sound';
 import type {SoundChannel, SoundSettings} from './sound';
 import {switchBackendLanguage} from './boot';
+import {switchLanguage} from './language-switch';
 
 /** 入口 main.ts 的定义。 */
 export interface AppDefinition {
@@ -28,7 +29,7 @@ export interface AppDefinition {
   backend: 'h5' | 'headless' | 'unity';
   /** 注册服务：名字 → 创建函数。 */
   services?: Record<string, () => object>;
-  /** 换掉后端自带的平台服务，只换给出的几项：log（日志出口，形状和 Lumio 引擎的 Logger 一样）、audio（声音出口）。lgui test 里不生效。 */
+  /** 换掉后端自带的平台服务，只换给出的几项：log（日志出口，形状和 Lumio 引擎的 Logger 一样）、audio（声音出口）、clipboard（剪贴板）。lgui test 里不生效。 */
   platform?: PlatformOverrides;
   /** 启动：通常是打开第一个界面。 */
   start(): void | Promise<void>;
@@ -221,15 +222,17 @@ export const lgui = {
   },
   /** 取文本，占位符写成 {count}。 */
   t(key: string, params?: Record<string, string | number>): string { return t(key, params); },
-  /** 切换语言。 */
+  /** 切换语言。同时调用几次时按调用顺序一个一个切；切换期间界面先不刷新、新界面等切完再打开。 */
   async setLanguage(language: string): Promise<void> {
     const {config, backend} = runtime();
     if (!config.languages.includes(language)) throw new LgRuntimeError('LGUI-RT-140', `工程不支持语言 ${language}（languages 是 ${config.languages.join('、')}）。`, '在 .lgui/project.json 的 languages 里加上它，并新建 i18n/' + language + '.json。');
-    // 1. 加载新语言的翻译，卸载并重新加载界面包；2. 换 lgui.t 的文本表；3. 重建已打开的界面（和旋转同一套机制）；4. 发出 languageChange。
-    await switchBackendLanguage(backend, language);
-    setCurrentLanguage(language);
-    manager().rebuildAll();
-    bus.emit(builtinEvents.languageChange, {language});
+    const ui = manager();
+    // 1. 后端加载新语言的翻译，卸载并重新加载界面包（空窗）；2. 换 lgui.t 的文本表；3. 重建已打开的界面（和旋转同一套机制）；4. 发出 languageChange。
+    await switchLanguage(() => switchBackendLanguage(backend, language), () => {
+      setCurrentLanguage(language);
+      ui.rebuildAll();
+      bus.emit(builtinEvents.languageChange, {language});
+    });
   },
   /** 当前语言。 */
   language(): string { return currentLanguage(); },
@@ -266,7 +269,9 @@ export const lgui = {
     /** 网络（只在 Service 里用）。 */
     get net(): NetService { return runtime().backend.platform.net; },
     /** 本地存储。 */
-    get storage(): StorageService { return runtime().backend.platform.storage; }
+    get storage(): StorageService { return runtime().backend.platform.storage; },
+    /** 剪贴板（只在 Controller 里用）：writeText 放进文字、readText 读出文字；读写不了时 Promise 失败（LGUI-RT-241），用 lgui.request 包一层就能拿到 { ok }。 */
+    get clipboard(): ClipboardService { return runtime().clipboard; }
   },
   /** 调试。 */
   debug: {
