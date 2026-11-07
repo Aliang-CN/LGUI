@@ -50,3 +50,40 @@ test('钩子：先调上游原方法再补；目标不在报 LGUI-RT-230，要�
   hook.add(2, Upstream, 'Upstream', 'setImageManifest', () => 'ok');
   assert.equal(Upstream.setImageManifest(), 'ok');
 });
+
+test('不在构造函数里设的字段：查上游设它的 setter / 方法里还写着 this.字段 =，改了名、只剩比较、没有 setter 都报 LGUI-RT-230', async () => {
+  const hook = await importTs(path.join(repo, 'plugin/framework/backends/h5/fairygui-patches/hook.ts'));
+  class Base { set src(v) { if (this._src != v) { this._src = v; } } }
+  class Upstream extends Base { setup(b) { this._options = b.readInt(); } get only() { return this._only; } set renamed(v) { this._source = v; } set compared(v) { if (this._x == v || this._x === v) return; } }
+  hook.assigned(12, Upstream.prototype, 'Image', 'src', '_src'); // 父类上的访问器也找得到
+  hook.assigned(10, Upstream.prototype, 'Transition', 'setup', '_options');
+  const error = (fn, pattern) => assert.throws(fn, e => e.code === 'LGUI-RT-230' && pattern.test(e.message));
+  error(() => hook.assigned(12, Upstream.prototype, 'Image', 'renamed', '_src'), /补丁 12 装不上：上游没有 Image\.renamed 里设的字段 _src 了/);
+  error(() => hook.assigned(12, Upstream.prototype, 'Image', 'compared', '_x'), /Image\.compared 里设的字段 _x/);
+  error(() => hook.assigned(8, Upstream.prototype, 'TextField', 'only', '_only'), /TextField\.only 里设的字段 _only/);
+  error(() => hook.assigned(8, Upstream.prototype, 'TextField', 'gone', '_gone'), /TextField\.gone 里设的字段 _gone/);
+});
+
+test('补丁装不上以后再装：原样再报同一个错，不再装，已经挂上的钩子不会被包第二层', async () => {
+  const hook = await importTs(path.join(repo, 'plugin/framework/backends/h5/fairygui-patches/hook.ts'));
+  const calls = [];
+  class Upstream { run() { calls.push('up'); } }
+  let attempts = 0;
+  // 和 installFairyGuiPatches 一样：前面的钩子装上了，后面一个目标不在
+  const install = hook.once(() => {
+    attempts++;
+    hook.after(1, Upstream.prototype, 'Upstream', 'run', () => calls.push('ours'));
+    hook.fields(10, new Upstream(), 'Transition', ['_paused']);
+  });
+  let first;
+  assert.throws(install, e => { first = e; return e.code === 'LGUI-RT-230'; });
+  assert.throws(install, e => e === first, '再调用抛的是同一个错');
+  assert.equal(attempts, 1, '不再装第二遍');
+  new Upstream().run();
+  assert.deepEqual(calls, ['up', 'ours'], '原方法只包了一层');
+
+  let runs = 0;
+  const ok = hook.once(() => { runs++; });
+  ok(); ok();
+  assert.equal(runs, 1, '装上了就不再装');
+});

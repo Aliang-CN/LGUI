@@ -21,6 +21,8 @@ const GUTTER = 2;
 
 type ShrinkText = TextElement & {_text: string; _html?: boolean; _autoSize: number; _singleLine?: boolean; _contentRect: {width: number; height: number}; applyFormat(): void};
 export const shrinkFields = ['_text', '_autoSize', '_contentRect'] as const;
+/** 不在构造函数里设的字段：[上游设它的访问器, 字段]。_html 由 text（false）和 htmlText（true）设。 */
+export const shrinkAssigned = [['singleLine', '_singleLine'], ['text', '_html'], ['htmlText', '_html']] as const;
 
 /** 不换行文字的测量结果（字号是原字号）。 */
 type Natural = {key: string; width: number; lines: number};

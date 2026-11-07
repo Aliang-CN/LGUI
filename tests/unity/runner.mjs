@@ -174,7 +174,7 @@ const texts=${JSON.stringify(context.texts)};
   }catch(error){native.Complete(JSON.stringify({ok:false,name:${JSON.stringify(name)},error:String(error)}));}
 };
 `);
-  await esbuild().build({...webBuildOptions(context.root, entry), format: 'iife', platform: 'neutral', sourcemap: false, outfile: bundle, define: {LGUI_DEV: 'false'}});
+  await esbuild().build({...webBuildOptions(context.root, entry, {dev: false, outfile: bundle}), format: 'iife', platform: 'neutral', sourcemap: false});
   fs.writeFileSync(path.join(ui, 'README.txt'), '这里是生成物，不要在 Unity 里改。\n');
   fs.writeFileSync(path.join(path.dirname(bundle), 'README.txt'), '这里是生成物，不要在 Unity 里改。\n');
   return {bundle, ui, entry};

@@ -9,7 +9,7 @@ import {fileURLToPath, pathToFileURL} from 'node:url';
 import {run} from '../unit/cli/helpers.mjs';
 import {esbuild} from '../../plugin/tools/lib/vendor.mjs';
 import {readProject} from '../../plugin/tools/lib/project.mjs';
-import {generateWeb, generateProjectTypes, headlessDir, uiProjectPath, webUiDir} from '../../plugin/tools/lib/generate/index.mjs';
+import {generateWeb, generateProjectTypes, headlessDir, uiProjectPath} from '../../plugin/tools/lib/generate/index.mjs';
 import {readUiModel} from '../../plugin/tools/lib/generate/model.mjs';
 import {extractTexts, generateTranslations, translationMaps} from '../../plugin/tools/lib/generate/i18n.mjs';
 import {readTexts, runtimeConfig, webBuildOptions} from '../../plugin/tools/lib/dev/bundle.mjs';
@@ -38,7 +38,7 @@ export async function conformanceProject() {
   fs.symlinkSync(path.join(root, 'src'), path.join(dir, 'src'), 'junction');
 
   const project = readProject(root);
-  await generateWeb(uiProjectPath(root), webUiDir(root));
+  await generateWeb(uiProjectPath(root), path.join(root, '.lgui', 'build', 'web', 'ui'));
   await generateProjectTypes(root, {validated: true});
   const model = readUiModel(uiProjectPath(root));
   generateTranslations(root, model, project.languages, path.join(root, '.lgui', 'build', 'web', 'i18n'), project.defaultLanguage);
@@ -104,7 +104,7 @@ export async function main(): Promise<unknown> {
 }
 `);
   const outfile = path.join(ctx.root, 'conformance', 'out', `headless-${name}.mjs`);
-  await esbuild().build({...webBuildOptions(ctx.root, entry), platform: 'node', outfile, sourcemap: false});
+  await esbuild().build({...webBuildOptions(ctx.root, entry, {outfile}), platform: 'node', sourcemap: false});
   const mod = await import(pathToFileURL(outfile).href);
   return JSON.parse(JSON.stringify(await mod.main()));
 }
@@ -196,7 +196,7 @@ const createBackend = () => {
   return result;
 };
 `);
-  await esbuild().build({...webBuildOptions(ctx.root, entry), outfile: path.join(web, 'conf.js')});
+  await esbuild().build(webBuildOptions(ctx.root, entry, {outfile: path.join(web, 'conf.js')}));
   const html = '<!doctype html><meta charset="utf-8"><link rel="icon" href="data:,"><style>html,body{margin:0;height:100%;overflow:hidden;background:#000}</style><body><script type="module" src="/conf.js"></script>';
   const server = http.createServer((req, res) => {
     const url = decodeURIComponent(new URL(req.url, 'http://x').pathname);
@@ -374,6 +374,6 @@ async function caseScreen(ctx, name) {
   const outfile = path.join(ctx.root, 'conformance', 'out', `screen-${name}.mjs`);
   const entry = path.join(ctx.root, 'conformance', `screen-${name}.ts`);
   fs.writeFileSync(entry, `import c from ${caseImport(ctx, name)};\nexport const screen = c.screen;\n`);
-  await esbuild().build({...webBuildOptions(ctx.root, entry), platform: 'node', outfile, sourcemap: false});
+  await esbuild().build({...webBuildOptions(ctx.root, entry, {outfile}), platform: 'node', sourcemap: false});
   return import(pathToFileURL(outfile).href);
 }

@@ -35,6 +35,7 @@ test('h5：动效放完才 done、被盖住时暂停；拖放时有跟手的图�
 import {boot} from ${f('mvc/boot.ts')};
 import {defaultConfig} from ${f('mvc/runtime.ts')};
 import {lgui, View, ItemView, pick} from ${f('index.ts')};
+import {Timers} from ${f('backends/h5/vendor/fairygui.module.js')};
 const fx = lgui.Model({hits: 0, items: [{id: 'a', url: 'ui://Bag/flag'}, {id: 'b', url: 'ui://Bag/flag'}], sold: [] as string[]});
 const done: {name: string; at: number}[] = [];
 const record = (name: string) => done.push({name, at: performance.now()});
@@ -47,19 +48,24 @@ class BagView extends View<any> { static component = 'Bag/BagPanel'; static laye
     trash: {drop: (id: string) => fx.set({items: fx.get().items.filter(x => x.id !== id), sold: [...fx.get().sold, id]})}
   }; }
 class CoverView extends View<any> { static component = 'Common/Loading'; static layer = 'popup' as const; static fullScreen = true; static bothOrientations = true; }
+// 动效的时钟按帧走：每一帧加上离上一帧过了多久，play() 之后的第一帧也把 play() 之前、从上一帧起的那段算进去。
+// 所以「从什么时候算起」取上一帧的时刻（Timers.time），不取 play() 时的 performance.now()：机器忙、play() 前很久没出帧时，
+// 后者晚于动效真正开始计时的时刻，量出来就比动效短。
+const clock = () => Timers.time;
 (async () => {
   const backend = createH5Backend();
   await backend.init({projectName: 'demo', defaultFont: null, uiBase: '/ui'});
   await boot(backend, {backend: 'h5', start() {}}, defaultConfig, ${JSON.stringify(deps)}, {language: 'zh-CN', texts: {'zh-CN': {'lgui.back': '返回', 'lgui.requestFailed': '请求失败（{code}）'}}});
-  const opened = performance.now();
+  const opened = clock();
   const view = await lgui.ui.open(BagView);
   const c = (view as any).__component;
   const box = (o: any) => { const r = o.native.element.getBoundingClientRect(); return {x: r.x + r.width / 2, y: r.y + r.height / 2}; };
   Object.assign(window, {
     opened,
+    clock,
     state: () => ({done: done.map(d => ({name: d.name, at: Math.round(d.at)})), sold: fx.get().sold, items: c.child('list').numItems, ghost: backend.root.childNames().includes('lgui-drag')}),
-    play: () => { fx.set({hits: fx.get().hits + 1}); return performance.now(); },
-    cover: async (on: boolean) => { if (on) await lgui.ui.open(CoverView); else lgui.ui.close(CoverView); return performance.now(); },
+    play: () => { const at = clock(); fx.set({hits: fx.get().hits + 1}); return at; },
+    cover: async (on: boolean) => { const at = clock(); if (on) await lgui.ui.open(CoverView); else lgui.ui.close(CoverView); return at; },
     centers: () => ({slot: box(c.child('list').itemAt(0).child('icon')), trash: box(c.child('trash')), empty: {x: 900, y: 600}}),
     ready: true
   });
@@ -87,10 +93,11 @@ class CoverView extends View<any> { static component = 'Common/Loading'; static 
       await page.waitForFunction(() => window.state().done.some(d => d.name === 'pulse'), null, {timeout: 5000});
       assert.ok((await doneOf('pulse'))[0].at - started >= 450, '放完才通知');
 
-      // 被盖住时暂停：播了马上盖住，盖着的 1.2 秒里不会放完；露出来以后再放完剩下的
-      await page.evaluate(() => window.play());
-      await page.evaluate(() => window.cover(true));
-      await page.waitForTimeout(1200);
+      // 被盖住时暂停：播了马上盖住，盖着的 1.2 秒里不会放完；露出来以后再放完剩下的。
+      // 播和盖在同一次调用里做：分两次调用时，机器忙的话两次之间动效已经走了一段，剩下的就不到 250 毫秒了
+      // 盖着时等动效的时钟走过 1.2 秒（不按墙上时间：机器忙时一段时间里可能一帧都没出，那样就什么也没验）
+      const covered = await page.evaluate(async () => { window.play(); return window.cover(true); });
+      await page.waitForFunction(at => window.clock() - at >= 1200, covered, {timeout: 10000});
       assert.equal((await doneOf('pulse')).length, 1, '盖住时不走');
       const revealed = await page.evaluate(() => window.cover(false));
       await page.waitForFunction(() => window.state().done.filter(d => d.name === 'pulse').length === 2, null, {timeout: 5000});

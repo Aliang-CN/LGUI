@@ -77,6 +77,37 @@ test('lgui dev 开着时跑 lgui verify：各用各的目录，verify 不删 dev
   }
 });
 
+test('lgui dev：devWatch 写成工程根目录或它的上级时不监视 .lgui/build/（打包写盘不会再触发打包）；根目录下别的文件改了照样刷新', async () => {
+  for (const watch of ['.', '..']) {
+    const root = await project();
+    const file = path.join(root, '.lgui/project.json');
+    fs.writeFileSync(file, JSON.stringify({...JSON.parse(fs.readFileSync(file, 'utf8')), devWatch: [watch]}, null, 2));
+    const server = await startDev(root, readProject(root), {port: 0});
+    let req, reloads = 0;
+    try {
+      await new Promise((resolve, reject) => {
+        req = http.get(`${server.url}__lgui/events`, res => {
+          res.setEncoding('utf8');
+          res.on('data', chunk => {
+            if (chunk.startsWith(': lgui')) resolve();
+            reloads += (chunk.match(/event: reload/g) ?? []).length;
+          });
+        });
+        req.on('error', reject);
+      });
+      fs.writeFileSync(path.join(root, 'notes.txt'), 'x');
+      for (let waited = 0; reloads === 0 && waited < 5000; waited += 50) await new Promise(resolve => setTimeout(resolve, 50));
+      assert.ok(reloads >= 1, `devWatch ${watch}：改了工程根目录下的 notes.txt 以后 5 秒内没有推送刷新`);
+      const after = reloads;
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      assert.equal(reloads, after, `devWatch ${watch}：没有再改文件，2 秒里又推送了 ${reloads - after} 次刷新（打包写进 .lgui/build/ 又触发了打包）`);
+    } finally {
+      req?.destroy();
+      await server.close();
+    }
+  }
+});
+
 test('lgui dev：devWatch 里的目录改了就推送刷新；路径不存在报 LGUI-CLI-116', async () => {
   const root = await project();
   const config = path.join(path.dirname(root), 'Config');

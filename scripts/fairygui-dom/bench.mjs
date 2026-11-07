@@ -103,7 +103,7 @@ async function build() {
   await esbuild().build({entryPoints: [entry], bundle: true, format: 'esm', target: 'es2020', outfile: path.join(root, 'web/app.js'), logLevel: 'silent'});
   // 九宫格「修复前」：补丁 12 换成空的，其他钩子照装
   const stub = path.join(root, 'no-nine-slice.ts');
-  fs.writeFileSync(stub, 'export const nineSliceFields = [] as const; export function installNineSlice(): void {} export function setNineSliceOverlap(_: number): void {}');
+  fs.writeFileSync(stub, 'export const nineSliceFields = [] as const; export const nineSliceAssigned = [] as const; export function installNineSlice(): void {} export function setNineSliceOverlap(_: number): void {}');
   await esbuild().build({entryPoints: [entry], bundle: true, format: 'esm', target: 'es2020', outfile: path.join(root, 'web/app-no12.js'), logLevel: 'silent', plugins: [{name: 'no-nine-slice', setup(b) { b.onResolve({filter: /nine-slice(\.ts)?$/}, () => ({path: stub})); }}]});
   fs.writeFileSync(path.join(root, 'web/index.html'), '<!doctype html><meta charset="utf-8"><style>body{margin:0;background:#334}</style><body><script type="module">import(new URLSearchParams(location.search).get("no12") ? "/app-no12.js" : "/app.js");</script>');
   return path.join(root, 'web');

@@ -22,6 +22,8 @@ export function setNineSliceOverlap(deviceScale: number): void {
 type Margin = {left: number; top: number; right: number; bottom: number};
 type NineImage = HTMLElement & {_src?: string; _scale9Grid?: Margin; _scaleByTile?: boolean; _tileGridIndice: number; _textureScale: {x: number; y: number}; _timerID_1: number; refresh(): void};
 export const nineSliceFields = ['_tileGridIndice', '_textureScale', '_timerID_1'] as const;
+/** 不在构造函数里设的字段：[上游设它的访问器, 字段]。 */
+export const nineSliceAssigned = [['src', '_src'], ['scale9Grid', '_scale9Grid'], ['scaleByTile', '_scaleByTile']] as const;
 
 type Sides = {left: boolean; right: boolean; top: boolean; bottom: boolean};
 /** 一张图按某个九宫格切好以后：原图尺寸，每一块往哪几边伸。'border-image' 表示一处都不能伸，照旧。 */
