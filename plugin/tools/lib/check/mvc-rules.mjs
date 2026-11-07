@@ -205,12 +205,17 @@ export function mvcRules({ts, checker, root, files, model}) {
 
 /** 绑定了 redDot 的控件（给 UI-012 用）：[{ component, key, node }]。 */
 export function redDotBindings({ts, root, files}) {
+  return wordBindings({ts, root, files}, 'redDot');
+}
+
+/** 绑定表里写了某个绑定词（比如 text）的控件：[{ component, key, loc }]。只认 static component 写成字符串的界面。 */
+export function wordBindings({ts, root, files}, name) {
   const out = [];
   for (const sf of files) {
     for (const view of viewClasses(ts, sf)) {
       const component = literalValue(ts, view.statics.get('component')?.initializer);
       for (const entry of objectProps(ts, view.bind) ?? []) {
-        const word = (objectProps(ts, entry.value) ?? []).find(w => w.key === 'redDot');
+        const word = (objectProps(ts, entry.value) ?? []).find(w => w.key === name);
         if (word && typeof component === 'string') out.push({component, key: entry.key, loc: where(root, word.node)});
       }
     }

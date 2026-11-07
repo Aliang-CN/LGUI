@@ -7,8 +7,10 @@
 1. 先 `lgui ui list` 看现有的包、组件和控件。
 2. 新界面用 `lgui new view <包>/<组件> --pattern <模式>` 一次生成横竖两版骨架（第 7 节）；改已有界面就直接编辑 `ui/` 里的 XML。
 3. 改完运行 `lgui check`，把报错全部改掉。
-4. `lgui dev` 打开预览看效果。
-5. `lgui verify` 按标准尺寸横竖截图（同一个画面只截一次，按尺寸模拟刘海），逐张看一遍。
+4. `lgui dev` 打开预览看效果。地址是 `http://127.0.0.1:<端口>/`：开发服务只监听、也只认 `127.0.0.1`，用 `localhost` 打不开（设计如此，挡住 DNS 重绑定）。改 `ui/`、`src/`、`i18n/` 会自动刷新；工程用到的别的目录（宿主代码、仓库根的 `Config/` 等）写进工程配置 `devWatch`（相对工程根目录，比如 `["../Config"]`），改了也会刷新。
+5. `lgui verify` 按标准尺寸横竖截图（同一个画面只截一次，按尺寸模拟刘海），逐张看一遍。只截一个界面写 `--view <View 名>`；它要参数就再写 `--params '<JSON 对象>'`（字段见这个 View 的 `static params`，比如 `--view ShopView --params '{"tab":"gift"}'`）。
+
+`lgui dev`、`lgui verify`、`lgui test` 各用各的生成目录（`.lgui/build/<命令>/`），`lgui dev` 开着时照样可以跑另外两个。
 
 编辑器开着时不要直接改 XML：同一时间只有一方修改 `ui/`。
 
@@ -30,9 +32,9 @@ ui/
 └── art-src/                    # AI 生成的原始大图，只作来源，界面不引用
 ```
 
-- **一个功能一个包**（背包一个 `Bag`、商店一个 `Shop`）。好几个功能都用的东西放进 `Common` 或单独的公共包。
+- **一个功能一个包**（背包一个 `Bag`、商店一个 `Shop`）。好几个功能都用的东西（组件、图片）放进 `Common` 或单独的公共包，存一份，别的包直接引用。
 - 跨包引用只能引用对方包里 `exported="true"` 的资源。
-- **跨包引用的写法**（编辑器能保存的样子，`lgui check` 的 `LGUI-UI-020`）：子组件跨包只写 `pkg`（包 ID）和 `src`（组件 ID），不写 `fileName`；图片不跨包引用——要用别的包的图片，就用那个包里导出的组件，或者装载器（`url` 写 `ui://包名/图片名`）。原因：编辑器（OpenFairyGUI 0.2.4）读进来时会丢掉这两样，判定工程「不能无损保存」，整个工程都存不了。
+- **跨包引用的写法**：子组件和图片都写 `pkg`（对方的包 ID）和 `src`（资源 ID），比如 `<image … pkg="cmn00001" src="placehd1">`；打开界面时框架会一起加载对方的包。**唯一不能写的是子组件跨包时的 `fileName`**（`lgui check` 警告 `LGUI-UI-020`）：编辑器（OpenFairyGUI 0.2.4）读进来时会丢掉它，判定工程「不能无损保存」，整个工程都存不了。这是设计如此，删掉 `fileName` 就行，不用换别的写法绕。
 - XML 以 **OpenFairyGUI 0.7.0** 能读写的格式为准。编辑器保存的格式也要能被 0.7.0 生成；有冲突时以 0.7.0 为准。
 
 ## 3. 命名
@@ -81,19 +83,19 @@ ui/
 
 - 每个组件 XML 和图片都要登记；登记的文件必须存在，存在的文件也都要登记。
 - **九宫格：** 在图片上写 `scale="9grid"` 和 `scale9grid="左,上,宽,高"`（中间可拉伸区域），区域不能超出图片。边距按图片真实的边框像素取，不要统一取边长的四分之一。
-- **图集不用手管：** 生成时按包自动打图集。
+- **图集：** 生成时按包自动打图集，一般不用管。每张图不能比所在包的图集上限大，默认 4096×4096；超了生成时报 `LGUI-CLI-113`，写明是哪张图。某个包确实要更大的图，在它的 `package.xml` 里 `</resources>` 后面写 `<publish name="包名" maxAtlasSize="8192"/>`（多数手机支持到 4096，更大先确认目标设备）。
 - **声音：** mp3，登记成 `<sound>` 并导出（`exported="true"`）。代码和 View 的 `static music` 里写 `ui://<包名>/<声音名>`（`ui://Bag/coin`）；按钮的 `sound` 属性和别的资源引用一样写 `ui://<包ID><资源ID>`（`ui://bag00001coin0001`）。用法见 MVC 开发规范第 15 节。
 - `lgui art split`、`lgui art cut` 拆出来的小图会自动登记。
 
 **AI 出的图集拆成小图：**
 
 - 格子画得整齐、每格一样大：`lgui art split <大图> --grid 6x4 --size 128x128 --pkg <包> --names <名字>`，按格子平均切。
-- 物件会漂过格线、大小不一、或者是自由排布的零件页：`lgui art cut <整页图> --pkg <包> --names <名字文件>`。它按透明区域找出每个物件（不按格子切），从上到下、每行从左到右对上名字。整页图要是透明底的 PNG。
+- 物件会漂过格线、大小不一、或者是自由排布的零件页：`lgui art cut <整页图> --pkg <包> --names <名字文件>`。它按透明区域找出每个物件（不按格子切），从上到下、每行从左到右对上名字。整页图要照第 5.1 节画。
   - 名字文件一行一项：`名字=宽x高`，后面可以跟：
     - `9grid=左,上,右,下`：拉伸图的边距，按导出尺寸量，0 表示这个方向不拉伸；
-    - `tile`：横向平铺；
+    - `tile`：横向平铺，`package.xml` 里写 `scale="tile"`；
     - `fit`：只用在九宫格或平铺图上，单独缩放这一项，让不拉伸的方向正好等于尺寸（比如 547×186 的大按钮出来正好 186 高）；它不用、也不影响整页的缩放比例；
-    - `pkg=包名`：存进别的包。一页图常常分给几个包用，图片又不能跨包引用，所以每张存进用它的包；没写的存进 `--pkg`。
+    - `pkg=包名`：存进别的包，没写的存进 `--pkg`。图片可以跨包引用（第 2 节），好几个包都用的图存进 `Common` 一份就行，不用每个包存一份。
     
     空着的格子写 `EMPTY`。都是同一尺寸时可以直接写 `--names a,b,c --size 120x120`。
     ```
@@ -106,10 +108,25 @@ ui/
     ```
   - 找到的物件数和名字数（不算 `EMPTY`）对不上就报错，列出找到的每个物件的位置和大小：贴着物件的小碎片（闪光之类）用 `--gap` 并进去（默认 24 像素以内），零碎杂点用 `--speck` 丢掉（默认面积小于 64 像素）。
   - 裁掉空白后，**整页用同一个缩放比例**（默认取最需要缩小的那个物件，让每个都放得进自己的尺寸），描边粗细才一致；物件居中，四边留 `--pad` 像素（默认 0）。几页要用同一个比例时写 `--scale`。写了 `fit` 的项不参与。九宫格拉伸的方向、平铺图的横向不受尺寸限制，按内容实际大小出。
+  - 按这个比例缩放后，有物件在不拉伸的方向上都不到自己尺寸的一半，报 `LGUI-CLI-111`（同一页里画的比例差太多，不报的话图标会悄悄变得很小）：让 AI 按同一个比例重画，或者把尺寸差得多的物件分到另一页单独拆。
   - 自动去白边：挨着透明处的半透明边缘改用描边的颜色（`--defringe` 圈数，默认 2，0 是不处理）。
-  - 九宫格的图重拼成「两端 + 中间 1 像素」，`package.xml` 里写好 `scale="9grid"` 和 `scale9grid`；平铺图检查最右一列能不能无缝接上最左一列，接不上报错。
+  - 九宫格的图整张按比例缩放，保留原图的拉伸区（渐变、装饰都在），`package.xml` 里写好 `scale="9grid"` 和 `scale9grid`（中间那一块）；平铺图检查最右一列能不能无缝接上最左一列，接不上报错。
+  - **包里已经登记了同名图片就直接替换**：写到原来登记的位置，资源 ID、路径、导出都不变，引用它的组件一行不用改（先用占位图拼好界面，出图后同名替换）。原来登记成平铺的照样平铺；原来是九宫格的，名字文件里要写 `9grid`（没写报 `LGUI-CLI-112`）。包目录里有同名文件、却没登记，报 `LGUI-CLI-082`。
   - 每页出一张检查图 `.lgui/build/art/<--pkg>/<页名>-sheet.png`：中性灰底，按导出尺寸排开（九宫格拉到导出尺寸，平铺图并排两份看接缝），写着名字。拆完看一遍：描边粗细、颜色、大小是否一致，名字有没有对错。
-  - 原图复制到 `ui/art-src/<--pkg>/`。有一项不对（包括 `pkg=` 写的包不存在）就报错，什么都不写。
+  - 原图复制到 `ui/art-src/<--pkg>/`（那里已经有同名的原图就报 `LGUI-CLI-082`，给整页图换个文件名）。有一项不对（包括 `pkg=` 写的包不存在）就报错，什么都不写。
+
+### 5.1 art cut 对输入图的要求
+
+给 AI 出图的提示词照这一节写（这里是唯一的权威）。`lgui art cut` 按透明区域找物件、整页用一个比例缩放，整页图要这样画：
+
+1. **透明底的 PNG。** 不要白底、黑底、底色，也不要画出来的棋盘格。
+2. **物件之间留出间隔**，至少 32 像素，互相不挨着、不叠在一起；一页只画名字文件里列的那些物件，不画格子线、底座和多余的备选。挨得太近的小物件会被当成旁边物件的碎片并进去，数目对不上报 `LGUI-CLI-081`。
+3. **阴影、光晕不画成半透明。** 要阴影就画成实心（不透明）的深色，或者不画、由界面加；半透明的部分认不准物件的边界。
+4. **按导出尺寸的 2 倍画**（120×120 的图标画成约 240×240）。缩小出来边缘干净；画小了要放大，会发糊。
+5. **面板、按钮这类九宫格零件画得比九宫格边距大得多**：边距按导出尺寸量，按 2 倍画时画出来的宽要明显大于 2 ×（左 + 右），高要明显大于 2 ×（上 + 下），中间留出能拉伸的部分；圆角要整个落在边距里，拉伸的地方不放装饰（会被拉长）。比边距还小报 `LGUI-CLI-085`。
+6. **同一页里物件的尺寸别差太多**（比如 150 的头像框和 24 的小图标别放一页）：整页一个比例，差得多的分开画、分开拆（`LGUI-CLI-111`）。
+7. 平铺图（`tile`）左右两端要能无缝接上（`LGUI-CLI-086`）。
+8. 图里不画文字（第 8 节）。
 
 ## 6. 最小写法模板
 
@@ -128,10 +145,11 @@ ui/
 控件（每种都可以照抄，改 `id`、`name`、位置、尺寸和内容）：
 
 ```xml
-<!-- 图片：src 是同包的资源 ID。图片不跨包引用（见第 2 节的「跨包引用的写法」） -->
+<!-- 图片：src 是资源 ID；别的包的图片再写 pkg（对方的包 ID），对方要导出（第 2 节） -->
 <image id="n0" name="bg" src="frame001" xy="0,0" size="400,300"/>
+<image id="n15" name="logo" pkg="cmn00001" src="placehd1" xy="20,20" size="64,64"/>
 
-<!-- 文字：必须写 autoSize，见第 8 节 -->
+<!-- 文字：必须写 autoSize，单行的框再写 singleLine，见第 8 节；粗体、描边、投影见下面 -->
 <text id="n1" name="title" xy="20,20" size="360,40" fontSize="28" color="#ffffff" align="center" vAlign="middle" autoSize="shrink" singleLine="true" text="背包"/>
 
 <!-- 富文本 -->
@@ -176,7 +194,21 @@ ui/
 <group id="n9" name="footer" xy="0,980" size="1920,100"/>
 ```
 
-**按钮组件**（`extention="Button"`，标题和图标控件名固定为 `title`、`icon`）：
+**文字的粗体、描边、投影**（`text`、`richtext`、`inputtext` 都能写）：
+
+| 属性 | 写法 | 说明 |
+|---|---|---|
+| `bold` | `bold="true"` | 粗体 |
+| `strokeColor` | `strokeColor="#3a1f00"` | 描边颜色；写了它才有描边 |
+| `strokeSize` | `strokeSize="2"` | 描边粗细（设计像素），不写是 1 |
+| `shadowColor` | `shadowColor="#80000000"` | 投影颜色（`#AARRGGBB` 可以带透明度）；写了它才有投影 |
+| `shadowOffset` | `shadowOffset="2,2"` | 投影偏移 `x,y`，不写是 `1,1` |
+
+```xml
+<text id="n1" name="gold" xy="20,20" size="200,48" fontSize="32" color="#ffd84a" bold="true" strokeColor="#3a1f00" strokeSize="2" shadowColor="#80000000" shadowOffset="0,2" align="center" vAlign="middle" autoSize="shrink" singleLine="true" text="1436"/>
+```
+
+**按钮组件**（`extention="Button"`，标题和图标控件名固定为 `title`、`icon`：实例上的 `<Button title>`、绑定表的 `text` 只写进名为 `title` 的子控件，按钮组件里有文字却没有 `title` 时网页上显示不出来，`lgui check` 报 `LGUI-UI-066`）：
 
 ```xml
 <component size="160,56" extention="Button">
@@ -192,6 +224,8 @@ ui/
   <Button/>
 </component>
 ```
+
+**按下效果**写在按钮组件根节点的 `<Button>` 上：`<Button downEffect="scale" downEffectValue="0.95"/>` 按下缩到 95%（轴心自动设在按钮中间），`<Button downEffect="dark" downEffectValue="0.8"/>` 按下变暗到 80%；不写是没有效果。`downEffectValue` 不写是 0.8。
 
 **标签组件**（`extention="Label"`，标题和图标控件名固定为 `title`、`icon`；不能点选，要点的用按钮）：
 
@@ -288,6 +322,7 @@ ui/
 ```
 
 - `time`、`duration` 的单位是帧，帧率是 `frameRate`（不写是每秒 24 帧）；`repeat` 是这一项再重复几次（`-1` 一直重复）。
+- **旋转（`Rotation`）、缩放（`Scale`）先给目标控件设轴心**：控件上写 `pivot="0.5,0.5"`（绕中心）；不写轴心是左上角，会绕左上角转、朝右下缩放。确实要绕左上角就写 `pivot="0,0"`。没设报 `LGUI-UI-067`（同一个动效里用 `Pivot` 项设了、按下缩放的按钮自动在中间的不报）。
 - `autoPlay="true"`：界面创建时自动播放（旋转、换语言重建组件时会再播一次）；`autoPlayDelay` 是自动播放前等几秒。
 - `autoPlayRepeat`：播放次数，`-1` 一直循环；绑定表里的 `playing` 也按它放。
 - 代码里按条件播放、重播、放完通知，用动效名当绑定表的键（MVC 开发规范第 6.4 节）。
@@ -379,6 +414,7 @@ ui/
 | `autoSize="both"` | 框跟着文字变大（只用于确定不会超长的数字） |
 
   写 `autoSize="none"` 或不写时 `lgui check` 报 `LGUI-UI-010`（输入框除外）。
+- **只放得下一行的框写 `singleLine="true"`**：`shrink`、`ellipsis` 不写它时，字长了会先折成两行，再缩成小字或者被截掉。框高小于「2 × 字号 + 行距（`leading`，不写是 3）」就算只放得下一行，这时没写 `singleLine` 报 `LGUI-UI-068`；要显示多行就把框加高，或者用 `autoSize="height"`。
 - **用户能看到的固定文字写在 `ui/` 里**，会被 `lgui i18n extract` 提取翻译。代码里动态生成的文字用 `lgui.t`。
 - 图里不放文字；实在要用带字图片，按第 9 节提供各语言版本。
 - 美术风格的数字（伤害、金币）用 `ArtText`（第 11 节）。
@@ -465,7 +501,7 @@ ui/
 | `LGUI-UI-005` | 控件、控制器、动效不能重名 | 控制器 `tabs`，控件 `tabBar` | 控制器 `tabs`，控件也叫 `tabs`；动效叫 `title`，控件也叫 `title` |
 | `LGUI-UI-006` | 包名、组件名是大写开头的驼峰；后缀只能是 `@portrait`（组件）或 `@<语言>`（图片） | `BagPanel@portrait.xml` | `bagPanel.xml`、`BagPanel_portrait.xml` |
 | `LGUI-UI-007` | 横竖两版的控件名、类型、控制器和页名完全一致 | 两版都有 `sellButton`（按钮） | 竖版少了 `sellButton`，或者竖版里它是文字 |
-| `LGUI-UI-009` | 引用的资源存在；跨包引用的资源已导出 | `src="sword001"`（存在） | 引用了已删掉的资源 |
+| `LGUI-UI-009` | 引用的资源存在；跨包引用的资源（子组件、图片）已导出 | `src="sword001"`（存在）；`<image pkg="cmn00001" src="placehd1">`（Common 里导出了） | 引用了已删掉的资源；引用别的包里没导出的图片 |
 | `LGUI-UI-010` | 文字控件写了超长处理（`autoSize` 是 `shrink`、`height`、`ellipsis`、`both` 之一） | `autoSize="ellipsis" singleLine="true"` | 不写 `autoSize`，或写 `none` |
 | `LGUI-UI-011` | 字号不小于 20；没写 `fontSize` 按 FairyGUI 默认的 12 号算 | `fontSize="22"` | `fontSize="14"`、不写 `fontSize` |
 | `LGUI-UI-012` | 绑定了 `redDot` 的控件里有名为 `redDot` 的子控件 | 按钮里放了 `redDot` | 绑了 `redDot`，按钮里没有这个子控件 |
@@ -476,7 +512,7 @@ ui/
 | `LGUI-UI-017` | `@<语言>` 图片有默认版本，语言在 `languages` 里；带字图片用装载器放，地址写在绑定表里（图片控件、`ui/` 里写死的装载器 `url` 和按钮 `icon` 都不随语言换） | `title.png` + `title@en.png`，装载器 + `icon: 'ui://Bag/title'` | 只有 `title@en.png`，或 `title@xx.png`；`<image src="title 的 ID">`；`<loader url="ui://Bag/title">` |
 | `LGUI-UI-018` | `package.xml` 登记的文件都存在，包目录里的组件、图片和音效都已登记 | 新图片登记进 `package.xml` | 放了图片没登记 |
 | `LGUI-UI-019` | 代码里用到的组件（View 的 `component`、列表子项）已导出 | `exported="true"` | 没写 `exported` |
-| `LGUI-UI-020`（警告） | 跨包引用写成编辑器能保存的样子：子组件跨包只写 `pkg` + `src`，不写 `fileName`；图片不跨包引用 | `pkg="cmn00001" src="button01"` | `fileName="Button.xml" pkg="cmn00001"`；`<image … pkg="cmn00001">` |
+| `LGUI-UI-020`（警告） | 跨包引用写成编辑器能保存的样子：子组件跨包只写 `pkg` + `src`，不写 `fileName` | `pkg="cmn00001" src="button01"` | `fileName="Button.xml" pkg="cmn00001"` |
 | `LGUI-UI-030` | 代码里 `lgui.t` 用到的键（包括 View 的 `keys` 表里的 `hint`）、`ui/` 里的固定文字，在每种语言的文本表里都有 | 各语言都有 `bag.sold` | `en.json` 里缺 `bag.sold` |
 | `LGUI-UI-031`（警告） | 文本表里没有用不到的键（用模板字符串拼的键 `` lgui.t(`item.${kind}.name`) ``、条件表达式两边的键都算用到了；用变量传进来的键查不出来，所以只是警告） | — | 删掉了按钮，`Bag/BagPanel/oldButton` 还在表里 |
 | `LGUI-UI-032` | 同一个键在各语言里的占位符一致 | `已售出 {count} 件` / `Sold {count}` | `Sold {num}` |
@@ -486,5 +522,8 @@ ui/
 | `LGUI-UI-063`（警告） | 横竖两版同一个控件的固定文字一样 | 两版都是 `text="背包"` | 竖版写 `text="我的背包"` |
 | `LGUI-UI-064` | 全屏界面（`static fullScreen = true`）的组件，横竖两版都有名为 `safe` 的直接子控件 | 见第 7.3 节 | 全屏界面没有 `safe` |
 | `LGUI-UI-065` | 音效（按钮的 `sound`、工程配置的 `sounds.click`）指向存在、已登记的 mp3；`sound=""` 表示不出声 | `<Button sound="ui://Bag/click"/>`，`click.mp3` 登记在 Bag 包里 | 没登记、文件不存在、`click.wav` |
+| `LGUI-UI-066` | 给按钮写了标题（实例上的 `<Button title>`、绑定表的 `text`），按钮组件里就要有名为 `title` 的子控件 | 按钮组件里的文字叫 `title` | 文字叫 `text`、`label`，绑定表还给它写 `text` |
+| `LGUI-UI-067` | 动效里旋转、缩放的控件设了轴心 | `pivot="0.5,0.5"`（要绕左上角写 `pivot="0,0"`） | 不写 `pivot` 就做 `Rotation` / `Scale` |
+| `LGUI-UI-068` | `shrink`、`ellipsis` 的文字，框只放得下一行时写 `singleLine="true"` | `size="300,40" fontSize="28" autoSize="shrink" singleLine="true"` | `size="300,40" fontSize="28" autoSize="shrink"` |
 
 靠人看、机器查不出的：图里不放文字；同一个工程的图风格一致；文字在各尺寸下没有被截断（看 `lgui verify` 的截图）。

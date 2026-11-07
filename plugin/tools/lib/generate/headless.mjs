@@ -3,6 +3,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import {parsePages} from './model.mjs';
+import {writeDir} from '../paths.mjs';
 
 const bool = (value, fallback) => value === undefined ? fallback : value === 'true';
 
@@ -165,17 +166,14 @@ function imageSize(resource) {
 }
 
 export function generateHeadless(model, out) {
-  fs.rmSync(out, {recursive: true, force: true});
-  fs.mkdirSync(out, {recursive: true});
-  const files = [];
+  const contents = new Map();
   for (const pkg of model.packages) {
-    const file = path.join(out, `${pkg.name}.json`);
     const images = pkg.resources.filter(r => r.type === 'image').map(r => ({name: r.name, ...imageSize(r)}));
     const sounds = pkg.resources.filter(r => r.type === 'sound').map(r => ({id: r.id, name: r.name}));
-    fs.writeFileSync(file, JSON.stringify({schemaVersion: 1, package: pkg.name, id: pkg.id, components: pkg.components.map(c => describeComponent(c, model)), images, sounds}, null, 2) + '\n');
-    files.push(file);
+    contents.set(`${pkg.name}.json`, JSON.stringify({schemaVersion: 1, package: pkg.name, id: pkg.id, components: pkg.components.map(c => describeComponent(c, model)), images, sounds}, null, 2) + '\n');
   }
-  return {files};
+  // 几条命令共用这个目录：只写新文件、删多余的（不整个删掉重建）
+  return {files: writeDir(out, contents)};
 }
 
 export {parsePages};

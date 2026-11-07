@@ -1,5 +1,6 @@
 // 编辑器版本兼容实测（S2-I3）：编辑器（OpenFairyGUI 0.2.4）打开并保存一个 FairyGUI 工程 → 用随插件带的 0.7.0 生成网页界面包 → 浏览器能加载。
-// 用法：node scripts/build-editor/check-compat.mjs [工程目录 ...]。不写时测两个：lgui init 的模板工程、背包示例 examples/inventory/ui。
+// 用法：node scripts/build-editor/check-compat.mjs [工程目录 ...]。不写时测三个：lgui init 的模板工程、背包示例 examples/inventory/ui、
+// 跨包图片（模板工程的 MainView 横竖两版各加一张 Common 包的图片 <image pkg="cmn00001" src="placehd1">，改的就是这个组件，保存后 pkg 还在）。
 // 每个工程：复制到临时目录 → lgui editor 的服务打开它 → 把一个文字控件右移 1 像素并保存（不改文字，免得牵动文本表） → 导出工作区 ZIP → 和原文件比较 → 0.7.0 生成 → 浏览器里加载每个包、创建每个导出的组件。
 // 模板工程再多一步：把保存后的文件放回工程，跑 lgui check 和 lgui verify --size desktop。需要 Chrome 或 Edge。
 import fs from 'node:fs';
@@ -41,7 +42,8 @@ function unzip(file, out) {
 }
 
 // 编辑器打开工程、移动一个文字控件、保存、导出。返回解出来的目录和改了哪个控件。
-async function saveWithEditor(browser, projectDir) {
+// edit：要改的组件（包名/组件名），不写就取第一个有文字控件的组件。
+async function saveWithEditor(browser, projectDir, edit) {
   const server = await startEditorServer({editorDir, projectDir, connectionFile: path.join(tmp('conn'), 'c.json')});
   const page = await browser.newPage({viewport: {width: 1600, height: 900}});
   try {
@@ -60,7 +62,7 @@ async function saveWithEditor(browser, projectDir) {
     await sleep(1000);
     state = await agent({method: 'state'});
     const model = readUiModel(path.join(projectDir, fairy));
-    const component = model.packages.flatMap(p => p.components).find(c => c.children.some(ch => ch.tag === 'text' && ch.id));
+    const component = model.packages.flatMap(p => p.components).find(c => (!edit || c.fullName === edit) && c.children.some(ch => ch.tag === 'text' && ch.id));
     const text = component.children.find(ch => ch.tag === 'text' && ch.id);
     const selector = {packageId: component.pkg.id, componentResourceId: component.id, displayNodeId: text.id};
     const node = await agent({method: 'query', selector});
@@ -120,12 +122,30 @@ async function loadInBrowser(browser, webDir, components) {
   }
 }
 
-async function check(browser, label, original, {isTemplate}) {
+// 跨包图片的用例：模板工程 MainView 横竖两版各加一张 Common 包的图片。
+const CROSS_IMAGE = '<image id="n9" name="crossImage" pkg="cmn00001" src="placehd1" xy="20,20" size="64,64"/>';
+function addCrossPackageImage(uiDir) {
+  for (const file of ['MainView.xml', 'MainView@portrait.xml']) {
+    const xml = path.join(uiDir, 'assets', 'Main', file);
+    fs.writeFileSync(xml, fs.readFileSync(xml, 'utf8').replace('</displayList>', `  ${CROSS_IMAGE}\n  </displayList>`));
+  }
+}
+
+async function check(browser, label, original, {isTemplate, crossImage = false}) {
   const copy = path.join(tmp('src'), 'ui');
   fs.cpSync(original, copy, {recursive: true});
   const report = {project: label};
-  const saved = await saveWithEditor(browser, copy);
+  const saved = await saveWithEditor(browser, copy, crossImage ? 'Main/MainView' : undefined);
   report.edited = saved.edited;
+  if (crossImage) {
+    // 保存后图片还在、还是 Common 包的那张（编辑器重写 XML 时属性顺序会变，按属性比）
+    const kept = ['MainView.xml', 'MainView@portrait.xml'].map(file => {
+      const xml = fs.readFileSync(path.join(saved.dir, 'assets', 'Main', file), 'utf8');
+      const tag = /<image\b[^>]*name="crossImage"[^>]*>/.exec(xml)?.[0] ?? '';
+      return /\bpkg="cmn00001"/.test(tag) && /\bsrc="placehd1"/.test(tag) ? 'ok' : `${file}：${tag || '图片没了'}`;
+    });
+    report.crossPackageImage = kept.every(k => k === 'ok') ? 'ok' : kept.filter(k => k !== 'ok');
+  }
   const before = new Set(walk(original)), after = new Set(walk(saved.dir));
   const same = f => fs.readFileSync(path.join(original, f)).equals(fs.readFileSync(path.join(saved.dir, f)));
   report.files = {
@@ -165,9 +185,16 @@ try {
   const targets = args.length ? args.map(a => [a, path.resolve(a), false]) : await (async () => {
     const parent = tmp('template');
     await lgui(['init', 'g'], parent);
-    return [['lgui init 模板工程', path.join(parent, 'g', 'ui'), true], ['examples/inventory/ui', path.join(root, 'examples', 'inventory', 'ui'), false]];
+    const cross = tmp('cross');
+    await lgui(['init', 'g'], cross);
+    addCrossPackageImage(path.join(cross, 'g', 'ui'));
+    return [
+      ['lgui init 模板工程', path.join(parent, 'g', 'ui'), true],
+      ['examples/inventory/ui', path.join(root, 'examples', 'inventory', 'ui'), false],
+      ['跨包图片（模板工程 + Common 的图片）', path.join(cross, 'g', 'ui'), true, true]
+    ];
   })();
-  for (const [label, dir, isTemplate] of targets) console.log(JSON.stringify(await check(browser, label, dir, {isTemplate}), null, 2));
+  for (const [label, dir, isTemplate, crossImage] of targets) console.log(JSON.stringify(await check(browser, label, dir, {isTemplate, crossImage}), null, 2));
 } finally {
   await browser.close();
 }

@@ -46,6 +46,7 @@ MyGame/
 | `sounds` | `{ click: 音效地址 \| null }` | `{ click: null }` | 按钮的默认点击音效（`ui://<包>/<声音名>`）：`ui/` 里按钮没写音效时用；`null` 表示不放 |
 | `defaultFont` | 字体名 \| `null` | `null` | 默认字体，`null` 表示用 FairyGUI 的默认字体 |
 | `devPort` | 端口号 1–65535 | `4173` | `lgui dev` 的端口 |
+| `devWatch` | 路径数组 | `[]` | `lgui dev` 除了 `ui/`、`src/`、`i18n/` 以外还要监视的目录或文件，相对工程根目录（比如宿主代码、仓库根的 `["../Config"]`），改了就重新打包、刷新页面。路径不存在时报 `LGUI-CLI-116` |
 | `editorPort` | 端口号 1–65535 | `4174` | `lgui editor` 的端口。浏览器按地址（含端口）记住授权过的 `ui/` 文件夹，所以端口固定；改了端口要在编辑器里重新授权。被占用时报 `LGUI-CLI-110` |
 | `backend` | `"h5"` | `"h5"` | 默认后端 |
 | `unityProject` | 路径 \| `null` | `null` | 导出过的 Unity 工程路径，由 `lgui unity export` 写入 |

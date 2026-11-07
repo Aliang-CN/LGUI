@@ -14809,7 +14809,7 @@ function materializeDisplayNode(doc, node) {
   ensureSupportedNodeKind(node.kind);
   if (node.kind === "image") {
     const imageNode = node;
-    const image = materializeDisplayNodeBase(doc.createGImage(node.name), node).setGroup(imageNode.group).setSrc(imageNode.resource.resourceId);
+    const image = materializeDisplayNodeBase(doc.createGImage(node.name), node).setGroup(imageNode.group).setSrc(imageNode.resource.resourceId).setPackageId(imageNode.resource.packageId ?? "");
     materializeUamImageProperties(image, imageNode);
     return image;
   }
@@ -15441,7 +15441,8 @@ function liftDisplayNode(child) {
       kind: "image",
       ...liftDisplayNodeBase(image),
       group: image.getGroup(),
-      resource: { resourceId: image.getSrc() },
+      // LGUI: keep the cross-package image ref (pkg="…"); without it the UAM round-trip drops pkg and the project cannot be saved.
+      resource: image.getPackageId() ? { packageId: image.getPackageId(), resourceId: image.getSrc() } : { resourceId: image.getSrc() },
       color: image.getColor(),
       flip: image.getFlip(),
       fillMethod: image.getFillMethod(),
@@ -17155,10 +17156,7 @@ function validateSupportedDisplayNode(node, owningPackageId, path, issues, detai
     ...details,
     nodeKind: node.kind
   });
-  if (node.kind === "image" && node.resource.packageId && node.resource.packageId !== owningPackageId) pushSupportIssue(issues, "unsupported_cross_package_image_ref", `${path}.resource.packageId`, `Phase A does not support cross-package image refs on supported image nodes ("${node.resource.packageId}" != "${owningPackageId}").`, {
-    ...details,
-    nodeKind: node.kind
-  });
+  // LGUI: cross-package image refs are supported (lifted and materialized with their packageId), so they are not rejected here.
   const gearControllers = /* @__PURE__ */ new Set();
   for (const [gearIndex, gear] of node.gears.entries()) {
     if (!UAM_SUPPORTED_TRANSACTION_SCOPE.gearKinds.includes(gear.kind)) {

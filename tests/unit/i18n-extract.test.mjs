@@ -40,13 +40,13 @@ test('lgui i18n extract：提取固定文字到默认语言的文本表，默认
   assert.ok('Main/MainView/title' in JSON.parse(fs.readFileSync(zh, 'utf8')));
 });
 
-test('翻译文件：名字是 <包ID><组件ID>-<元素ID>，竖版和横版共用一个键；对照表写进 .lgui/build/i18n/map.json', async () => {
+test('翻译文件：名字是 <包ID><组件ID>-<元素ID>，竖版和横版共用一个键；翻译文件和对照表写进 .lgui/build/i18n/', async () => {
   const root = await project();
   await run(['i18n', 'extract'], root);
   const en = path.join(root, 'i18n/en.json');
   fs.writeFileSync(en, JSON.stringify({...JSON.parse(fs.readFileSync(en, 'utf8')), 'Main/MainView/button': 'Click me'}));
   await run(['i18n', 'extract'], root);
-  const xml = fs.readFileSync(path.join(root, '.lgui/build/web/i18n/en.xml'), 'utf8');
+  const xml = fs.readFileSync(path.join(root, '.lgui/build/i18n/en.xml'), 'utf8');
   assert.match(xml, /<string name="main0001mainvw01-n2">Click me<\/string>/);
   assert.match(xml, /<string name="main0001mainvw02-n2">Click me<\/string>/);
   const map = JSON.parse(fs.readFileSync(path.join(root, '.lgui/build/i18n/map.json'), 'utf8'));
@@ -80,4 +80,20 @@ test('中文 → 英文', async () => {
   const json = JSON.parse(result.stdout);
   assert.equal(json.ok, true, JSON.stringify(json.errors, null, 1));
   assert.equal(json.data.passed, 2);
+});
+
+test('lgui i18n extract：多行文字（XML 里写成 &#xA; 或 &#10;）提取成真的换行，不写成字面的 &#xA;；&amp;#xA; 还是原样的文字', async () => {
+  const root = await project();
+  for (const f of ['MainView.xml', 'MainView@portrait.xml']) {
+    const xml = path.join(root, 'ui/assets/Main', f);
+    fs.writeFileSync(xml, fs.readFileSync(xml, 'utf8').replace('text="你好，LGUI"', 'text="第一行&#xA;第二行&#10;第三行 &amp;#xA; &lt;b&gt;"'));
+  }
+  const result = JSON.parse((await run(['i18n', 'extract', '--json'], root)).stdout);
+  assert.equal(result.ok, true, JSON.stringify(result.errors));
+  const raw = fs.readFileSync(path.join(root, 'i18n/zh-CN.json'), 'utf8');
+  assert.equal(JSON.parse(raw)['Main/MainView/title'], '第一行\n第二行\n第三行 &#xA; <b>');
+  assert.ok(raw.includes('"第一行\\n第二行\\n第三行 &#xA; <b>"'), raw);
+  // 横竖两版一样（换行也算），不报 LGUI-UI-063
+  const check = JSON.parse((await run(['check', '--json'], root)).stdout);
+  assert.ok(!check.data.findings.some(f => f.code === 'LGUI-UI-063'), JSON.stringify(check.data.findings));
 });

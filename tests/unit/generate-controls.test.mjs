@@ -79,6 +79,15 @@ test('包依赖：下拉框弹出的列表放在别的包里，下拉框所在�
   assert.deepEqual(packageDeps(model), {Ui: ['Popup'], Popup: []});
 });
 
+test('包依赖：图片写了别的包的 pkg（跨包图片），所在的包依赖那个包（pkg 写本包的、不写的不算）', async () => {
+  const {packageDeps} = await import('../../plugin/tools/lib/generate/index.mjs');
+  const image = pkg => ({tag: 'image', attrs: {...(pkg ? {pkg} : {}), src: 'img00001'}});
+  const art = {name: 'Art', id: 'art00001', components: []};
+  const ui = {name: 'Ui', id: 'ui000001', components: [{extension: null, children: [image('art00001'), image('ui000001'), image(null)], root: {children: []}}]};
+  const model = {packages: [ui, art], byId: new Map([[ui.id, ui], [art.id, art]])};
+  assert.deepEqual(packageDeps(model), {Ui: ['Art'], Art: []});
+});
+
 test('多语言：标签的固定标题、下拉框的固定选项都提取；headless 换语言时选项跟着翻译', async () => {
   const root = writeFixture();
   const dest = writeControls(root, {buttonId: 'cbtn0001'});

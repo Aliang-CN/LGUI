@@ -33,7 +33,7 @@ export const registry = [
   {name: 'new view', usage: 'new view <包>/<组件> --pattern <模式>', about: '按排布模式一次生成横竖两版的界面骨架', project: 'required', versionCheck: true, flags: {pattern: 'string'}, run: newView},
   {name: 'check', usage: 'check', about: '规范检查（包括多语言检查）', project: 'required', versionCheck: true, flags: {}, run: check},
   {name: 'test', usage: 'test [文件或目录...] [--name 名字片段] [--browser]', about: '跑测试：默认用 headless 后端，--browser 在真浏览器里跑', project: 'required', versionCheck: true, flags: {name: 'string', browser: 'boolean'}, run: test},
-  {name: 'verify', usage: 'verify [--size 名字] [--view View 名] [--lang 语言]', about: '在浏览器里按横竖两种方向的标准尺寸截图验证', project: 'required', versionCheck: true, flags: {size: 'string', view: 'string', lang: 'string'}, run: verify},
+  {name: 'verify', usage: 'verify [--size 名字] [--view View 名 [--params JSON]] [--lang 语言]', about: '在浏览器里按横竖两种方向的标准尺寸截图验证', project: 'required', versionCheck: true, flags: {size: 'string', view: 'string', params: 'string', lang: 'string'}, run: verify},
   {name: 'ui list', usage: 'ui list', about: '列出 ui/ 里的组件和控件', project: 'required', versionCheck: true, flags: {}, run: uiList},
   {name: 'i18n extract', usage: 'i18n extract', about: '从 ui/ 提取需要翻译的文字', project: 'required', versionCheck: true, flags: {}, run: i18nExtract},
   {name: 'art split', usage: 'art split <大图> --grid 列x行 --size 宽x高 --pkg 包 --names 名字列表或文件', about: '把 AI 生成的网格大图拆成小图，并缩放到指定尺寸', project: 'required', versionCheck: true, flags: {grid: 'string', size: 'string', pkg: 'string', names: 'string'}, run: artSplit},

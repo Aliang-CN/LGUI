@@ -11,6 +11,17 @@ const CAMEL = /^[a-z][A-Za-z0-9]*$/;
 const MIN_FONT = 20;
 const DEFAULT_FONT = 12; // XML 里不写 fontSize 时 FairyGUI 用 12 号
 const AUTO_SIZES = ['shrink', 'height', 'ellipsis', 'both'];
+const DEFAULT_LEADING = 3; // XML 里不写 leading 时 FairyGUI 的行距
+
+// 按钮的标题（实例上的 <Button title>、绑定表的 text、翻译）只写进按钮组件里名为 title 的子控件：FairyGUI 按名字找，找不到就不显示。
+const titleless = c => c?.extension === 'Button' && !c.children.some(ch => ch.name === 'title');
+const titleFix = c => {
+  const texts = c.children.filter(ch => ['text', 'richtext'].includes(ch.tag) && ch.name).map(ch => ch.name);
+  return `把 ${c.fullName} 里显示标题的文字控件改名为 title${texts.length ? `（现在的文字控件：${texts.join('、')}）` : '（现在没有文字控件，加一个名为 title 的文字控件）'}。按钮的标题只写进名为 title 的子控件。`;
+};
+
+// 动效里旋转、缩放的值都是原样（缩放 1,1、旋转 0）时不需要轴心。
+const IDENTITY = {Scale: v => v.split(',').every(n => Number(n) === 1), Rotation: v => Number(v) === 0};
 
 // Common 包里的固定组件和必有控件（UI 开发规范第 10 节）。
 const COMMON = {
@@ -44,7 +55,7 @@ export function soundProblem(model, url) {
   return null;
 }
 
-export function uiRules({root, model, languages, redDots = [], fullScreens = [], sounds = null}) {
+export function uiRules({root, model, languages, redDots = [], texts = [], fullScreens = [], sounds = null}) {
   const out = [];
   const rel = file => path.relative(root, file).split(path.sep).join('/');
   const add = (code, message, fix, file, line) => out.push(finding(code, message, fix, {file: file ? rel(file) : undefined, line, col: 1}));
@@ -109,6 +120,10 @@ export function uiRules({root, model, languages, redDots = [], fullScreens = [],
         // UI-010 超长处理；UI-011 字号
         if (['text', 'richtext'].includes(child.tag)) {
           if (!AUTO_SIZES.includes(child.attrs.autoSize)) add('LGUI-UI-010', `组件 ${component.fullName} 的文字控件 ${child.name} 没写超长处理（autoSize）。`, '写 autoSize="shrink"、"height"、"ellipsis" 或 "both"（UI 开发规范第 8 节）。', component.file, child.line);
+          // UI-068 缩小、省略号的文字，框只放得下一行却没写 singleLine：字长了会先折成两行，再缩成小字或者被截掉
+          const fontSize = Number(child.attrs.fontSize ?? DEFAULT_FONT), leading = Number(child.attrs.leading ?? DEFAULT_LEADING);
+          const height = Number((child.attrs.size ?? '').split(',')[1]);
+          if (['shrink', 'ellipsis'].includes(child.attrs.autoSize) && child.attrs.singleLine !== 'true' && height > 0 && height < 2 * fontSize + leading) add('LGUI-UI-068', `组件 ${component.fullName} 的文字控件 ${child.name} 写了 autoSize="${child.attrs.autoSize}"，框高 ${height} 只放得下一行（${fontSize} 号字），但没写 singleLine="true"：字长了会折成两行再${child.attrs.autoSize === 'shrink' ? '缩成小字' : '被截掉'}。`, '加上 singleLine="true"；要显示多行就把框加高到放得下两行以上，或者改成 autoSize="height"。', component.file, child.line);
         }
         if (['text', 'richtext', 'inputtext'].includes(child.tag) && Number(child.attrs.fontSize ?? DEFAULT_FONT) < MIN_FONT) add('LGUI-UI-011', `组件 ${component.fullName} 的 ${child.name} ${child.attrs.fontSize ? `字号是 ${child.attrs.fontSize}` : `没写 fontSize（FairyGUI 默认 ${DEFAULT_FONT} 号）`}，小于最小字号 ${MIN_FONT}。`, `写 fontSize="${MIN_FONT}" 或更大。`, component.file, child.line);
         // UI-060 gearText 里写了用户能看到的文字：不会被提取翻译，headless 也不模拟
@@ -117,6 +132,8 @@ export function uiRules({root, model, languages, redDots = [], fullScreens = [],
           if (texts.length) add('LGUI-UI-060', `组件 ${component.fullName} 的 ${child.name} 在 gearText 里写了用户能看到的文字（${texts.join('|')}）。这些字不会被提取翻译，lgui test 里也看不到。`, '删掉 gearText，改用绑定表：text: pick(数据, s => lgui.t(键))，文字写进 i18n/<语言>.json。', component.file, child.line);
         }
         const button = child.children.find(n => n.tag === 'Button' || n.tag === 'Label');
+        // UI-066 按钮实例上写了标题，按钮组件里却没有 title 子控件：网页上显示不出来（headless 照样读得到）
+        if (button?.tag === 'Button' && button.attrs.title && titleless(child.ref)) add('LGUI-UI-066', `组件 ${component.fullName} 的按钮 ${child.name} 写了标题「${button.attrs.title}」，但按钮组件 ${child.ref.fullName} 里没有名为 title 的子控件，网页上显示不出来。`, titleFix(child.ref), component.file, child.line);
         // UI-061 按钮直接绑控制器（点了就切页）：绕过了 Model，lgui test 里也不切
         if (button?.tag === 'Button' && button.attrs.controller) add('LGUI-UI-061', `组件 ${component.fullName} 的按钮 ${child.name} 直接绑了控制器 ${button.attrs.controller}（点了就切页）。这样切页不经过 Model，lgui test 里也不会切。`, '删掉 <Button> 上的 controller 和 page；在绑定表里写 click: () => xxxController.方法()，由 Controller 改 Model，控制器写 page: pick(…)。', component.file, child.line);
         // UI-065 按钮实例上写的音效；写空表示不出声
@@ -134,12 +151,11 @@ export function uiRules({root, model, languages, redDots = [], fullScreens = [],
           const image = target?.resources.find(r => r.id === child.attrs.src);
           // UI-017 带字图片放在图片控件里，不会随语言换
           if (image && hasLanguages(target, image)) add('LGUI-UI-017', `组件 ${component.fullName} 的图片控件 ${child.name} 用的 ${image.name} 有各语言版本，但图片控件不会随语言换。`, `换成装载器，在绑定表里写 icon: 'ui://${target.name}/${image.name}'。`, component.file, child.line);
-          if (!target?.resources.some(r => r.id === child.attrs.src)) add('LGUI-UI-009', `组件 ${component.fullName} 的图片 ${child.name} 引用的资源 ${child.attrs.src} 不存在。`, '指向一个存在的图片资源。', component.file, child.line);
+          if (!target?.resources.some(r => r.id === child.attrs.src)) add('LGUI-UI-009', `组件 ${component.fullName} 的图片 ${child.name} 引用的资源 ${child.attrs.src} 不存在。`, '指向一个存在的图片资源；别的包里的图片写 pkg（包 ID）和 src（资源 ID）。', component.file, child.line);
+          if (image && target !== pkg && !image.exported) add('LGUI-UI-009', `组件 ${component.fullName} 的图片 ${child.name} 引用了别的包里没导出的图片 ${target.name}/${image.name}。`, '在对方的 package.xml 里给它写 exported="true"。', component.file, child.line);
         }
-        // UI-020 编辑器保存不了的跨包写法（警告）
-        const editorWarn = (message, fix) => out.push(finding('LGUI-UI-020', message, fix, {file: rel(component.file), line: child.line, col: 1, level: 'warning'}));
-        if (child.tag === 'component' && child.attrs.pkg && child.attrs.pkg !== pkg.id && child.attrs.fileName) editorWarn(`组件 ${component.fullName} 的子组件 ${child.name} 跨包引用写了 fileName，编辑器保存不了这个工程。`, '删掉 fileName，只写 pkg 和 src。');
-        if (child.tag === 'image' && child.attrs.pkg && child.attrs.pkg !== pkg.id) editorWarn(`组件 ${component.fullName} 的图片 ${child.name} 引用了别的包里的图片，编辑器保存不了这个工程。`, '把图片放进本包；或者用一个那个包里导出的组件（组件可以跨包）、或者装载器（url 写 ui://包名/图片名）。');
+        // UI-020 编辑器保存不了的跨包写法（警告）：子组件跨包写了 fileName
+        if (child.tag === 'component' && child.attrs.pkg && child.attrs.pkg !== pkg.id && child.attrs.fileName) out.push(finding('LGUI-UI-020', `组件 ${component.fullName} 的子组件 ${child.name} 跨包引用写了 fileName，编辑器保存不了这个工程。`, '删掉 fileName，只写 pkg 和 src。', {file: rel(component.file), line: child.line, col: 1, level: 'warning'}));
         // UI-016 列表 defaultItem
         if (child.tag === 'list' && (!child.ref || !child.ref.exported)) add('LGUI-UI-016', `组件 ${component.fullName} 的列表 ${child.name} 的 defaultItem 没设，或者指向的组件不存在、没导出。`, '写 defaultItem="ui://<包ID><组件ID>"，指向一个导出的组件。', component.file, child.line);
         // UI-013 ArtText
@@ -147,6 +163,24 @@ export function uiRules({root, model, languages, redDots = [], fullScreens = [],
           const m = /(?:^|;)font=([A-Z][A-Za-z0-9]*)\/([A-Za-z0-9]+)(?:;|$)/.exec(child.attrs.customData ?? '');
           const fontPkg = m && model.packages.find(p => p.name === m[1]);
           if (!m || !fontPkg || !fs.existsSync(path.join(fontPkg.dir, 'artfont', m[2]))) add('LGUI-UI-013', `组件 ${component.fullName} 的 ArtText ${child.name} 的 customData 写法不对，或者字体目录不存在。`, '写成 customData="font=<包>/<字体名>;align=center;spacing=2"，字符图片放在 <包>/artfont/<字体名>/ 下。', component.file, child.line);
+        }
+      }
+      // UI-067 动效里旋转、缩放的控件没设轴心：默认绕左上角转、朝右下缩放
+      const reported = new Set();
+      for (const transition of component.root?.children.filter(n => n.tag === 'transition') ?? []) {
+        const items = transition.children.filter(n => n.tag === 'item');
+        for (const item of items) {
+          const {type, target: id} = item.attrs;
+          if (!IDENTITY[type] || !id || reported.has(id)) continue;
+          const values = [item.attrs.startValue, item.attrs.endValue, item.attrs.value].filter(v => v !== undefined);
+          if (values.every(IDENTITY[type])) continue;
+          const target = component.children.find(c => c.id === id);
+          if (!target || target.attrs.pivot !== undefined) continue;
+          if (items.some(i => i.attrs.type === 'Pivot' && i.attrs.target === id)) continue;
+          // 按下缩放的按钮（<Button downEffect="scale"/>）FairyGUI 自动把轴心设在中间
+          if (target.ref?.root?.children.find(n => n.tag === 'Button')?.attrs.downEffect === 'scale') continue;
+          reported.add(id);
+          add('LGUI-UI-067', `组件 ${component.fullName} 的动效 ${transition.attrs.name} 给 ${target.name ?? id} 做了${type === 'Scale' ? '缩放' : '旋转'}，但 ${target.name ?? id} 没设轴心（pivot），会绕左上角${type === 'Scale' ? '缩放' : '转'}。`, `在 ${target.name ?? id} 上写 pivot="0.5,0.5"（绕中心）；确实要绕左上角就写 pivot="0,0"。`, component.file, lineWith(component.file, [`type="${type}"`, `target="${id}"`]));
         }
       }
       // UI-004、UI-005 重名（复用生成类型时的检查）
@@ -196,5 +230,21 @@ export function uiRules({root, model, languages, redDots = [], fullScreens = [],
     }
     if (!owner || !owner.children.some(c => c.name === 'redDot')) out.push(finding('LGUI-UI-012', `${b.component} 的 ${b.key} 绑定了 redDot，但它里面没有名为 redDot 的子控件。`, '在 ui/ 里给它放一个 Common/RedDot 的实例，名字叫 redDot。', b.loc));
   }
+  // UI-066 绑定表给按钮写了 text，按钮组件里却没有 title 子控件：网页上显示不出来（headless 照样读得到）
+  for (const b of texts) {
+    const component = findComponent(model, b.component);
+    let owner = component, child = null;
+    for (const part of b.key.split('.')) {
+      child = owner?.children.find(c => c.name === part) ?? null;
+      owner = child?.ref ?? null;
+    }
+    if (child?.tag === 'component' && titleless(child.ref)) out.push(finding('LGUI-UI-066', `${b.component} 的 ${b.key} 绑定了 text，但它的按钮组件 ${child.ref.fullName} 里没有名为 title 的子控件，网页上显示不出来。`, titleFix(child.ref), b.loc));
+  }
   return out;
+}
+
+// 文件里同时包含这几段文字的第一行（动效的 item 没有 id，按 type 和 target 找行号）。
+function lineWith(file, needles) {
+  const index = fs.readFileSync(file, 'utf8').split('\n').findIndex(line => needles.every(n => line.includes(n)));
+  return index >= 0 ? index + 1 : undefined;
 }

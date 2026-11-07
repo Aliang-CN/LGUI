@@ -2,6 +2,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import {LgCliError, LgCliErrors} from '../errors.mjs';
+import {writeDir} from '../paths.mjs';
 
 const typeNames = {
   component: 'UIComponent', text: 'UIText', richtext: 'UIRichText', input: 'UIInput', button: 'UIButton', image: 'UIImage', loader: 'UILoader', list: 'UIList', progress: 'UIProgress', graph: 'UIGraph',
@@ -111,24 +112,18 @@ export function generateTypes(model, out) {
     }
   }
   if (errors.length) throw new LgCliErrors(errors);
-  fs.rmSync(out, {recursive: true, force: true});
-  fs.mkdirSync(out, {recursive: true});
   const header = "// 由 ui/ 生成，不要手改。\nimport type { UIComponent, UIText, UIRichText, UIInput, UIButton, UIImage, UILoader, UIList, UIController, UITransition, UIProgress, UIGraph, UILabel, UISlider, UIComboBox, UIMovieClip, UITree } from 'lgui';\n";
-  const files = [];
-  for (const [pkgName, blocks] of perPackage) {
-    const file = path.join(out, `${pkgName}.d.ts`);
-    fs.writeFileSync(file, `${header}\n${blocks.join('\n\n')}\n`);
-    files.push(file);
-  }
+  const contents = new Map();
+  for (const [pkgName, blocks] of perPackage) contents.set(`${pkgName}.d.ts`, `${header}\n${blocks.join('\n\n')}\n`);
   const indexLines = ['// 由 ui/ 生成，不要手改。'];
   for (const pkgName of perPackage.keys()) indexLines.push(`export * from './${pkgName}';`);
   for (const component of index) indexLines.push(`import type { ${component.name}UI as ${component.pkg.name}_${component.name} } from './${component.pkg.name}';`);
   indexLines.push('', '/** 「包/组件」名 → 控件类型。 */', 'export interface LGUIComponents {');
   for (const component of index) indexLines.push(`  '${component.fullName}': ${component.pkg.name}_${component.name};`);
   indexLines.push('}', '');
-  const indexFile = path.join(out, 'index.d.ts');
-  fs.writeFileSync(indexFile, indexLines.join('\n'));
-  files.push(indexFile);
+  contents.set('index.d.ts', indexLines.join('\n'));
+  // 几条命令共用这个目录：只写新文件、删多余的（不整个删掉重建）
+  const files = writeDir(out, contents);
   return {files, components: index.map(component => component.fullName)};
 }
 

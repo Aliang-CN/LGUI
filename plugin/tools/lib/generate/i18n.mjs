@@ -3,6 +3,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import {LgCliError} from '../errors.mjs';
+import {writeDir} from '../paths.mjs';
 
 const xmlEscape = text => text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
@@ -88,13 +89,13 @@ export function translationMaps(entries, tables, defaultLanguage) {
  *  默认语言的固定文字以 ui/ 为准：它的翻译文件是空的（切回默认语言时显示 ui/ 里的原文），改 ui/ 马上生效。 */
 export function generateTranslations(root, model, languages, outDir, defaultLanguage) {
   const entries = extractTexts(model);
-  fs.rmSync(outDir, {recursive: true, force: true});
-  fs.mkdirSync(outDir, {recursive: true});
   const tables = {};
+  const files = new Map();
   for (const language of languages) {
     tables[language] = readTable(root, language);
-    fs.writeFileSync(path.join(outDir, `${language}.xml`), translationXml(entries, language === defaultLanguage ? {} : tables[language]));
+    files.set(`${language}.xml`, translationXml(entries, language === defaultLanguage ? {} : tables[language]));
   }
+  writeDir(outDir, files);
   const mapFile = path.join(root, '.lgui', 'build', 'i18n', 'map.json');
   fs.mkdirSync(path.dirname(mapFile), {recursive: true});
   fs.writeFileSync(mapFile, JSON.stringify(Object.fromEntries(entries.map(e => [e.key, e.targets.map(t => t.name)])), null, 2) + '\n');

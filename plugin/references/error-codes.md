@@ -44,7 +44,7 @@ LGUI 的每条报错都带错误码，并写明：哪个文件哪一行（如果
 | `LGUI-CLI-074` | 工程的 `devPort` 被占用 | 改 `devPort`，或者 `lgui dev --port <端口>` |
 | `LGUI-CLI-080` | `lgui art split` / `lgui art cut` 的参数不对（大图找不到、`--grid` / `--size` / `--scale` 写法不对、缺 `--pkg` / `--names`、名字不合规范、名字文件里的尺寸 / `9grid` / `tile` 写法不对） | 照用法写：`lgui art split <大图> --grid 6x4 --size 128x128 --pkg <包> --names <名字>`；`lgui art cut` 的名字文件写法见 ui-spec.md 第 5 节 |
 | `LGUI-CLI-081` | 名字的数量和格子数（`art cut`：找到的物件数）不一样，或者名字重复 | 每格一个不同的名字，按从左到右、从上到下；`art cut` 报错里列出了找到的物件，碎片用 `--gap` 并进去、杂点用 `--speck` 丢掉、空格子写 `EMPTY` |
-| `LGUI-CLI-082` | 要写的图片已经存在（不会覆盖） | 换名字，或者先删掉旧图片 |
+| `LGUI-CLI-082` | 要写的图片已经存在（不会覆盖）：`art split` 的同名图片；`art cut` 的同名文件在包目录里、但没登记进 `package.xml`（登记过的同名图片会被替换，资源 ID 不变）；原图在 `ui/art-src/` 里已经有同名的 | 换名字，或者先删掉旧图片；`art cut` 把文件登记进 `package.xml` 再拆就是替换 |
 | `LGUI-CLI-083` | `--pkg`（或 `art cut` 名字文件里的 `pkg=`）写的包不存在 | 写一个已有的包名 |
 | `LGUI-CLI-084` | 读不了大图 | 用 PNG 或 JPG（`art cut` 要透明底的 PNG） |
 | `LGUI-CLI-085` | `lgui art cut` 规整不了：按 `--scale` 缩放后放不进导出尺寸、比九宫格边距还小，或者整页没有固定尺寸的方向算不出缩放比例 | 去掉 `--scale` 自动算或改小；九宫格边距按导出尺寸写；全是九宫格的页写 `--scale` |
@@ -59,6 +59,12 @@ LGUI 的每条报错都带错误码，并写明：哪个文件哪一行（如果
 | `LGUI-CLI-103` | 编辑器拒绝了查询或修改 | 按编辑器的提示改；内容刚变过就再运行一次 |
 | `LGUI-CLI-104` | 插件里没有编辑器文件 | 重新安装插件 |
 | `LGUI-CLI-110` | `lgui editor` 的端口（工程配置 `editorPort`，默认 4174）已经被占用，常见原因是另一个 `lgui editor` 还开着 | 先关掉占用它的程序；要换端口就改 `editorPort`（换了端口，浏览器要重新授权 `ui/` 文件夹） |
+| `LGUI-CLI-111` | `lgui art cut` 整页用同一个比例缩放后，有物件在不拉伸的方向上都不到尺寸的一半（同一页里画的比例差太多，图标会悄悄变得很小） | 让 AI 按同一个比例重画；或者把尺寸差得多的物件分到另一页单独拆；尺寸写错了就改名字文件里的 `宽x高` |
+| `LGUI-CLI-112` | `lgui art cut` 要替换的图片原来登记成九宫格，名字文件里这一项没写 `9grid` | 写上 `9grid=左,上,右,下`（按导出尺寸量）；确实不要九宫格了，先删掉 `package.xml` 里这张图的 `scale` 和 `scale9grid` |
+| `LGUI-CLI-113` | 生成界面包时图片打不进图集：有图比所在包的图集上限大（没写 `<publish maxAtlasSize>` 的包是 4096），或者一个包的图太多 | 把图缩到上限以内、大图拆开；确实要这么大，在包的 `package.xml` 里写 `<publish name="包名" maxAtlasSize="8192"/>`（ui-spec.md 第 5 节） |
+| `LGUI-CLI-114` | `lgui verify --params` 写法不对：不是 JSON 对象，或者没和 `--view` 一起用 | 写成 `--view BagView --params '{"tab":"equip"}'` |
+| `LGUI-CLI-115` | `lgui verify --view` 打开界面时出错（报错里带着原来的错误码） | 界面要参数就用 `--params` 传（字段见 View 的 `static params`）；不然按报错改代码 |
+| `LGUI-CLI-116` | 工程配置 `devWatch` 里的路径不存在 | 写相对工程根目录的路径（比如 `../Config`），或者删掉这一项 |
 | `LGUI-CLI-130` | `lgui test` 指定的文件或目录不存在、不在 `tests/` 里，或者不是测试文件（`*.test.ts`）、目录里没有测试文件 | 写 `tests/` 里的测试文件或目录（路径按当前目录算），比如 `lgui test tests/bag.test.ts`；不写就跑全部 |
 | `LGUI-CLI-131` | `lgui test --name` 一个测试也没匹配到 | `--name` 按测试名（和所在 `describe` 的名字）里的一段文字筛选，区分大小写；不写就跑全部 |
 | `LGUI-CLI-132` | `lgui test --browser` 没找到 Chrome 或 Edge | 装一个 Chrome 或 Edge；或者先不加 `--browser`，用 headless 跑 |

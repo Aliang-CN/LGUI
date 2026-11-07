@@ -1,4 +1,5 @@
-// lgui dev：生成界面包和类型 → 打包 → 本地服务（只监听 127.0.0.1）→ 监听 ui/、src/、i18n/ 的改动，自动刷新页面。
+// lgui dev：生成界面包和类型 → 打包 → 本地服务（只监听 127.0.0.1）→ 监听 ui/、src/、i18n/ 和工程配置 devWatch 里的路径，有改动就自动刷新页面。
+// 生成物放在 .lgui/build/dev/（lgui verify、lgui test 各用各的目录，同时跑不会互相删文件）。
 // 不提供任何写文件的接口；Host 头不是 127.0.0.1:<端口> 的请求一律 403（挡住 DNS 重绑定）。
 import fs from 'node:fs';
 import http from 'node:http';
@@ -6,7 +7,8 @@ import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {LgCliError, LgCliErrors} from '../errors.mjs';
 import {toErrors} from '../output.mjs';
-import {generateProjectTypes, generateWeb, uiProjectPath, webUiDir} from '../generate/index.mjs';
+import {generateProjectTypes, generateWeb, uiProjectPath} from '../generate/index.mjs';
+import {buildDir} from '../paths.mjs';
 import {readUiModel} from '../generate/model.mjs';
 import {generateTranslations} from '../generate/i18n.mjs';
 import {bundleErrors, createWebContext, writeWebBootstrap} from './bundle.mjs';
@@ -23,11 +25,10 @@ const liveReload = `<script>
 const shell = fs.readFileSync(fileURLToPath(new URL('./shell.html', import.meta.url)), 'utf8').replace('</body>', `${liveReload}</body>`);
 const types = {'.js': 'text/javascript; charset=utf-8', '.map': 'application/json', '.json': 'application/json', '.png': 'image/png', '.jpg': 'image/jpeg', '.xml': 'application/octet-stream', '.mp3': 'audio/mpeg'};
 
-/** 返回 .lgui/build/web/ 下的生成物（/ui/ 是界面包）；只读，不在里面就 404。 */
-export function serveBuilt(root, url, res) {
+/** 返回 base（命令自己的生成目录，比如 .lgui/build/dev/）下的生成物（/ui/ 是界面包）；只读，不在里面就 404。 */
+export function serveBuilt(base, url, res) {
   if (url === '/' || url === '/index.html') { res.writeHead(200, {'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store'}).end(shell); return; }
-  const base = path.join(root, '.lgui', 'build', 'web');
-  const file = url.startsWith('/ui/') ? path.join(webUiDir(root), url.slice(4)) : path.join(base, url.slice(1));
+  const file = path.join(base, url.slice(1));
   const inside = file.startsWith(base + path.sep);
   if (!inside || !fs.existsSync(file) || !fs.statSync(file).isFile()) { res.writeHead(404).end('not found'); return; }
   res.writeHead(200, {'content-type': types[path.extname(file)] ?? 'application/octet-stream', 'cache-control': 'no-store'});
@@ -45,18 +46,24 @@ export async function startDev(root, project, {port = project.devPort, log = () 
     send('errors', lastErrors);
   };
 
-  // 1. 生成界面包、类型、包依赖；2. 写启动入口；3. 打包。
+  // 额外监视的路径（工程配置 devWatch，相对工程根目录）：不存在就报错，不悄悄不监视
+  const extra = project.devWatch.map(p => ({path: p, dir: path.resolve(root, p)}));
+  const missing = extra.filter(e => !fs.existsSync(e.dir));
+  if (missing.length) throw new LgCliErrors(missing.map(e => new LgCliError('LGUI-CLI-116', `工程配置 devWatch 里的 ${e.path} 不存在（${e.dir}）。`, {file: '.lgui/project.json', fix: '写相对工程根目录的路径（比如 ../Config），或者从 devWatch 里删掉它。'})));
+
+  // 1. 生成界面包、类型、包依赖；2. 写启动入口；3. 打包。都放在 .lgui/build/dev/。
+  const site = buildDir(root, 'dev');
   const generateUi = async () => {
-    await generateWeb(uiProjectPath(root), webUiDir(root));
+    await generateWeb(uiProjectPath(root), path.join(site, 'ui'));
     await generateProjectTypes(root, {validated: true});
     translations();
   };
-  const translations = () => generateTranslations(root, readUiModel(uiProjectPath(root)), project.languages, path.join(root, '.lgui', 'build', 'web', 'i18n'), project.defaultLanguage);
+  const translations = () => generateTranslations(root, readUiModel(uiProjectPath(root)), project.languages, path.join(site, 'i18n'), project.defaultLanguage);
   let context = null;
   const bundle = async () => {
     translations();
-    const entry = writeWebBootstrap(root, project);
-    if (!context) context = await createWebContext(root, entry);
+    const entry = writeWebBootstrap(root, project, {dir: site});
+    if (!context) context = await createWebContext(root, entry, {outdir: site});
     try {
       await context.rebuild();
     } catch (error) {
@@ -100,7 +107,7 @@ export async function startDev(root, project, {port = project.devPort, log = () 
     }
     if (req.method !== 'GET' && req.method !== 'HEAD') { res.writeHead(405).end(); return; }
     if (url === '/favicon.ico') { res.writeHead(204).end(); return; }
-    serveBuilt(root, url, res);
+    serveBuilt(site, url, res);
   });
   try {
     await new Promise((resolve, reject) => {
@@ -117,7 +124,7 @@ export async function startDev(root, project, {port = project.devPort, log = () 
   host = `127.0.0.1:${server.address().port}`;
   const url = `http://${host}/`;
 
-  // 监听文件：ui/ 的改动等 200 毫秒合成一次再重新生成；src/、i18n/ 的改动重新打包。
+  // 监听文件：ui/ 的改动等 200 毫秒合成一次再重新生成；src/、i18n/ 和 devWatch 里的路径改了就重新打包。
   const watchers = [];
   let timer = null;
   let closed = false;
@@ -134,7 +141,7 @@ export async function startDev(root, project, {port = project.devPort, log = () 
   };
   const watch = (dir, kind) => {
     if (!fs.existsSync(dir)) return;
-    watchers.push(fs.watch(dir, {recursive: true}, () => {
+    watchers.push(fs.watch(dir, {recursive: fs.statSync(dir).isDirectory()}, () => {
       pending[kind] = true;
       clearTimeout(timer);
       timer = setTimeout(flush, kind === 'ui' ? 200 : 50);
@@ -143,6 +150,7 @@ export async function startDev(root, project, {port = project.devPort, log = () 
   watch(path.join(root, 'ui'), 'ui');
   watch(path.join(root, 'src'), 'code');
   watch(path.join(root, 'i18n'), 'code');
+  for (const e of extra) watch(e.dir, 'code');
 
   return {
     url,
@@ -169,7 +177,7 @@ export async function dev({projectRoot, project, flags}) {
   }
   const server = await startDev(projectRoot, project, {port, log: line => process.stderr.write(line + '\n')});
   const opened = flags['no-open'] ? false : openInBrowser(server.url);
-  const summary = [`预览地址：${server.url}`, opened ? '已经用 Chrome / Edge 打开。' : (flags['no-open'] ? '没有自动打开浏览器（--no-open）。' : '没找到 Chrome 或 Edge，请手动打开上面的地址。'), '改 ui/、src/、i18n/ 会自动刷新；按 Ctrl+C 停止。'];
+  const summary = [`预览地址：${server.url}`, opened ? '已经用 Chrome / Edge 打开。' : (flags['no-open'] ? '没有自动打开浏览器（--no-open）。' : '没找到 Chrome 或 Edge，请手动打开上面的地址。'), `改 ${['ui/', 'src/', 'i18n/', ...project.devWatch].join('、')} 会自动刷新；按 Ctrl+C 停止。`];
   const errors = server.errors();
   if (errors.length) summary.push(`现在有 ${errors.length} 个错误，页面上也会显示。`);
   // 命令一直运行到 Ctrl+C；摘要先打印出来。

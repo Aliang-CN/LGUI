@@ -30,13 +30,18 @@ export async function generateProjectTypes(root, {validated = false} = {}) {
 
 export const depsPath = root => path.join(root, '.lgui', 'build', 'deps.json');
 
-// 每个包依赖哪些别的包（子组件、列表子项、下拉框弹出的列表引用了别的包里的组件）。打开界面时先加载这些包（依赖的依赖也加载）。
+// 每个包依赖哪些别的包（子组件、列表子项、下拉框弹出的列表引用了别的包里的组件，图片 <image pkg="包ID"> 用了别的包里的图片）。
+// 打开界面时先加载这些包（依赖的依赖也加载）。
 export function packageDeps(model) {
   const deps = {};
   for (const pkg of model.packages) {
     const set = new Set();
     for (const component of pkg.components) {
-      for (const child of component.children) if (child.ref && child.ref.pkg !== pkg) set.add(child.ref.pkg.name);
+      for (const child of component.children) {
+        if (child.ref && child.ref.pkg !== pkg) set.add(child.ref.pkg.name);
+        const imagePkg = child.tag === 'image' && child.attrs.pkg && child.attrs.pkg !== pkg.id ? model.byId.get(child.attrs.pkg) : null;
+        if (imagePkg) set.add(imagePkg.name);
+      }
       // 下拉框组件的 <ComboBox dropdown="ui://包ID资源ID"/>：弹出的列表可以放在别的包里。
       const dropdown = component.extension === 'ComboBox' ? component.root.children.find(child => child.tag === 'ComboBox')?.attrs.dropdown ?? '' : '';
       const target = dropdown.startsWith('ui://') ? model.byId.get(dropdown.slice(5, dropdown.length - 8)) : null;

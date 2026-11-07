@@ -1,12 +1,14 @@
 // lgui verify：生成一次，在随机端口起服务，用 Chrome 或 Edge 按标准尺寸 × 横竖两种方向截图（同一个画面只截一次），每张图旁边存一份界面快照。
 // 每张图都按尺寸的 safeArea 模拟刘海：启动前设好 window.__lguiSafeArea，网页后端读它。
-// --size 只截一组；--view 先打开指定的界面；--lang <语言> 再乘上语言；--lang pseudo 用伪翻译（文字加长 40%、换成带重音的字母），再按最长的语言横竖各截一张。
+// --size 只截一组；--view 先打开指定的界面（--params 是传给它的参数，JSON 对象）；--lang <语言> 再乘上语言；--lang pseudo 用伪翻译（文字加长 40%、换成带重音的字母），再按最长的语言横竖各截一张。
+// 生成物放在 .lgui/build/verify/site/，截图放在 .lgui/build/verify/（和 lgui dev、lgui test 各用各的目录，同时跑不会互相删文件）。
 import fs from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
 import {LgCliError} from '../errors.mjs';
 import {esbuild, playwright} from '../vendor.mjs';
-import {generateProjectTypes, generateWeb, uiProjectPath, webUiDir} from '../generate/index.mjs';
+import {generateProjectTypes, generateWeb, uiProjectPath} from '../generate/index.mjs';
+import {buildDir} from '../paths.mjs';
 import {readUiModel} from '../generate/model.mjs';
 import {extractTexts, generateTranslations, translationXml} from '../generate/i18n.mjs';
 import {readTexts, webBuildOptions, writeWebBootstrap, bundleErrors} from '../dev/bundle.mjs';
@@ -59,16 +61,19 @@ async function launch() {
 }
 
 /** 跑一次验证，返回截图清单。 */
-export async function runVerify(root, project, {size, view, lang} = {}) {
+export async function runVerify(root, project, {size, view, params, lang} = {}) {
   const sizes = size ? project.verifySizes.filter(s => s.name === size) : project.verifySizes;
   if (!sizes.length) throw new LgCliError('LGUI-CLI-061', `没有名为 ${size} 的验证尺寸。`, {fix: `能用的：${project.verifySizes.map(s => s.name).join('、')}（工程配置 verifySizes）。`});
   if (lang && lang !== 'pseudo' && !project.languages.includes(lang)) throw new LgCliError('LGUI-CLI-062', `工程不支持语言 ${lang}。`, {fix: `能用的：${project.languages.join('、')}，或者 pseudo（伪翻译）。`});
 
-  // 1. 生成（不监听文件）
-  await generateWeb(uiProjectPath(root), webUiDir(root));
+  // 1. 生成（不监听文件）：先清空上次的截图和生成物
+  const out = buildDir(root, 'verify');
+  const site = path.join(out, 'site');
+  fs.rmSync(out, {recursive: true, force: true});
+  await generateWeb(uiProjectPath(root), path.join(site, 'ui'));
   await generateProjectTypes(root, {validated: true});
   const model = readUiModel(uiProjectPath(root));
-  const i18nDir = path.join(root, '.lgui', 'build', 'web', 'i18n');
+  const i18nDir = path.join(site, 'i18n');
   generateTranslations(root, model, project.languages, i18nDir, project.defaultLanguage);
   const texts = readTexts(root, project.languages);
   const languages = [...project.languages];
@@ -81,9 +86,9 @@ export async function runVerify(root, project, {size, view, lang} = {}) {
     languages.push('pseudo');
   }
   const verifyProject = {...project, languages};
-  const entry = writeWebBootstrap(root, verifyProject, {texts});
+  const entry = writeWebBootstrap(root, verifyProject, {texts, dir: site});
   try {
-    await esbuild().build(webBuildOptions(root, entry));
+    await esbuild().build(webBuildOptions(root, entry, {outdir: site}));
   } catch (error) {
     throw bundleErrors(error, root);
   }
@@ -92,13 +97,10 @@ export async function runVerify(root, project, {size, view, lang} = {}) {
   const server = http.createServer((req, res) => {
     const url = decodeURIComponent(new URL(req.url, 'http://x').pathname);
     if (url === '/__lgui/events') { res.writeHead(204).end(); return; }
-    serveBuilt(root, url, res);
+    serveBuilt(site, url, res);
   });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   const url = `http://127.0.0.1:${server.address().port}/`;
-  const out = path.join(root, '.lgui', 'build', 'verify');
-  fs.rmSync(out, {recursive: true, force: true});
-  fs.mkdirSync(out, {recursive: true});
 
   // 要截哪些：尺寸 × 方向（去掉重复的画面）× 语言
   const shots = [];
@@ -125,8 +127,14 @@ export async function runVerify(root, project, {size, view, lang} = {}) {
         await page.waitForFunction(() => window.__lguiReady || document.getElementById('lgui-overlay')?.style.display === 'block', null, {timeout: 20000});
         if (shot.lang && shot.lang !== project.defaultLanguage) await page.evaluate(l => window.__lgui.lgui.setLanguage(l), shot.lang);
         if (view) {
-          const opened = await page.evaluate(name => { const V = window.__lgui.views[name]; if (!V) return false; return window.__lgui.lgui.ui.open(V).then(() => true); }, view);
-          if (!opened) throw new LgCliError('LGUI-CLI-063', `src/modules/ 里没有导出名为 ${view} 的 View。`, {fix: '写 View 的类名，比如 BagView。'});
+          // 打开界面出的错在页面里接住，带着原来的错误码报出来（不让它变成命令行内部错误 LGUI-CLI-999）
+          const opened = await page.evaluate(async ({name, params}) => {
+            const V = window.__lgui.views[name];
+            if (!V) return {missing: true};
+            try { await window.__lgui.lgui.ui.open(V, params); return {ok: true}; } catch (e) { return {code: e?.code ?? null, message: String(e?.message ?? e)}; }
+          }, {name: view, params});
+          if (opened.missing) throw new LgCliError('LGUI-CLI-063', `src/modules/ 里没有导出名为 ${view} 的 View。`, {fix: '写 View 的类名，比如 BagView。'});
+          if (!opened.ok) throw new LgCliError('LGUI-CLI-115', `打开 ${view}${params ? `（参数 ${JSON.stringify(params)}）` : ''} 时出错：${opened.code ? `${opened.code} ` : ''}${opened.message}`, {fix: params ? '按报错改参数或代码；参数的字段见这个 View 的 static params。' : `这个界面要参数的话，用 --params 传 JSON 对象，比如 --params '{"id":1}'（字段见这个 View 的 static params）；不然按报错改代码。`});
         }
         // 等框架判好方向、换好版，图片加载完
         const expected = project.orientation === 'both' ? shot.orientation : project.orientation;
@@ -153,7 +161,13 @@ export async function runVerify(root, project, {size, view, lang} = {}) {
 
 /** lgui verify 命令。 */
 export async function verify({projectRoot, project, flags}) {
-  const {shots} = await runVerify(projectRoot, project, {size: flags.size, view: flags.view, lang: flags.lang});
+  let params;
+  if (flags.params !== undefined) {
+    if (!flags.view) throw new LgCliError('LGUI-CLI-114', '--params 要和 --view 一起用（传给 --view 打开的界面）。', {fix: `写成 --view BagView --params '{"tab":"equip"}'。`});
+    try { params = JSON.parse(flags.params); } catch (error) { throw new LgCliError('LGUI-CLI-114', `--params 不是合法的 JSON：${error.message}`, {fix: `写成一个 JSON 对象，比如 --params '{"id":1}'（Windows 的 cmd 里写 --params "{\\"id\\":1}"）。`}); }
+    if (params === null || typeof params !== 'object' || Array.isArray(params)) throw new LgCliError('LGUI-CLI-114', `--params 要是一个 JSON 对象（现在是 ${flags.params}）。`, {fix: `写成 --params '{"id":1}'，字段见这个 View 的 static params。`});
+  }
+  const {shots} = await runVerify(projectRoot, project, {size: flags.size, view: flags.view, params, lang: flags.lang});
   const failed = shots.filter(s => s.errors.length);
   return {
     data: {shots},
