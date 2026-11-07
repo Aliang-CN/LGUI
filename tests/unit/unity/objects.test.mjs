@@ -113,7 +113,7 @@ const fgui = {
 const context = (x, y, touchId = -1) => ({inputEvent: {x, y, touchId, button: 0}, data: null, CaptureTouch() { this.captured = true; }});
 
 let backendImplementation;
-async function containerBackend() {
+async function containerBackend({platform = {}, fonts, defaultFont = null} = {}) {
   backendImplementation ??= await importTs(fileURLToPath(new URL('../../../plugin/framework/backends/unity/adapter/index.ts', import.meta.url)));
   class NativeComponent extends Component {
     disposeCalls = 0;
@@ -136,11 +136,11 @@ async function containerBackend() {
     FairyGUI: {...fgui, GComponent: NativeComponent, GRoot: {inst: new NativeComponent()},
       Stage: {touchScreen: false, inst: stage}, UIConfig: {defaultFont: ''},
       UIPackage: {...fgui.UIPackage, GetByName() { return {}; }, CreateObject() { return new NativeComponent(); }}},
-    LGUI: {Platform: {Now: 0, ScreenWidth: 1280, ScreenHeight: 720}, LGUIResourceLoader: Loader}
+    LGUI: {Platform: {Now: 0, ScreenWidth: 1280, ScreenHeight: 720, ...platform}, LGUIResourceLoader: Loader}
   };
   const backend = backendImplementation.createUnityBackend(bridge);
-  await backend.init({projectName: 'containers', defaultFont: null, uiBase: 'UI'});
-  return {backend, dispose: () => globalThis.__lguiDispose?.()};
+  await backend.init({projectName: 'containers', defaultFont, fonts, uiBase: 'UI'});
+  return {backend, bridge, dispose: () => globalThis.__lguiDispose?.()};
 }
 
 test('Unity wrappers preserve object identity, nested lookup and native ownership', async () => {
@@ -469,6 +469,21 @@ test('Unity container teardown disposes a registered parent tree and remaining l
     assert.equal(child.native.disposeCalls, 1, 'registered child must not be disposed a second time after native recursion');
     assert.equal(sibling.native.disposeCalls, 1, 'removing parent/child ownership must not skip another live container');
   } finally { dispose(); }
+});
+
+test('Unity 项目字体：启动时按名字注册 Resources 里的 UI/fonts/<名字>；找不到、旧版 Unity 包都报 LGUI-RT-181', async () => {
+  const calls = [];
+  const {bridge, dispose} = await containerBackend({defaultFont: 'Noto', fonts: ['Noto', 'Title'], platform: {RegisterFont(name, resource) { calls.push([name, resource]); return true; }}});
+  assert.deepEqual(calls, [['Noto', 'UI/fonts/Noto'], ['Title', 'UI/fonts/Title']]);
+  assert.equal(bridge.FairyGUI.UIConfig.defaultFont, 'Noto');
+  dispose();
+  await assert.rejects(containerBackend({fonts: ['Noto'], platform: {RegisterFont: () => false}}), e => e.code === 'LGUI-RT-181' && /Resources\/UI\/fonts\/Noto/.test(e.message));
+  dispose();
+  await assert.rejects(containerBackend({fonts: ['Noto']}), e => e.code === 'LGUI-RT-181' && /RegisterFont/.test(e.message));
+  dispose();
+  // 没有项目字体时不调 RegisterFont（旧版 Unity 包照样能启动）
+  await containerBackend();
+  dispose();
 });
 
 test('Unity 代码补间：属性读写、齿轮主人、按钮按下效果（关掉 FairyGUI 自己的缩放）、动效每一项，走 FairyGUI 和 LGUI.Platform（TweenInfo.cs）', async () => {

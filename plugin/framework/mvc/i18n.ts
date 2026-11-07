@@ -3,6 +3,7 @@
 import {LgRuntimeError} from '../core/index';
 import {hasRuntime} from './runtime';
 import {fault} from './log';
+import {compactUnits} from './fixed-text';
 
 /** 一种语言的文本表。 */
 export type TextTable = Record<string, string | Partial<Record<PluralForm, string>>>;
@@ -76,14 +77,7 @@ const groups = (n: number): string => {
 const pad = (n: number): string => String(n).padStart(2, '0');
 
 // 数字缩写的规则（三端都用这一套，不用 Intl：各浏览器、Unity 的脚本环境的 Intl 不一样，同一个数要各端显示一样）：
-// 中文、日文、韩文按万、亿、万亿（兆、조），其余按千（K）、百万（M）、十亿（B）、万亿（T），最多一位小数。
-function compactUnits(language: string): [number, string][] {
-  if (/^zh-(TW|HK|MO|Hant)/i.test(language)) return [[1e12, '兆'], [1e8, '億'], [1e4, '萬']];
-  if (/^zh\b/i.test(language)) return [[1e12, '万亿'], [1e8, '亿'], [1e4, '万']];
-  if (/^ja\b/i.test(language)) return [[1e12, '兆'], [1e8, '億'], [1e4, '万']];
-  if (/^ko\b/i.test(language)) return [[1e12, '조'], [1e8, '억'], [1e4, '만'], [1e3, '천']];
-  return [[1e12, 'T'], [1e9, 'B'], [1e6, 'M'], [1e3, 'K']];
-}
+// 单位见 fixed-text.ts 的 compactUnits（生成字体子集时要收这些字），最多一位小数。
 const oneDecimal = (n: number): number => Math.round(n * 10) / 10;
 function compact(value: number, language: string): string {
   if (!Number.isFinite(value)) return String(value);

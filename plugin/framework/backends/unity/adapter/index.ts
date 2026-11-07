@@ -56,9 +56,15 @@ export function createUnityBackend(bridge?: NativeBridge): Backend {
       config = options;
       const fgui = found.FairyGUI;
       if (options.defaultFont) fgui.UIConfig.defaultFont = options.defaultFont;
+      // 项目字体在创建任何界面之前注册（FontManager 找不到字体时会静默换成系统字体或 Arial，所以注册不上就报错）。
+      const host = found.LGUI.Platform;
+      for (const name of options.fonts ?? []) {
+        const resource = `${options.uiBase}/fonts/${name}`;
+        if (typeof host.RegisterFont !== 'function') throw new LgRuntimeError('LGUI-RT-181', `Unity 工程里的 LGUI 包没有 LGUI.Platform.RegisterFont，注册不了项目字体 ${name}。`, '运行 lgui upgrade 把新版 Unity 包复制进工程，再 lgui unity export。');
+        if (!host.RegisterFont(name, resource)) throw new LgRuntimeError('LGUI-RT-181', `项目字体 ${name} 在 Unity 的 Resources 里找不到（Resources/${resource}.ttf 或 .otf），或者 Unity 没有把它导入成字体。`, '重新运行 lgui unity export（它把 ui/fonts/ 的子集写到 Assets/LGUI/Resources/UI/fonts/），回到 Unity 等导入完成再点 Play。');
+      }
       // FairyGUI-unity 的按钮、动效会自己放声音（网页版的 FairyGUI 不放）。LGUI 的声音都由框架经 platform.audio 放，所以关掉 FairyGUI 自己的。
       fgui.Stage.inst.soundVolume = 0;
-      const host = found.LGUI.Platform;
       objects = createObjectAdapter(fgui, () => host.Now, (x, y) => ({x: x / scale.value, y: y / scale.value}),
         (x, y, width, height) => new found.UnityEngine.Rect(x, y, width, height), {
           wheelDeltaX: () => host.WheelDeltaX,
