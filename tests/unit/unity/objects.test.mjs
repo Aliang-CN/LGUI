@@ -288,7 +288,13 @@ test('Unity 对象：shown、hitDepth、onWheel、按钮音效和动效设置走
   root.AddChild(panel); panel.AddChild(button);
   const wrapped = a.wrap(button);
   assert.equal(wrapped.mode, 'Common', 'FairyGUI.ButtonMode 0 是 Common');
-  button.mode = 1; assert.equal(wrapped.mode, 'Check'); button.mode = 2; assert.equal(wrapped.mode, 'Radio'); button.mode = 0;
+  button.mode = 1; assert.equal(wrapped.mode, 'Check'); button.mode = 2; assert.equal(wrapped.mode, 'Radio');
+  // PuerTS 给的不一定是数字：枚举名、带 ToString 的枚举对象也认
+  button.mode = 'Check'; assert.equal(wrapped.mode, 'Check');
+  button.mode = {ToString: () => 'Radio'}; assert.equal(wrapped.mode, 'Radio');
+  button.mode = {ToString: () => 'Common'}; assert.equal(wrapped.mode, 'Common');
+  button.mode = 7; assert.equal(wrapped.mode, 'ButtonMode 7', '认不出的值原样写出来（绑定 selected 时报 RT-242 能看到它）');
+  button.mode = 0;
   assert.equal(wrapped.shown, true);
   panel.displayObject.visible = false; assert.equal(wrapped.shown, false, 'a hidden ancestor hides it');
   panel.displayObject.visible = true; button.onStage = false; assert.equal(wrapped.shown, false, 'gear or group removed it from the stage');
