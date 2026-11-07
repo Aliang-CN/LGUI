@@ -34,6 +34,8 @@ function props(child, model) {
   // 输入框最多能输入几个字（UTF-16 长度，和浏览器的 maxlength 一样），0 是不限。
   if (child.kind === 'input' && Number(a.maxLength) > 0) p.maxLength = Number(a.maxLength);
   if (child.kind === 'loader') p.url = a.url ?? '';
+  // 加载器的自动大小：尺寸跟着图片（和 FairyGUI 一样），headless 不算。
+  if (child.kind === 'loader' && a.autoSize === 'true') p.autoSize = 'true';
   if (child.kind === 'button') {
     const button = child.children.find(node => node.tag === 'Button')?.attrs ?? {};
     // 没写 title 时显示按钮组件里 title 子控件自己的文字（和 FairyGUI 一样），所以不写就不放。
@@ -103,10 +105,17 @@ function layoutOf(node) {
   return Object.keys(result).length ? result : undefined;
 }
 
-// 齿轮：gearDisplay、gearDisplay2 控制显示（页 ID 换成页名）；其他齿轮 headless 不模拟。
+// 改属性的齿轮：headless 不模拟，只记下有哪些、跟哪个控制器，读到它们管的属性时报不支持。
+const PROP_GEARS = ['gearText', 'gearColor', 'gearIcon', 'gearLook'];
+
+// 齿轮：gearDisplay、gearDisplay2 控制显示（页 ID 换成页名）；改属性的齿轮只记下来；改位置、尺寸的齿轮见 layoutOf；其他齿轮 headless 不模拟。
 function gears(node, component) {
   const pageNames = name => new Map(component.controllers.find(c => c.name === name)?.pages.map(page => [page.id, page.name]) ?? []);
   const result = {};
+  for (const gear of node.children.filter(n => PROP_GEARS.includes(n.tag))) {
+    if (!pageNames(gear.attrs.controller).size) continue; // 控制器不存在时 FairyGUI 也忽略这个齿轮
+    (result.props ??= []).push({gear: gear.tag, controller: gear.attrs.controller});
+  }
   for (const gear of node.children.filter(n => n.tag === 'gearDisplay' || n.tag === 'gearDisplay2')) {
     const names = pageNames(gear.attrs.controller);
     if (!names.size) continue; // 控制器不存在时 FairyGUI 也忽略这个齿轮
@@ -132,8 +141,8 @@ export function describeComponent(component, model) {
     // 组（group）：不进控件树，只记显示状态，组里的控件跟着它显隐。
     groups: component.children.filter(child => child.tag === 'group').map(group => ({
       id: group.id, name: group.name ?? '', visible: bool(group.attrs.visible, true), group: group.attrs.group ?? null, gears: gears(group, component),
-      // 组的自动排布（hz、vt）和组自己的关联会挪动组里的控件
-      layout: group.attrs.layout && group.attrs.layout !== 'none' ? group.attrs.layout : undefined, relations: layoutOf(group)?.relations
+      // 组的自动排布（hz、vt）、组自己的关联和 gearXY 会挪动组里的控件；有排布的组上的 gearSize 会改组里控件的尺寸
+      layout: group.attrs.layout && group.attrs.layout !== 'none' ? group.attrs.layout : undefined, ...layoutOf(group)
     })),
     children: component.children.filter(child => child.kind && child.name).map(child => ({
       name: child.name,

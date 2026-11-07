@@ -1,12 +1,13 @@
 // headless 后端的 UI 对象：按 headless 描述建控件树，只模拟属性和显示齿轮，不算布局、不渲染。
 // 规则（虚拟列表要能滚动、按钮和标签的文字写进 title 子控件、输入框的 maxLength……）照浏览器里的 FairyGUI 执行；
-// 布局算出来的位置和尺寸（关联、列表和组的排布、文字自动大小、gearXY / gearSize）不算，记下原因，测试读到时报 LGUI-RT-260。
+// 布局算出来的位置和尺寸（关联、列表和组的排布、文字和加载器的自动大小、gearXY / gearSize）不算，记下原因，测试读到时报 LGUI-RT-260；
+// 改属性的齿轮（gearText、gearColor、gearIcon、gearLook）也不模拟，读到它们管的属性时报 LGUI-RT-260。
 import type {
   PointerInput, Rect, UIObject, UIComponent, UIText, UIInput, UIButton, UIImage, UILoader, UIList, UIController, UITransition, UIProgress, UIGraph, UIKind, Unsubscribe,
   UILabel, UISlider, UIComboBox, UIMovieClip, UITree, UITreeNode, WheelInput
 } from '../../core/index';
 import {LgRuntimeError} from '../../core/index';
-import type {ChildDescriptor, ComponentDescriptor, GearsDescriptor, LayoutDescriptor} from './descriptor';
+import type {ChildDescriptor, ComponentDescriptor, GearsDescriptor, LayoutDescriptor, PropGear} from './descriptor';
 
 // 一组回调。
 export class Handlers<T> {
@@ -24,8 +25,10 @@ export class HeadlessGroup {
   visible = true;
   gearVisible = true;
   group: HeadlessGroup | null = null;
-  /** 组会挪动组里的控件时写着原因（自动排布、组自己的关联），否则是 null。 */
+  /** 组会挪动组里的控件时写着原因（自动排布、组自己的关联、gearXY），否则是 null。 */
   moves: string | null = null;
+  /** 组会改组里控件的尺寸时写着原因（有自动排布的组上的 gearSize），否则是 null。 */
+  resizes: string | null = null;
   constructor(readonly name: string) {}
   shown(): boolean { return this.visible && this.gearVisible && (!this.group || this.group.shown()); }
 }
@@ -36,10 +39,41 @@ export interface LayoutUnknown {
   size: string | null;
 }
 
+/**
+ * 改属性的齿轮管着的属性：值跟着控制器的页变，headless 不模拟，写着是哪个齿轮。text 是文字（gearText），color 是颜色（gearColor），
+ * icon 是图标、加载器的地址（gearIcon），look 是可用、能不能点（gearLook，还管透明度和旋转）。
+ * 代码写过这个属性以后就知道了（FairyGUI 把写的值记成当前页的），这个控制器再换页又不知道。
+ */
+export type PropUnknown = Partial<Record<'text' | 'color' | 'icon' | 'look', string>>;
+const PROP_OF: Record<PropGear, keyof PropUnknown> = {gearText: 'text', gearColor: 'color', gearIcon: 'icon', gearLook: 'look'};
+
 export class HeadlessObject implements UIObject {
   visible = true;
-  enabled = true;
-  touchable = true;
+  private isEnabled = true;
+  private isTouchable = true;
+  /** 内部用：改属性的齿轮管着、headless 不知道的属性（见 PropUnknown）。 */
+  unknownProps: PropUnknown = {};
+  get enabled(): boolean { this.checkProp('look', '可用状态'); return this.isEnabled; }
+  set enabled(value: boolean) { this.isEnabled = value; this.knownProp('look'); }
+  get touchable(): boolean { this.checkProp('look', '能不能点'); return this.isTouchable; }
+  set touchable(value: boolean) { this.isTouchable = value; this.knownProp('look'); }
+  /** 内部用：要用的属性由改属性的齿轮决定时报 LGUI-RT-260（测试、游戏代码和框架读到都算：headless 给不出网页上的值）。 */
+  checkProp(prop: keyof PropUnknown, what: string): void {
+    const by = this.unknownProps[prop];
+    if (!by) return;
+    throw new LgRuntimeError('LGUI-RT-260', `headless 不模拟改属性的齿轮，读不了 ${this.path()} 的${what}：它由${by}决定，控制器换页后网页上会变，ui/ 里写的初始值不一定是网页上的结果。`, '要测它，用 lgui test --browser 在真浏览器里跑这个测试（同一套 t.* 写法）；代码自己写过这个属性以后 headless 就知道它，直到这个控制器再换页。');
+  }
+  /** 内部用：代码写了这个属性，当前页的值就是它。 */
+  protected knownProp(prop: keyof PropUnknown): void { delete this.unknownProps[prop]; }
+  /** 内部用：报错里写的控件路径（从界面的组件名开始，列表子项写成 list[序号]）。 */
+  path(): string {
+    const parts: string[] = [];
+    for (let o: HeadlessObject | null = this; o && o.kind !== 'container'; o = o.parent) {
+      if (o.parent instanceof HeadlessList) { parts.unshift(`${o.parent.name}[${o.name}]`); o = o.parent; }
+      else parts.unshift(o.name);
+    }
+    return parts.join('.');
+  }
   private box: Rect = {x: 0, y: 0, width: 0, height: 0};
   /** 内部用：哪些位置、尺寸 headless 不知道（见 LayoutUnknown）。框架写 rect 时清掉：框架自己算的位置和网页一致。 */
   unknownLayout: LayoutUnknown = {position: null, size: null};
@@ -124,8 +158,12 @@ export class HeadlessComponent extends HeadlessObject implements UIComponent {
 }
 
 class HeadlessText extends HeadlessObject implements UIText {
-  text = '';
-  color = '#ffffff';
+  private value = '';
+  private tint = '#ffffff';
+  get text(): string { this.checkProp('text', '文字'); return this.value; }
+  set text(value: string) { this.value = value; this.knownProp('text'); }
+  get color(): string { this.checkProp('color', '颜色'); return this.tint; }
+  set color(value: string) { this.tint = value; this.knownProp('color'); }
 }
 
 class HeadlessInput extends HeadlessText implements UIInput {
@@ -149,10 +187,13 @@ function setDisplayText(o: HeadlessObject, value: string): void {
 }
 
 // 标签：和 FairyGUI 一样，title 就是 title 子控件的文字；没有 title 子控件时读到空字符串，写了也不显示。
+// 标签自己的 gearText 改的也是 title 子控件的文字；title 子控件自己有 gearText 时，读它的文字报不支持。
 class HeadlessLabel extends HeadlessComponent implements UILabel {
-  icon = '';
-  get title(): string { const t = titleChild(this); return t ? displayText(t) : ''; }
-  set title(value: string) { const t = titleChild(this); if (t) setDisplayText(t, value); }
+  private image = '';
+  get icon(): string { this.checkProp('icon', '图标'); return this.image; }
+  set icon(value: string) { this.image = value; this.knownProp('icon'); }
+  get title(): string { this.checkProp('text', '文字'); const t = titleChild(this); return t ? displayText(t) : ''; }
+  set title(value: string) { this.knownProp('text'); const t = titleChild(this); if (t) setDisplayText(t, value); }
 }
 
 export class HeadlessSlider extends HeadlessComponent implements UISlider {
@@ -181,11 +222,12 @@ export class HeadlessComboBox extends HeadlessComponent implements UIComboBox {
   get selectedIndex(): number { return this.index; }
   set selectedIndex(value: number) {
     this.index = value >= 0 && value < this.list.length ? value : -1;
+    this.knownProp('text');
     // 和 FairyGUI 一样：选中项的文字写进 title 子控件。
     const title = this.children.find(c => c.name === 'title');
     if (title instanceof HeadlessText) title.text = this.text;
   }
-  get text(): string { return this.list[this.index] ?? ''; }
+  get text(): string { this.checkProp('text', '文字'); return this.list[this.index] ?? ''; }
   onChange(handler: (index: number) => void): Unsubscribe { return this.changes.add(handler); }
   /** 内部用：用户从弹出的列表里选了第 index 项。和 FairyGUI 一样，选的是原来那一项也通知。 */
   choose(index: number): void { this.selectedIndex = index; this.changes.emit(index); }
@@ -199,12 +241,21 @@ class HeadlessMovieClip extends HeadlessObject implements UIMovieClip {
 // 按钮：和 FairyGUI 一样，title 自己记一份，同时写进 title 子控件（没有这个子控件就不显示）；一开始是 title 子控件自己的文字。
 class HeadlessButton extends HeadlessComponent implements UIButton {
   private label = '';
-  icon = '';
+  private image = '';
   sound = '';
   soundVolume = 1;
   mode = 'Common';
-  get title(): string { return this.label; }
-  set title(value: string) { this.label = value; const t = titleChild(this); if (t) setDisplayText(t, value); }
+  get icon(): string { this.checkProp('icon', '图标'); return this.image; }
+  set icon(value: string) { this.image = value; this.knownProp('icon'); }
+  get title(): string { this.checkProp('text', '文字'); return this.label; }
+  set title(value: string) { this.label = value; this.knownProp('text'); const t = titleChild(this); if (t) setDisplayText(t, value); }
+  /** 内部用：实例没写 title 时，和 FairyGUI 一样记下 title 子控件自己的文字（不写回去）；那段文字由齿轮决定时，按钮的 title 也不知道。 */
+  adoptTitle(): void {
+    const t = titleChild(this);
+    if (!t) return;
+    if (t.unknownProps.text) this.unknownProps.text = `title 子控件上的${t.unknownProps.text}`;
+    else this.label = displayText(t);
+  }
   private isSelected = false;
   // 和 FairyGUI 一样：Common 模式不保持选中；Check、Radio 选中时 button 控制器到 down 页，取消时回到 up 页。
   get selected(): boolean { return this.isSelected; }
@@ -234,9 +285,11 @@ class HeadlessLoader extends HeadlessObject implements UILoader {
   readonly errors = new Handlers<string>();
   /** 测试里设为 true 时，网络图片一律加载失败。 */
   static failExternal = false;
-  get url(): string { return this.current; }
+  // gearIcon 改的就是加载器的地址。
+  get url(): string { this.checkProp('icon', '地址（图标）'); return this.current; }
   set url(value: string) {
     this.current = value;
+    this.knownProp('icon');
     if (!value) return;
     // 图片在下一个微任务里「加载完成」，和真实后端一样是异步的。
     void Promise.resolve().then(() => {
@@ -387,7 +440,9 @@ class HeadlessProgress extends HeadlessComponent implements UIProgress {
 }
 
 class HeadlessGraph extends HeadlessObject implements UIGraph {
-  color = '#ffffff';
+  private tint = '#ffffff';
+  get color(): string { this.checkProp('color', '颜色'); return this.tint; }
+  set color(value: string) { this.tint = value; this.knownProp('color'); }
 }
 
 export class HeadlessController implements UIController {
@@ -493,7 +548,7 @@ function buildChild(child: ChildDescriptor, lookup: Lookup, owner: string | unde
 const MOVES = /^(left|right|center|top|middle|bottom|leftext|topext)-/;
 const RESIZES = /^(width|height|leftext|rightext|topext|bottomext)-/;
 
-// 记下这个控件哪些位置、尺寸 headless 不算：关联、gearXY / gearSize、文字自动大小（both、height）。
+// 记下这个控件哪些位置、尺寸 headless 不算：关联、gearXY / gearSize、文字自动大小（both、height）、加载器的自动大小。
 function markLayout(object: HeadlessObject, layout: LayoutDescriptor | undefined, autoSize: string | undefined): void {
   const unknown = object.unknownLayout;
   for (const pair of layout?.relations ?? []) {
@@ -504,7 +559,19 @@ function markLayout(object: HeadlessObject, layout: LayoutDescriptor | undefined
   }
   if (layout?.gearXY && !unknown.position) unknown.position = '改位置的齿轮（gearXY）';
   if (layout?.gearSize && !unknown.size) unknown.size = '改尺寸的齿轮（gearSize）';
-  if ((autoSize === 'both' || autoSize === 'height') && !unknown.size) unknown.size = `文字的自动大小（autoSize="${autoSize}"）`;
+  if (object.kind === 'loader') { if (autoSize === 'true' && !unknown.size) unknown.size = '加载器的自动大小（autoSize="true"，尺寸跟着图片）'; }
+  else if ((autoSize === 'both' || autoSize === 'height') && !unknown.size) unknown.size = `文字的自动大小（autoSize="${autoSize}"）`;
+}
+
+// 改属性的齿轮：headless 不模拟，记下它管的属性不知道；这个控制器每次换页又不知道（FairyGUI 换页时按页改属性）。
+function markPropGears(object: HeadlessObject, gears: GearsDescriptor | undefined, component: HeadlessComponent): void {
+  for (const g of gears?.props ?? []) {
+    const controller = component.controllers.get(g.controller);
+    if (!controller) continue;
+    const mark = (): void => { object.unknownProps[PROP_OF[g.gear]] = `改属性的齿轮 ${g.gear}（控制器 ${g.controller}）`; };
+    mark();
+    controller.changes.add(mark);
+  }
 }
 
 // 显示齿轮：和 FairyGUI 一样，gearDisplay 定下显不显示，gearDisplay2 再按条件（0 并且、1 或者）合进去；控制器换页时重算。
@@ -573,6 +640,9 @@ export function buildComponent(descriptor: ComponentDescriptor, lookup: Lookup, 
     group.visible = g.visible;
     if (g.layout) group.moves = `组 ${g.name} 的排布（layout="${g.layout}"）`;
     else if (g.relations?.length) group.moves = `组 ${g.name} 的关联（relation ${g.relations.join(',')}）`;
+    else if (g.gearXY) group.moves = `组 ${g.name} 上改位置的齿轮（gearXY）`;
+    // 和 FairyGUI 一样：组改尺寸时只有自动排布的组会改组里控件的尺寸
+    if (g.layout && g.gearSize) group.resizes = `组 ${g.name} 上改尺寸的齿轮（gearSize，组的排布 layout="${g.layout}"）`;
     groups.set(g.id, group);
     applyGears(group, g.gears, component);
   }
@@ -581,13 +651,15 @@ export function buildComponent(descriptor: ComponentDescriptor, lookup: Lookup, 
     const object = buildChild(child, lookup, owner, tr);
     object.group = child.group ? groups.get(child.group) ?? null : null;
     for (let g = object.group; g && !object.unknownLayout.position; g = g.group) if (g.moves) object.unknownLayout.position = g.moves;
+    if (object.group?.resizes && !object.unknownLayout.size) object.unknownLayout.size = object.group.resizes;
     applyGears(object, child.gears, component);
+    markPropGears(object, child.gears, component);
     component.addChild(object);
   }
   // 按钮、标签没写 title 时显示 title 子控件自己的文字（和 FairyGUI 一样，子控件建好以后再写）；下拉框的项也在子控件建好以后再给（选中项的文字要写进 title）。
   if (component instanceof HeadlessButton) {
-    const t = titleChild(component);
-    component.title = props?.title ?? (t ? displayText(t) : '');
+    if (props?.title !== undefined) component.title = props.title;
+    else component.adoptTitle();
   }
   if (component instanceof HeadlessLabel && props?.title !== undefined) component.title = props.title;
   if (component instanceof HeadlessComboBox) { component.items = props?.items ?? []; component.selectedIndex = props?.selectedIndex ?? -1; }

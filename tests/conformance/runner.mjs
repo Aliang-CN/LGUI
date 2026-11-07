@@ -269,9 +269,10 @@ const createBackend = () => {
           rejectCommand(firstError);
         };
         const ensureRunning = () => { if (stopped) throw firstError ?? new Error('LGUI-RT-001 h5 touch operation has stopped.'); };
-        const touch = (type, px, py) => {
+        // timestamp（秒，可不写）：这个触点发生的时刻。不写时 Chromium 用它收到命令的时刻。
+        const touch = (type, px, py, timestamp) => {
           ensureRunning();
-          const reply = inputCommand('Input.dispatchTouchEvent', {type, touchPoints: type === 'touchEnd' ? [] : [{x: px, y: py, id: 1}]});
+          const reply = inputCommand('Input.dispatchTouchEvent', {type, touchPoints: type === 'touchEnd' ? [] : [{x: px, y: py, id: 1}], ...(timestamp === undefined ? {} : {timestamp})});
           // Observe rejection immediately, even while waiting for DOM consumption.
           // Fulfilled receipts never control the cadence; all are checked at the end.
           reply.then(() => { progress.replies++; }, fail);
@@ -327,11 +328,18 @@ const createBackend = () => {
           } else {
             // Fast swipes keep the absolute concurrent schedule. A late CDP
             // receipt must not stretch an 80ms swipe into a slow gesture.
+            // Each point also carries the moment it happens (like a touch screen's
+            // hardware timestamp): when this process or the browser is starved and
+            // the last move and the lift arrive together, Chromium would otherwise
+            // stamp both with the arrival time, and the swipe-speed window (last
+            // 100ms) would see no movement. Thresholds and comparisons are unchanged.
+            const start = Date.now() / 1000;
+            const occurs = delay => start + delay / 1000;
             await Promise.all([
-              touch('touchStart', x, y),
+              touch('touchStart', x, y, occurs(0)),
               ...Array.from({length: steps}, (_, i) => at(ms * (i + 1) / steps,
-                () => touch('touchMove', x + dx * (i + 1) / steps, y + dy * (i + 1) / steps))),
-              at(ms, () => touch('touchEnd'))
+                () => touch('touchMove', x + dx * (i + 1) / steps, y + dy * (i + 1) / steps, occurs(ms * (i + 1) / steps)))),
+              at(ms, () => touch('touchEnd', undefined, undefined, occurs(ms)))
             ]);
           }
           replied = true;

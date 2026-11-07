@@ -1,5 +1,6 @@
 // lgui test --browser：同一个测试文件分别用 headless 和真浏览器（h5 后端）跑，规则类的结果必须一样；
-// 渲染类（关联布局算出来的位置）headless 报 LGUI-RT-260，浏览器里算得出来。这也是列表虚拟化（P3 绑定 / P4 headless）、输入框 maxLength 的共同验收。
+// 渲染类（关联布局算出来的位置）和改属性的齿轮管着的值 headless 报 LGUI-RT-260，浏览器里读得到。
+// 这也是列表虚拟化（绑定只给能滚动的列表开虚拟列表、headless 照浏览器的规则执行）、输入框 maxLength 的共同验收：两边都断言具体结果。
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -8,7 +9,8 @@ import path from 'node:path';
 import {run} from '../unit/cli/helpers.mjs';
 import {launchBrowser} from '../helpers/browser.mjs';
 
-// 在模板工程的主界面上加：有 maxLength 的输入框、没有 title 子控件的按钮、标签、Check 按钮；再加一个列表不能滚动的界面。
+// 在模板工程的主界面上加：有 maxLength 的输入框、没有 title 子控件的按钮、标签、Check 按钮；
+// 再加三个界面：列表不能滚动的、列表能滚动的（50 项）、有 gearText 的文字。
 function writeProject(root) {
   const main = path.join(root, 'ui/assets/Main');
   const add = file => fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace('  </displayList>', `    <inputtext id="n20" name="nameInput" xy="40,40" size="400,60" fontSize="30" color="#ffffff" autoSize="none" singleLine="true" maxLength="5" text=""/>
@@ -46,6 +48,19 @@ function writeProject(root) {
     <list id="n1" name="tags" xy="0,0" size="600,60" layout="row" defaultItem="ui://main0001tagitem1"/>
   </displayList>
 </component>`,
+    'ScrollTags.xml': `<component size="600,200">
+  <displayList>
+    <graph id="n0" name="bg" xy="0,0" size="600,200" type="rect" fillColor="#223344"/>
+    <list id="n1" name="tags" xy="0,0" size="600,60" layout="row" overflow="scroll" scrollBar="hidden" defaultItem="ui://main0001tagitem1"/>
+  </displayList>
+</component>`,
+    'Gears.xml': `<component size="600,200">
+  <controller name="state" pages="0,a,1,b" selected="0"/>
+  <displayList>
+    <graph id="n0" name="bg" xy="0,0" size="600,200" type="rect" fillColor="#223344"/>
+    <text id="n1" name="label" xy="0,0" size="300,60" fontSize="24" color="#ffffff" autoSize="none" text="甲"><gearText controller="state" pages="1" values="乙" default="甲"/></text>
+  </displayList>
+</component>`,
     'Tag.xml': `<component size="120,60">
   <displayList>
     <text id="n1" name="title" xy="0,0" size="120,60" fontSize="24" color="#ffffff" autoSize="none" text=""/>
@@ -58,6 +73,8 @@ function writeProject(root) {
     <component id="framelb1" name="Frame.xml" path="/"/>
     <component id="toggle01" name="Toggle.xml" path="/"/>
     <component id="tagsvw01" name="Tags.xml" path="/" exported="true"/>
+    <component id="scrlvw01" name="ScrollTags.xml" path="/" exported="true"/>
+    <component id="gearsvw1" name="Gears.xml" path="/" exported="true"/>
     <component id="tagitem1" name="Tag.xml" path="/" exported="true"/>
   </resources>`));
   fs.writeFileSync(path.join(root, 'tests/rules.test.ts'), `import { test } from 'node:test';
@@ -67,6 +84,13 @@ import app from '../src/main';
 
 class TagView extends ItemView { static component = 'Main/Tag'; bind = { title: { text: (d: { label: string }) => d.label } }; }
 class TagsView extends View { static component = 'Main/Tags'; static layer = 'popup' as const; bind = { tags: { items: [{ label: '甲' }, { label: '乙' }], item: TagView } }; }
+class ScrollTagsView extends View {
+  static component = 'Main/ScrollTags';
+  static layer = 'popup' as const;
+  bind = { tags: { items: Array.from({ length: 50 }, (_, i) => ({ label: \`项\${i}\` })), item: TagView } };
+  isVirtual(): boolean { return (this.ui as unknown as { tags: { virtual: boolean } }).tags.virtual; }
+}
+class GearsView extends View { static component = 'Main/Gears'; static layer = 'popup' as const; bind = {}; }
 
 test('点按钮，显示点击次数', async () => {
   const t = await lgui.testing.start(app);
@@ -111,6 +135,20 @@ test('不能滚动的列表绑定数据', async () => {
   t.end();
 });
 
+test('能滚动的列表经绑定开成虚拟列表', async () => {
+  const t = await lgui.testing.start(app);
+  const view = await t.open(ScrollTagsView);
+  assert.deepEqual([view.isVirtual(), t.items('Main/ScrollTags.tags'), t.text('Main/ScrollTags.tags[1].title')], [true, 50, '项1']);
+  t.end();
+});
+
+test('gearText 管着的文字', async () => {
+  const t = await lgui.testing.start(app);
+  await t.open(GearsView);
+  assert.equal(t.text('Main/Gears.label'), '甲');
+  t.end();
+});
+
 test('关联布局算出来的位置', async () => {
   const t = await lgui.testing.start(app, { screen: { width: 2400, height: 1080 } });
   const r = lgui.ui.find('Main/MainView.button');
@@ -123,7 +161,7 @@ test('关联布局算出来的位置', async () => {
 
 const outcomes = json => Object.fromEntries(json.data.results.map(r => [r.name, r.ok]));
 
-test('lgui test 和 lgui test --browser：规则类的结果一样；关联布局的位置 headless 报 LGUI-RT-260，浏览器里算得出来', async t => {
+test('lgui test 和 lgui test --browser：规则类的结果一样；关联布局的位置、gearText 管着的文字 headless 报 LGUI-RT-260，浏览器里读得到', async t => {
   const browser = await launchBrowser();
   if (!browser) { t.skip('未找到 Chrome 或 Edge'); return; }
   await browser.close();
@@ -139,15 +177,15 @@ test('lgui test 和 lgui test --browser：规则类的结果一样；关联布�
   assert.equal(b.data.backend, 'h5');
   assert.deepEqual([h.data.files, b.data.files], [['tests/rules.test.ts'], ['tests/rules.test.ts']]);
   const [ho, bo] = [outcomes(h), outcomes(b)];
-  assert.equal(Object.keys(bo).length, 7, JSON.stringify(b.data.results));
+  assert.equal(Object.keys(bo).length, 9, JSON.stringify(b.data.results));
 
-  for (const name of ['点按钮，显示点击次数', '打字遵守 maxLength', '按钮没有 title 子控件：读文字报 LGUI-RT-262', '标签的 title 写进 title 子控件', 'Check 按钮点一下选中，再点取消']) {
+  // 规则类两边都通过（每个测试里断言的是具体结果）。列表虚拟化：不能滚动的列表绑定数据不开虚拟列表、两项都在；能滚动的开成虚拟列表。
+  for (const name of ['点按钮，显示点击次数', '打字遵守 maxLength', '按钮没有 title 子控件：读文字报 LGUI-RT-262', '标签的 title 写进 title 子控件', 'Check 按钮点一下选中，再点取消', '不能滚动的列表绑定数据', '能滚动的列表经绑定开成虚拟列表']) {
     assert.deepEqual([name, ho[name], bo[name]], [name, true, true], `${headless.stdout}\n${browserRun.stdout}`);
   }
-  // 列表能不能开虚拟列表：两边的规则一样（P3 让绑定只给能滚动的列表开虚拟列表之前两边都报错，之后两边都通过）。
-  assert.equal(ho['不能滚动的列表绑定数据'], bo['不能滚动的列表绑定数据'], `${headless.stdout}\n${browserRun.stdout}`);
-  // 渲染类：headless 不算关联布局，读到就报 LGUI-RT-260；浏览器里按真实布局算。
-  assert.equal(ho['关联布局算出来的位置'], false);
-  assert.match(h.data.failed.find(f => f.name === '关联布局算出来的位置').error, /LGUI-RT-260/);
-  assert.equal(bo['关联布局算出来的位置'], true, browserRun.stdout);
+  // headless 不算关联布局、不模拟改属性的齿轮，读到就报 LGUI-RT-260；浏览器里读得到真实的值。
+  for (const name of ['关联布局算出来的位置', 'gearText 管着的文字']) {
+    assert.deepEqual([name, ho[name], bo[name]], [name, false, true], `${headless.stdout}\n${browserRun.stdout}`);
+    assert.match(h.data.failed.find(f => f.name === name).error, /LGUI-RT-260/);
+  }
 });
