@@ -281,21 +281,30 @@ test('补丁 10：界面离开舞台再回来（换版重排、齿轮藏起来�
   const resources = '<component id="main0001" name="Main.xml" path="/" exported="true"/>';
   const scenario = async patched => {
     const {page, errors, close} = await open(browser, {resources, files, patched});
-    await page.evaluate(() => { for (const name of ['fly', 'loop', 'atEnd']) window.view.getTransition(name).play(null, name === 'loop' ? -1 : 1); });
-    await page.waitForTimeout(150);
-    // UIManager 重排层内顺序时就是这样：从容器里拿出来再放回去
-    const removed = await page.evaluate(() => { const v = window.view; window.fgui.GRoot.inst.removeChild(v); window.fgui.GRoot.inst.addChild(v); return {coin: v.getChild('coin').y, gem: v.getChild('gem').y}; });
-    const alphas = [];
-    for (let i = 0; i < 4; i++) { alphas.push(await page.evaluate(() => window.view.getChild('glow').alpha)); await page.waitForTimeout(130); }
-    await page.waitForTimeout(200);
+    // 不按墙上时间等（CI 机器忙时一段时间里可能一帧都没出）：放完马上离开舞台（这时 fly 在起点 y=400、正在放），
+    // 再等真实条件：fly 不再在放（没修时离开舞台就停了；修好后放到结束），loop 在之后的 60 帧里透明度变没变。
+    const removed = await page.evaluate(() => {
+      const v = window.view;
+      for (const name of ['fly', 'loop', 'atEnd']) v.getTransition(name).play(null, name === 'loop' ? -1 : 1);
+      // UIManager 重排层内顺序时就是这样：从容器里拿出来再放回去
+      window.fgui.GRoot.inst.removeChild(v); window.fgui.GRoot.inst.addChild(v);
+      return {coin: v.getChild('coin').y, gem: v.getChild('gem').y};
+    });
+    await page.waitForFunction(() => !window.view.getTransition('fly').playing, null, {timeout: 10000});
+    const loopMoved = await page.evaluate(() => new Promise(resolve => {
+      const glow = window.view.getChild('glow'), first = glow.alpha;
+      let frames = 60;
+      const step = () => { if (Math.abs(glow.alpha - first) > 0.05) resolve(true); else if (--frames) requestAnimationFrame(step); else resolve(false); };
+      requestAnimationFrame(step);
+    }));
     const result = await page.evaluate(() => ({coin: window.view.getChild('coin').y, gem: window.view.getChild('gem').y, fly: window.view.getTransition('fly').playing, loop: window.view.getTransition('loop').playing}));
     await close();
-    return {removed, result, loopMoved: Math.max(...alphas) - Math.min(...alphas) > 0.05, errors};
+    return {removed, result, loopMoved, errors};
   };
   try {
     // 复现：不装补丁，fly 停在半路，loop 停了
     const before = await scenario(false);
-    assert.ok(before.result.coin > 50, `没修时金币停在半路：y=${before.result.coin}`);
+    assert.equal(before.result.coin, 400, '没修时金币停在离开舞台时的位置（起点），没放完');
     assert.equal(before.result.loop, false, '没修时循环动效停了');
     assert.equal(before.removed.gem, 0, 'options=4 离开舞台时跳到结束');
 
@@ -325,17 +334,25 @@ test('动效目标是组：高级组在浏览器里能动；普通组生成时�
   </component>`};
   try {
     const {page, errors, close} = await open(browser, {resources: '<component id="main0001" name="Main.xml" path="/" exported="true"/>', files});
+    // 不按墙上时间等：play() 当场就把起点（y=400）设上了，之后每一帧才往前走；CI 机器忙时 100 毫秒里可能一帧都没出，
+    // 读到的还是起点。所以只放到一半（endTime = 0.125 秒，总长 0.25 秒），等它真的放到那里（完成回调）再读：
+    // 停下的位置按 0.125 秒算，和中间出了几帧无关。10 秒还没放到就是页面不出帧，直接报出来。
     const state = await page.evaluate(async () => {
-      const v = window.view;
+      const v = window.view, child = v.getChild('c'), moveA = v.getTransition('moveA');
       const items = name => v.getTransition(name)._items.length;
-      v.getTransition('moveA').play();
-      await new Promise(r => setTimeout(r, 100));
-      return {plain: v.getChild('plain'), plainItems: items('moveP'), advItems: items('moveA'), middle: v.getChild('c').y};
+      let start = null;
+      const middle = await new Promise((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error('10 秒内动效没放到一半：页面没有出帧')), 10000);
+        moveA.play(() => { clearTimeout(timer); resolve(child.y); }, 1, 0, 0, 0.125);
+        start = child.y;
+      });
+      return {plain: v.getChild('plain'), plainItems: items('moveP'), advItems: items('moveA'), start, middle};
     });
     assert.equal(state.plain, null, '普通组只在编辑器里有');
     assert.equal(state.plainItems, 0, '指向普通组的动效条目生成时去掉了（要靠 lgui check 提前报出来）');
     assert.equal(state.advItems, 1);
-    assert.ok(state.middle > 100 && state.middle < 400, `高级组带着组里的控件动：y=${state.middle}`);
+    assert.equal(state.start, 400, '一放就带着组里的控件到起点');
+    assert.ok(state.middle > 100 && state.middle < 400, `放到一半时组里的控件在中间：y=${state.middle}`);
     assert.deepEqual(errors, []);
     await close();
   } finally {
@@ -409,7 +426,25 @@ async function ninePage(browser, patched) {
       await page.goto(server.url + '/index.html');
       await page.waitForFunction(() => window.ready || window.failure, null, {timeout: 15000});
       assert.equal(await page.evaluate(() => window.failure ?? null), null);
-      await page.evaluate(() => new Promise(r => setTimeout(r, 500)));
+      // 不按墙上时间等：每个九宫格都画上了（补丁 12 的 9 块，或照旧 border-image；补丁 12 看完透明度之前两样都没有），
+      // 用到的图片都解码完，再等两帧画到屏幕上
+      await page.evaluate(async () => {
+        const nines = [];
+        for (let i = 0; i < window.view.numChildren; i++) { const c = window.view.getChildAt(i); nines.push(c.element.matches('fgui-img') ? c.element : c.element.firstElementChild); }
+        const painted = el => el.querySelectorAll('[data-lgui-nine]').length === 9 || getComputedStyle(el).borderImageSource !== 'none';
+        const deadline = performance.now() + 10000;
+        while (!nines.every(painted)) {
+          if (performance.now() > deadline) throw new Error('10 秒内九宫格没画上');
+          await new Promise(r => requestAnimationFrame(r));
+        }
+        const urls = new Set();
+        for (const el of nines) for (const node of [el, ...el.querySelectorAll('[data-lgui-nine]')]) {
+          const style = getComputedStyle(node);
+          for (const value of [style.borderImageSource, style.backgroundImage]) { const url = /^url\("?(.*?)"?\)$/.exec(value)?.[1]; if (url) urls.add(url); }
+        }
+        await Promise.all([...urls].map(url => { const image = new Image(); image.src = url; return image.decode(); }));
+        await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+      });
       const boxes = await page.evaluate(() => { const out = []; for (let i = 0; i < window.view.numChildren; i++) { const c = window.view.getChildAt(i); const el = c.element.matches('fgui-img') ? c.element : c.element.firstElementChild; const r = c.element.getBoundingClientRect(); out.push({name: c.name, x: r.x, y: r.y, w: r.width, h: r.height, pieces: el.querySelectorAll('[data-lgui-nine]').length, borderImage: getComputedStyle(el).borderImageSource !== 'none', repeat: getComputedStyle(el).borderImageRepeat}); } return out; });
       const {data, info} = await sharp()(await page.screenshot({fullPage: true})).raw().toBuffer({resolveWithObject: true});
       const lum = k => data[k] + data[k + 1] + data[k + 2];
