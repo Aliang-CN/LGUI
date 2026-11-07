@@ -25,6 +25,8 @@ const codes = async root => {
 const VIEW = 'src/modules/main/MainView.ts';
 // 动效：标题转一圈（标题没设轴心时报 LGUI-UI-067）
 const SPIN = '</displayList>\n  <transition name="spin"><item time="0" type="Rotation" target="n1" duration="12" tween="true" startValue="0" endValue="360"/></transition>';
+// 动效移动一个组（attrs 给组加属性，比如 advanced="true"）
+const MOVE_GROUP = attrs => `  <group id="n8" name="g" xy="100,100" size="200,80"${attrs}/>\n  </displayList>\n  <transition name="move"><item time="0" type="XY" target="n8" duration="12" tween="true" startValue="100,100" endValue="300,100"/></transition>`;
 const CTRL = 'src/modules/main/MainController.ts';
 const MAIN_XML = 'ui/assets/Main/MainView.xml';
 const MAIN_PKG = 'ui/assets/Main/package.xml';
@@ -63,6 +65,10 @@ const cases = {
   'LGUI-UI-068': {
     fail: r => edit(r, MAIN_XML, /(name="title"[^>]*?) singleLine="true"/, '$1'),
     pass: r => edit(r, MAIN_XML, /(name="title"[^>]*?)size="1200,120"([^>]*?) singleLine="true"/, '$1size="1200,140"$2')
+  },
+  'LGUI-UI-069': {
+    fail: r => edit(r, MAIN_XML, '</displayList>', MOVE_GROUP('')),
+    pass: r => edit(r, MAIN_XML, '</displayList>', MOVE_GROUP(' advanced="true"'))
   },
   'LGUI-UI-030': {fail: r => edit(r, 'i18n/en.json', /\s*"main\.hint": "[^"]*",/, '')},
   'LGUI-UI-031': {fail: r => edit(r, 'i18n/en.json', '{', '{\n  "nope.unused": "x",'), warning: true},
@@ -267,6 +273,27 @@ test('LGUI-UI-066：绑定表给按钮写 text、按钮组件里没有 title 子
   const ok = await fresh();
   edit(ok, VIEW, "button: { click: () => mainController.click() },", "button: { text: pick(mainModel, s => String(s.clicks)), click: () => mainController.click() },");
   assert.ok(!(await codes(ok)).includes('LGUI-UI-066'));
+});
+
+test('LGUI-UI-066：标签实例写了标题、下拉框实例写了选项、绑定表给下拉框写 items，组件里没有 title 子控件也报；有 title 就不报', async () => {
+  const root = await fresh();
+  // 一致性测试的 Controls 包里有标签（label001）和下拉框（combo001）；ControlsPanel 里的 badge 写了标题「徽章」
+  fs.cpSync(path.join(import.meta.dirname, '../conformance/ui/Controls'), path.join(root, 'ui/assets/Controls'), {recursive: true});
+  const PANEL = 'ui/assets/Controls/ControlsPanel.xml';
+  edit(root, PANEL, '<component id="n5" name="mode" src="combo001" xy="60,240" size="300,60"/>', '<component id="n5" name="mode" src="combo001" xy="60,240" size="300,60"><ComboBox><item title="低"/><item title="高"/></ComboBox></component>');
+  edit(root, 'ui/assets/Controls/package.xml', '<component id="combo001" name="ComboBox.xml" path="/"/>', '<component id="combo001" name="ComboBox.xml" path="/" exported="true"/>');
+  for (const file of [MAIN_XML, 'ui/assets/Main/MainView@portrait.xml']) edit(root, file, '</displayList>', '  <component id="n9" name="mode" pkg="ctl00001" src="combo001" xy="20,20" size="300,60"/>\n  </displayList>');
+  edit(root, VIEW, "button: { click: () => mainController.click() },", "button: { click: () => mainController.click() },\n    mode: { items: pick(mainModel, s => [String(s.clicks)]) },");
+  assert.ok(!(await codes(root)).includes('LGUI-UI-066'));
+
+  edit(root, 'ui/assets/Controls/Label.xml', 'name="title"', 'name="label"');
+  edit(root, 'ui/assets/Controls/ComboBox.xml', 'name="title"', 'name="label"');
+  const json = JSON.parse((await run(['check', '--json'], root)).stdout);
+  const found = json.data.findings.filter(f => f.code === 'LGUI-UI-066');
+  assert.equal(found.length, 3, JSON.stringify(found));
+  assert.ok(found.some(f => f.file === PANEL && /标签 badge 写了标题「徽章」，但标签组件 Controls\/Label 里没有名为 title 的子控件，标题在网页上显示不出来/.test(f.message) && /现在的文字控件：label/.test(f.fix)), JSON.stringify(found));
+  assert.ok(found.some(f => f.file === PANEL && /下拉框 mode 写了选项，但下拉框组件 Controls\/ComboBox 里没有名为 title 的子控件，选中项的文字在网页上显示不出来/.test(f.message)), JSON.stringify(found));
+  assert.ok(found.some(f => f.file === VIEW && /mode 绑定了 items，但它的下拉框组件 Controls\/ComboBox 里没有名为 title 的子控件/.test(f.message)), JSON.stringify(found));
 });
 
 test('LGUI-UI-067：缩放、旋转都是原样的值不报；同一个动效里设了 Pivot、按下缩放的按钮（downEffect="scale"）不报；缩放没设轴心报', async () => {

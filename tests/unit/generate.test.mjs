@@ -64,7 +64,7 @@ test('找不到界面工程文件时报 LGUI-CLI-020', async () => {
   await assert.rejects(generateWeb(path.join(temp(), 'UI.fairy'), temp()), error => error.code === 'LGUI-CLI-020');
 });
 
-test('图集上限：没写 maxAtlasSize 的包默认 4096，竖屏的 1080×2600 背景能生成（网页和 Unity）；比上限大的图报 LGUI-CLI-113，写了 <publish maxAtlasSize> 的包按它的', async () => {
+test('图集上限：没写 maxAtlasSize 的包用 ui/settings/Publish.json 的 atlasSetting.maxSize，没写才默认 4096，竖屏的 1080×2600 背景能生成（网页和 Unity）；比上限大的图报 LGUI-CLI-113，写了 <publish maxAtlasSize> 的包按它的', async () => {
   const {sharp} = await import('../../plugin/tools/lib/vendor.mjs');
   const ui = path.join(temp(), 'ui');
   fs.cpSync(path.dirname(projects.template), ui, {recursive: true});
@@ -83,10 +83,22 @@ test('图集上限：没写 maxAtlasSize 的包默认 4096，竖屏的 1080×260
   for (const generate of [generateWeb, generateUnity]) {
     const error = await generate(fairy, temp()).then(() => null, e => e);
     assert.deepEqual(error?.errors?.map(e => e.code), ['LGUI-CLI-113'], String(error?.stack ?? error));
-    assert.match(error.errors[0].message, /包 Main 的图片 strip\.png（5000×64）比图集上限 4096×4096 大/);
+    assert.match(error.errors[0].message, /包 Main 的图片 strip\.png（5000×64）比图集上限 4096×4096（LGUI 默认）大/);
     assert.match(error.errors[0].fix, /<publish name="Main" maxAtlasSize="8192"\/>/);
   }
-  fs.writeFileSync(descriptor, fs.readFileSync(descriptor, 'utf8').replace('</resources>', '</resources>\n  <publish name="Main" maxAtlasSize="8192"/>'));
+  // ui/settings/Publish.json 写了全局 atlasSetting.maxSize 就用用户的：8192 时 5000 宽的图能生成；2048 时 1080×2600 的背景就超了
+  const publish = path.join(ui, 'settings', 'Publish.json');
+  fs.mkdirSync(path.dirname(publish), {recursive: true});
+  fs.writeFileSync(publish, JSON.stringify({atlasSetting: {maxSize: 8192}}));
+  await generateWeb(fairy, temp());
+  await generateUnity(fairy, temp());
+  fs.writeFileSync(publish, JSON.stringify({atlasSetting: {maxSize: 2048}}));
+  fs.writeFileSync(descriptor, original.replace('</resources>', '  <image id="bg000001" name="bg.png" path="/" exported="true"/>\n  </resources>'));
+  const small = await generateWeb(fairy, temp()).then(() => null, e => e);
+  assert.deepEqual(small?.errors?.map(e => e.message), ['包 Main 的图片 bg.png（1080×2600）比图集上限 2048×2048（ui/settings/Publish.json 的 atlasSetting.maxSize）大，打不进图集。'], String(small?.stack ?? small));
+  fs.rmSync(publish);
+
+  fs.writeFileSync(descriptor, original.replace('</resources>', '  <image id="bg000001" name="bg.png" path="/" exported="true"/>\n    <image id="strip001" name="strip.png" path="/" exported="true"/>\n  </resources>\n  <publish name="Main" maxAtlasSize="8192"/>'));
   await generateWeb(fairy, temp());
 
   const {atlasError} = await import('../../plugin/tools/lib/generate/atlas.mjs');

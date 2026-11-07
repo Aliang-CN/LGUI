@@ -29,7 +29,7 @@ export async function runCheck(root, project) {
   if (program) {
     const files = sourceFiles(root, program);
     out.push(...mvcRules({ts, checker: program.getTypeChecker(), root, files, model}));
-    out.push(...uiRules({root, model, languages: project.languages, redDots: redDotBindings({ts, root, files}), texts: wordBindings({ts, root, files}, 'text'), fullScreens: fullScreenViews({ts, root, files}), sounds: project.sounds}));
+    out.push(...uiRules({root, model, languages: project.languages, redDots: redDotBindings({ts, root, files}), texts: wordBindings({ts, root, files}, 'text'), items: wordBindings({ts, root, files}, 'items'), fullScreens: fullScreenViews({ts, root, files}), sounds: project.sounds}));
     const tables = Object.fromEntries(project.languages.map(l => [l, readTable(root, l)]));
     out.push(...i18nRules({root, model, tables, defaultLanguage: project.defaultLanguage, usedKeys: usedTextKeys({ts, root, files})}));
   }

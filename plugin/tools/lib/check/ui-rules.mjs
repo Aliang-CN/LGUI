@@ -13,12 +13,15 @@ const DEFAULT_FONT = 12; // XML 里不写 fontSize 时 FairyGUI 用 12 号
 const AUTO_SIZES = ['shrink', 'height', 'ellipsis', 'both'];
 const DEFAULT_LEADING = 3; // XML 里不写 leading 时 FairyGUI 的行距
 
-// 按钮的标题（实例上的 <Button title>、绑定表的 text、翻译）只写进按钮组件里名为 title 的子控件：FairyGUI 按名字找，找不到就不显示。
-const titleless = c => c?.extension === 'Button' && !c.children.some(ch => ch.name === 'title');
+// 按钮、标签、下拉框的文字（实例上的 title、下拉框的选项、绑定表的 text / items、翻译）只写进组件里名为 title 的子控件：FairyGUI 按名字找，找不到就不显示。
+const TITLED = {Button: '按钮', Label: '标签', ComboBox: '下拉框'};
+const titleless = c => Boolean(TITLED[c?.extension]) && !c.children.some(ch => ch.name === 'title');
 const titleFix = c => {
   const texts = c.children.filter(ch => ['text', 'richtext'].includes(ch.tag) && ch.name).map(ch => ch.name);
-  return `把 ${c.fullName} 里显示标题的文字控件改名为 title${texts.length ? `（现在的文字控件：${texts.join('、')}）` : '（现在没有文字控件，加一个名为 title 的文字控件）'}。按钮的标题只写进名为 title 的子控件。`;
+  return `把 ${c.fullName} 里显示文字的控件改名为 title${texts.length ? `（现在的文字控件：${texts.join('、')}）` : '（现在没有文字控件，加一个名为 title 的文字控件）'}。按钮、标签、下拉框的文字只写进名为 title 的子控件。`;
 };
+// 写了什么：按钮、标签是标题，下拉框是选中项的文字
+const shows = c => c.extension === 'ComboBox' ? '选中项的文字' : '标题';
 
 // 动效里旋转、缩放的值都是原样（缩放 1,1、旋转 0）时不需要轴心。
 const IDENTITY = {Scale: v => v.split(',').every(n => Number(n) === 1), Rotation: v => Number(v) === 0};
@@ -55,7 +58,7 @@ export function soundProblem(model, url) {
   return null;
 }
 
-export function uiRules({root, model, languages, redDots = [], texts = [], fullScreens = [], sounds = null}) {
+export function uiRules({root, model, languages, redDots = [], texts = [], items = [], fullScreens = [], sounds = null}) {
   const out = [];
   const rel = file => path.relative(root, file).split(path.sep).join('/');
   const add = (code, message, fix, file, line) => out.push(finding(code, message, fix, {file: file ? rel(file) : undefined, line, col: 1}));
@@ -132,8 +135,10 @@ export function uiRules({root, model, languages, redDots = [], texts = [], fullS
           if (texts.length) add('LGUI-UI-060', `组件 ${component.fullName} 的 ${child.name} 在 gearText 里写了用户能看到的文字（${texts.join('|')}）。这些字不会被提取翻译，lgui test 里也看不到。`, '删掉 gearText，改用绑定表：text: pick(数据, s => lgui.t(键))，文字写进 i18n/<语言>.json。', component.file, child.line);
         }
         const button = child.children.find(n => n.tag === 'Button' || n.tag === 'Label');
-        // UI-066 按钮实例上写了标题，按钮组件里却没有 title 子控件：网页上显示不出来（headless 照样读得到）
-        if (button?.tag === 'Button' && button.attrs.title && titleless(child.ref)) add('LGUI-UI-066', `组件 ${component.fullName} 的按钮 ${child.name} 写了标题「${button.attrs.title}」，但按钮组件 ${child.ref.fullName} 里没有名为 title 的子控件，网页上显示不出来。`, titleFix(child.ref), component.file, child.line);
+        // UI-066 按钮、标签实例上写了标题，下拉框实例上写了选项，组件里却没有 title 子控件：网页上显示不出来
+        const own = child.ref && child.children.find(n => n.tag === child.ref.extension);
+        const written = own && (own.attrs.title || (own.tag === 'ComboBox' && own.children.some(n => n.tag === 'item' && n.attrs.title)));
+        if (written && titleless(child.ref)) add('LGUI-UI-066', `组件 ${component.fullName} 的${TITLED[own.tag]} ${child.name} 写了${own.attrs.title ? `标题「${own.attrs.title}」` : '选项'}，但${TITLED[own.tag]}组件 ${child.ref.fullName} 里没有名为 title 的子控件，${shows(child.ref)}在网页上显示不出来。`, titleFix(child.ref), component.file, child.line);
         // UI-061 按钮直接绑控制器（点了就切页）：绕过了 Model，lgui test 里也不切
         if (button?.tag === 'Button' && button.attrs.controller) add('LGUI-UI-061', `组件 ${component.fullName} 的按钮 ${child.name} 直接绑了控制器 ${button.attrs.controller}（点了就切页）。这样切页不经过 Model，lgui test 里也不会切。`, '删掉 <Button> 上的 controller 和 page；在绑定表里写 click: () => xxxController.方法()，由 Controller 改 Model，控制器写 page: pick(…)。', component.file, child.line);
         // UI-065 按钮实例上写的音效；写空表示不出声
@@ -183,6 +188,17 @@ export function uiRules({root, model, languages, redDots = [], texts = [], fullS
           add('LGUI-UI-067', `组件 ${component.fullName} 的动效 ${transition.attrs.name} 给 ${target.name ?? id} 做了${type === 'Scale' ? '缩放' : '旋转'}，但 ${target.name ?? id} 没设轴心（pivot），会绕左上角${type === 'Scale' ? '缩放' : '转'}。`, `在 ${target.name ?? id} 上写 pivot="0.5,0.5"（绕中心）；确实要绕左上角就写 pivot="0,0"。`, component.file, lineWith(component.file, [`type="${type}"`, `target="${id}"`]));
         }
       }
+      // UI-069 动效的目标是普通组：普通组只在编辑时有，生成界面包时会被去掉，动效找不到它、动不了
+      const plainGroups = new Set();
+      for (const transition of component.root?.children.filter(n => n.tag === 'transition') ?? []) {
+        for (const item of transition.children.filter(n => n.tag === 'item')) {
+          const id = item.attrs.target;
+          const group = id && !plainGroups.has(id) ? component.children.find(c => c.id === id && c.tag === 'group') : null;
+          if (!group || group.attrs.advanced === 'true') continue;
+          plainGroups.add(id);
+          add('LGUI-UI-069', `组件 ${component.fullName} 的动效 ${transition.attrs.name} 的目标是普通组 ${group.name ?? id}。普通组生成界面包时会被去掉，动效动不了它。`, `在 ${group.name ?? id} 上写 advanced="true"（高级组，生成后还在）；或者让动效直接动组里的控件。`, component.file, lineWith(component.file, ['<item', `target="${id}"`]));
+        }
+      }
       // UI-004、UI-005 重名（复用生成类型时的检查）
       for (const e of members(component).errors) add(e.code, e.message, e.fix, component.file, e.line);
       // UI-007 横竖两版
@@ -230,15 +246,16 @@ export function uiRules({root, model, languages, redDots = [], texts = [], fullS
     }
     if (!owner || !owner.children.some(c => c.name === 'redDot')) out.push(finding('LGUI-UI-012', `${b.component} 的 ${b.key} 绑定了 redDot，但它里面没有名为 redDot 的子控件。`, '在 ui/ 里给它放一个 Common/RedDot 的实例，名字叫 redDot。', b.loc));
   }
-  // UI-066 绑定表给按钮写了 text，按钮组件里却没有 title 子控件：网页上显示不出来（headless 照样读得到）
-  for (const b of texts) {
+  // UI-066 绑定表给按钮、标签写了 text，给下拉框写了 items，组件里却没有 title 子控件：网页上显示不出来
+  for (const b of [...texts.map(t => ({...t, word: 'text'})), ...items.map(t => ({...t, word: 'items'}))]) {
     const component = findComponent(model, b.component);
     let owner = component, child = null;
     for (const part of b.key.split('.')) {
       child = owner?.children.find(c => c.name === part) ?? null;
       owner = child?.ref ?? null;
     }
-    if (child?.tag === 'component' && titleless(child.ref)) out.push(finding('LGUI-UI-066', `${b.component} 的 ${b.key} 绑定了 text，但它的按钮组件 ${child.ref.fullName} 里没有名为 title 的子控件，网页上显示不出来。`, titleFix(child.ref), b.loc));
+    if (child?.tag !== 'component' || !titleless(child.ref) || (b.word === 'items' && child.ref.extension !== 'ComboBox')) continue;
+    out.push(finding('LGUI-UI-066', `${b.component} 的 ${b.key} 绑定了 ${b.word}，但它的${TITLED[child.ref.extension]}组件 ${child.ref.fullName} 里没有名为 title 的子控件，${shows(child.ref)}在网页上显示不出来。`, titleFix(child.ref), b.loc));
   }
   return out;
 }
