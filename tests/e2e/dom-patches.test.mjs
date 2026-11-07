@@ -131,3 +131,36 @@ test('包不在散图映射里、包地址错误时明确报错', async t => {
     await browser.close();
   }
 });
+
+test('补丁装不上（上游少了要挂的方法）：报 LGUI-RT-230；再调用报同一个错，前面装上的钩子不会被包第二层', async t => {
+  const browser = await launchBrowser();
+  if (!browser) { t.skip('未找到 Chrome 或 Edge'); return; }
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'lgui-dom-retry-'));
+  fs.mkdirSync(path.join(root, 'web'));
+  const entry = path.join(root, 'entry.ts');
+  // 补丁 10 挂在 Transition.onOwnerAddedToStage 上，排在文字补丁（applyFormat）之后装
+  fs.writeFileSync(entry, `import * as fgui from ${JSON.stringify(path.join(h5, 'vendor/fairygui.module.js'))};
+    import {installFairyGuiPatches} from ${JSON.stringify(path.join(h5, 'fairygui-patches/index.ts'))};
+    delete (fgui.Transition.prototype as any).onOwnerAddedToStage;
+    const attempt = (): any => { try { installFairyGuiPatches(); return null; } catch (error) { return error; } };
+    const first = attempt();
+    const applyFormat = (fgui.TextField.prototype as any).applyFormat;
+    const second = attempt();
+    Object.assign(window, {result: {code: first?.code, message: first?.message, same: first === second, wrappedOnce: (fgui.TextField.prototype as any).applyFormat === applyFormat}, ready: true});`);
+  await esbuild().build({entryPoints: [entry], bundle: true, format: 'esm', target: 'es2020', outfile: path.join(root, 'web/app.js'), logLevel: 'silent'});
+  fs.writeFileSync(path.join(root, 'web/index.html'), '<!doctype html><meta charset="utf-8"><body><script type="module" src="/app.js"></script>');
+  const server = await serve({'/': path.join(root, 'web')});
+  try {
+    const page = await browser.newPage();
+    await page.goto(server.url + '/index.html');
+    await page.waitForFunction(() => window.ready);
+    const result = await page.evaluate(() => window.result);
+    assert.equal(result.code, 'LGUI-RT-230');
+    assert.match(result.message, /补丁 10 装不上：上游没有 Transition\.onOwnerAddedToStage\(\) 了/);
+    assert.equal(result.same, true, '再调用抛的是同一个错');
+    assert.equal(result.wrappedOnce, true, '已经装上的 applyFormat 钩子没有再包一层');
+  } finally {
+    await server.close();
+    await browser.close();
+  }
+});

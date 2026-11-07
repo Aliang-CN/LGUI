@@ -66,5 +66,31 @@ export function fields(patch: number, object: object, label: string, names: read
   for (const name of names) if (!(name in object)) throw missing(patch, `${label} 的字段 ${name}`);
 }
 
+/** 字段不是构造函数里设的（新建的对象上还没有，fields 查不到）：查上游设它的那个 setter 或方法里还写着 `this.字段 =`。
+ * 只查访问器在不在不够——访问器还在、背后的字段改了名，钩子读到的就一直是 undefined。要在装钩子之前查：有的 setter 装上钩子就换成我们的了。 */
+export function assigned(patch: number, proto: object, label: string, member: string, name: string): void {
+  let descriptor: PropertyDescriptor | undefined;
+  for (let o: object | null = proto; o && !descriptor; o = Object.getPrototypeOf(o) as object | null) descriptor = Object.getOwnPropertyDescriptor(o, member);
+  const code: unknown = descriptor?.set ?? descriptor?.value;
+  const writes = typeof code === 'function' && new RegExp(`\\bthis\\.${name}\\s*=(?!=)`).test(Function.prototype.toString.call(code));
+  if (!writes) throw missing(patch, `${label}.${member} 里设的字段 ${name}`);
+}
+
+/** 只装一次。装不上（抛了 LGUI-RT-230 / 231）以后再调用，原样再抛同一个错、不再装：已经挂上的钩子不会被包第二层。 */
+export function once(install: () => void): () => void {
+  let state: {error: unknown} | 'done' | null = null;
+  return () => {
+    if (state === 'done') return;
+    if (state) throw state.error;
+    try {
+      install();
+      state = 'done';
+    } catch (error) {
+      state = {error};
+      throw error;
+    }
+  };
+}
+
 /** 读一个字段（钩子里用；装的时候已经查过它在）。 */
 export function field<T>(object: object, name: string): T { return Reflect.get(object, name) as T; }
