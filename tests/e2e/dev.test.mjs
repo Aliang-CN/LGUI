@@ -20,7 +20,8 @@ test('lgui dev：显示主界面，改 XML / 代码 / 文本表自动刷新，�
   assert.equal(init.code, 0, init.stderr);
   const root = path.join(parent, 'game');
   const logs = [];
-  const server = await startDev(root, readProject(root), {port: 0, log: line => logs.push(line)});
+  const pushes = []; // dev 推送刷新的时刻（终端打印「已…，刷新页面。」）
+  const server = await startDev(root, readProject(root), {port: 0, log: line => { logs.push(line); if (/^已.*，刷新页面。$/.test(line)) pushes.push(Date.now()); }});
   try {
     const page = await browser.newPage({viewport: {width: 1280, height: 720}, locale: 'zh-CN'});
     await page.addInitScript(() => {
@@ -43,12 +44,18 @@ test('lgui dev：显示主界面，改 XML / 代码 / 文本表自动刷新，�
     await waitText(page, '点下面的按钮试试');
     assert.deepEqual(pageErrors, []);
 
-    // 改 XML 里的标题文字，2 秒内页面更新
+    // 改 XML 里的标题文字，2 秒内页面更新（执行计划 S2-A8 的验收）。
+    // 分两段等真实的条件（dev 推送刷新、页面显示新标题），各自最多等 5 秒，最后再比 2 秒：
+    // 超了能看出是慢在 dev 重新生成界面、打包，还是页面重新加载；以前直接等 2 秒，超时只报一句等不到。
     const xml = path.join(root, 'ui/assets/Main/MainView.xml');
     const started = Date.now();
     fs.writeFileSync(xml, fs.readFileSync(xml, 'utf8').replace('text="你好，LGUI"', 'text="改过的标题"'));
-    await waitText(page, '改过的标题', 2000);
+    for (let waited = 0; !pushes.some(at => at >= started) && waited < 5000; waited += 10) await new Promise(resolve => setTimeout(resolve, 10));
+    const pushedAt = pushes.find(at => at >= started);
+    assert.ok(pushedAt, `改了 MainView.xml 以后 5 秒内 dev 没有重新生成界面、推送刷新。终端输出：${logs.join(' | ')}`);
+    await waitText(page, '改过的标题');
     const uiMs = Date.now() - started;
+    assert.ok(uiMs <= 2000, `改 XML 到页面更新用了 ${uiMs} 毫秒，超过 2 秒：dev 重新生成界面、打包到推送刷新 ${pushedAt - started} 毫秒，推送以后页面重新加载到显示新标题 ${Date.now() - pushedAt} 毫秒`);
 
     // 改文本表
     const zh = path.join(root, 'i18n/zh-CN.json');
