@@ -31,6 +31,14 @@ export interface NativePlatformHost {
   TransitionAutoPlay(transition: NativeTransition): boolean;
   TransitionAutoPlayTimes(transition: NativeTransition): number;
   TransitionAutoPlayDelay(transition: NativeTransition): number;
+  /** 代码补间要知道的事（TweenInfo.cs）：第 index 个齿轮跟的控制器名（没有是空字符串）、按钮的按下效果、动效的每一项。 */
+  GearController(object: NativeObject, index: number): string;
+  ButtonDownEffect(button: NativeButton): number;
+  ButtonDownEffectValue(button: NativeButton): number;
+  DisableButtonDownEffect(button: NativeButton): void;
+  TransitionItemCount(transition: NativeTransition): number;
+  TransitionItemType(transition: NativeTransition, index: number): number;
+  TransitionItemTarget(transition: NativeTransition, index: number): NativeObject | null;
   Fetch(url: string, method: string, headersJson: string, body: string, complete: (responseJson: string) => void): void;
   /** 系统剪贴板里的文字（GUIUtility.systemCopyBuffer），没有文字时是空字符串。 */
   ClipboardGet(): string;
