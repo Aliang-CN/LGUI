@@ -36,13 +36,26 @@ function tweenFixture() {
   fs.writeFileSync(pkg, fs.readFileSync(pkg, 'utf8').replace('</resources>', `    <component id="pbtn0001" name="PressBtn.xml" path="/"/>
     <component id="dbtn0001" name="DarkBtn.xml" path="/"/>
     <component id="rslot001" name="Reward.xml" path="/" exported="true"/>
+    <component id="side0001" name="Side.xml" path="/" exported="true"/>
+    <component id="side0002" name="Side@portrait.xml" path="/" exported="true"/>
   </resources>`));
+  // 另一个有竖版的界面：一个界面换版出错不挡住它换版。
+  for (const [file, size] of [['Side.xml', '400,300'], ['Side@portrait.xml', '300,400']]) {
+    fs.writeFileSync(path.join(bag, file), xml(`<component size="${size}">
+  <displayList>
+    <image id="n0" name="dot" src="flag0001" xy="10,10" size="20,20" pivot="0.5,0.5"/>
+  </displayList>
+</component>`));
+  }
   const button = effect => xml(`<component size="160,56" extention="Button">
   <controller name="button" pages="0,up,1,down" selected="0"/>
   <displayList>
     <text id="n0" name="title" xy="0,0" size="160,56" fontSize="24" color="#333333" autoSize="none" singleLine="true" text="领取"/>
   </displayList>
   <Button ${effect}/>
+  <transition name="flash">
+    <item time="0" type="Color" target="n0" tween="true" startValue="#333333" endValue="#ff0000" duration="24"/>
+  </transition>
 </component>`);
   fs.writeFileSync(path.join(bag, 'PressBtn.xml'), button('downEffect="scale" downEffectValue="0.8"'));
   fs.writeFileSync(path.join(bag, 'DarkBtn.xml'), button('downEffect="dark" downEffectValue="0.6"'));
@@ -122,7 +135,8 @@ test('roll 用在进度条上；写错报 LGUI-RT-284（没配 text / progress�
     await t.advance(200);
     assert.equal(t.value(`${P}.bar`), 60);
     t.end();
-    const open = async bind => { class Bad extends View { static component = P; static layer = 'page'; bind = bind; } await assert.rejects(t.open(Bad), /LGUI-RT-284/); t.end(); };
+    // 故意写错的也记了 error 日志：t.end() 报 LGUI-RT-176（开发模式既抛出、也记日志）
+    const open = async bind => { class Bad extends View { static component = P; static layer = 'page'; bind = bind; } await assert.rejects(t.open(Bad), /LGUI-RT-284/); assert.throws(() => t.end(), /LGUI-RT-176.*LGUI-RT-284/); };
     await open({coin: {roll: {duration: 100}}});
     await open({gold: {text: '1', roll: {duration: 100}}});
     await open({gold: {text: pick(hero, s => s.name), roll: {duration: 100}}});
@@ -224,7 +238,7 @@ test('format.duration：clock 是 05:09、满 1 小时 1:02:03；units 取最大
     await lgui.setLanguage('en');
     assert.equal(format.duration(93_600_000, 'units'), '1d 2h');
     assert.throws(() => format.duration(1, 'long'), /LGUI-RT-285/);
-    t.end();
+    assert.equal(t.finish(false), null, '故意写错的记了 error 日志：只收尾');
   } finally { teardown(); }
 });
 
@@ -289,30 +303,32 @@ test('抖动：dx 来回 6 轮回到原位；duration: 0 马上到终值；空�
   } finally { teardown(); }
 });
 
-test('被全屏界面盖住时暂停（delay 也停），露出来接着走；被弹窗压住照常走', async () => {
-  const {View, CoverView, t, P} = await setup();
+test('被全屏界面盖住时暂停：delay 里盖住，delay 也停；露出来接着走完、resolve；被弹窗压住照常走', async () => {
+  const {lgui, View, CoverView, t, P} = await setup();
   try {
     class MainView extends View { static component = P; static layer = 'page'; }
     class Popup extends View { static component = 'Common/Confirm'; static layer = 'popup'; }
     const view = await t.open(MainView);
-    void view.tween(view.ui.coin, {alpha: 0}, {duration: 400, ease: 'Linear', delay: 100});
-    await t.advance(200);
-    assert.equal(t.look(`${P}.coin`).alpha, 0.75);
+    let done = false;
+    void view.tween(view.ui.coin, {alpha: 0}, {duration: 400, ease: 'Linear', delay: 300}).then(() => { done = true; });
+    await t.advance(100); // 还在 delay 里（剩 200）
     await t.open(CoverView);
-    await t.advance(500);
-    assert.equal(t.look(`${P}.coin`).alpha, 0.75, '盖住时不走');
-    t.snapshot();
-    await t.open(Popup); // 弹窗压在 CoverView 上面，不影响下面
-    t.end();
-    const again = await t.open(MainView);
-    void again.tween(again.ui.coin, {alpha: 0}, {duration: 400, ease: 'Linear'});
+    await t.advance(1000);
+    assert.deepEqual([t.look(`${P}.coin`).alpha, done], [1, false], '盖住时 delay 也不走');
+    lgui.ui.close(CoverView);
+    await t.advance(200); // 走完剩下的 delay
+    assert.equal(t.look(`${P}.coin`).alpha, 1);
+    await t.advance(200);
+    assert.equal(t.look(`${P}.coin`).alpha, 0.5);
+    await t.advance(200);
+    assert.deepEqual([t.look(`${P}.coin`).alpha, done], [0, true], '露出来以后走完并 resolve');
+    void view.tween(view.ui.coin, {alpha: 1}, {duration: 400, ease: 'Linear'});
     await t.open(Popup);
     await t.advance(400);
-    assert.equal(t.look(`${P}.coin`).alpha, 0, '被弹窗压住但没盖住：照常走');
+    assert.equal(t.look(`${P}.coin`).alpha, 1, '被弹窗压住但没盖住：照常走');
     t.end();
   } finally { teardown(); }
 });
-
 test('界面关闭：全部停掉、不 resolve，碰过的属性还原成 ui/ 里的样子（缓存的组件再打开是原样）', async () => {
   const {lgui, View, t, P} = await setup({config: {uiCache: {keepClosedViews: 1}}});
   try {
@@ -350,7 +366,8 @@ test('旋转重建：正在走的补间按路径换到新组件上接着走，aw
     await t.open(RewardView);
     await t.advance(100);
     await t.setScreen(1080, 1920); // 换竖版（等 200 毫秒）
-    assert.ok(t.look(`${P}.rewards[2]`).scaleX > 0 && t.look(`${P}.rewards[2]`).scaleX < 1, '新组件上接着走，进度不变');
+    // rewards[2]：delay 160、duration 400、Quad.Out；一共走了 300 毫秒 → t = 0.35 → 0.35 × (2 − 0.35) = 0.5775
+    assert.ok(Math.abs(t.look(`${P}.rewards[2]`).scaleX - 0.5775) < 1e-9, `新组件上接着走，进度不变（${t.look(`${P}.rewards[2]`).scaleX}）`);
     assert.equal(t.look(`${P}.corner`).dx, 0, '放完的样子不带过去');
     await t.advance(1000);
     for (const i of [0, 1, 2]) assert.equal(t.look(`${P}.rewards[${i}]`).scaleX, 1);
@@ -486,5 +503,141 @@ test('正式构建：写错时记 error 日志、这次调用不生效（不抛�
     assert.ok(result instanceof Promise);
     assert.deepEqual([t.snapshot().views[0].tweens, t.look(`${P}.corner`).scaleX], [0, 1], '这次调用不生效');
     assert.throws(() => t.end(), /LGUI-RT-176.*LGUI-RT-283/, '记了 error 级的日志（lgui test 里让测试失败）');
+  } finally { teardown(); }
+});
+
+test('PartView 的补间：补到一半关界面，碰过的属性还原（缓存再打开是原样），帧回调退订，t.end() 不报泄漏', async () => {
+  const {lgui, View, fw, t, P} = await setup({config: {uiCache: {keepClosedViews: 1}}});
+  try {
+    let part = null;
+    class BarPart extends fw.PartView { static component = 'Common/CurrencyBar'; constructor() { super(); part = this; } }
+    class MainView extends View { static component = P; static layer = 'page'; bind = {topBar: {view: BarPart}}; }
+    await t.open(MainView);
+    let resolved = false;
+    void part.tween(part.ui.gold, {alpha: 0.2, dx: 30}, {duration: 400}).then(() => { resolved = true; });
+    await t.advance(200);
+    assert.equal(t.snapshot().views[0].tweens, 1, '部件的补间算在界面里');
+    lgui.ui.close(MainView);
+    await t.advance(500);
+    assert.equal(resolved, false);
+    await t.open(MainView);
+    assert.deepEqual([t.look(`${P}.topBar.gold`).alpha, t.look(`${P}.topBar.gold`).dx], [1, 0], '缓存的组件是原样');
+    t.end();
+  } finally { teardown(); }
+});
+
+test('重建时按路径一个目标都找不到：报 LGUI-RT-281，补间真正结束（不 resolve、帧回调退订）；这个界面照样换完版，别的界面也照样换版', async () => {
+  const {lgui, View, fw, t, P} = await setup();
+  try {
+    // 横版、竖版的控件名 lgui 生成时就查（不一致不让生成），这里在后端建竖版组件时拿掉 corner，模拟新组件上按路径找不到。
+    const backend = globalThis.__lguiTest.current.backend;
+    const create = backend.create.bind(backend);
+    backend.create = (pkg, version) => { const c = create(pkg, version); const corner = c.child('corner'); if (corner && version === 'BagPanel@portrait') c.removeChild(corner); return c; };
+    let resolved = false;
+    // 换版按层从下到上（hud 先）：出错的界面放在 hud，排在后面的 page 界面也要照样换版。
+    class SideView extends View { static component = 'Bag/Side'; static layer = 'page'; }
+    class MainView extends View { static component = P; static layer = 'hud'; onOpen() { void this.tween(this.ui.corner, {dx: 40}, {duration: 1000}).then(() => { resolved = true; }); } }
+    const main = await t.open(MainView);
+    const side = await t.open(SideView);
+    const [mainBefore, sideBefore] = [main.__component, side.__component];
+    await t.advance(100);
+    await assert.rejects(t.setScreen(1080, 1920), /LGUI-RT-281/);
+    assert.notEqual(main.__component, mainBefore, '出错的界面也换到了竖版');
+    assert.equal(mainBefore.disposed, true, '旧组件释放了');
+    assert.notEqual(side.__component, sideBefore, '别的界面照样换版');
+    await globalThis.__lguiTest.sim.advance(backend, 2000); // 不经 t.advance：它会先查到上面记下的 error 日志
+    assert.equal(fw.devMode(), true);
+    assert.equal(resolved, false);
+    assert.equal(t.snapshot().views.reduce((n, v) => n + v.tweens, 0), 0);
+    lgui.ui.close(MainView);
+    lgui.ui.close(SideView);
+    assert.throws(() => t.end(), e => /LGUI-RT-176/.test(e.message) && !/LGUI-RT-112/.test(e.message), '只有记下的 error 日志，没有泄漏（补间、帧回调）');
+    void fw;
+  } finally { teardown(); }
+});
+
+test('补间结束以后被关联挪过、拉过：下一次补间和关闭还原都按关联算出来的原位，不写回旧的', async () => {
+  const {lgui, View, t, P} = await setup({config: {uiCache: {keepClosedViews: 1}}});
+  try {
+    class MainView extends View { static component = P; static layer = 'page'; }
+    const view = await t.open(MainView);
+    const coin = view.__component.child('coin');
+    const {x, width} = coin.rect;
+    await view.tween(coin, {dx: 10, width: 100}, {duration: 0});
+    // 模拟关联：屏幕变宽，coin 被挪了 50、拉宽了 20（headless 不算关联，直接改位置、尺寸）
+    coin.rect = {...coin.rect, x: coin.rect.x + 50, width: coin.rect.width + 20};
+    assert.equal(t.look(`${P}.coin`).dx, 10, '偏移还是 10（原位跟着挪了 50）');
+    await view.tween(coin, {dx: 0}, {duration: 0});
+    assert.equal(coin.rect.x, x + 50, '回到关联算出来的原位');
+    lgui.ui.close(MainView);
+    await t.open(MainView);
+    assert.deepEqual([coin.rect.x, coin.rect.width], [x + 50, width + 20], '关闭还原也按关联挪过、拉过的原位');
+    t.end();
+  } finally { teardown(); }
+});
+
+test('正式构建：补间和动效抢属性、roll 取出的不是数字、tick 写错、itemsOf 用在虚拟列表、format.duration 写法错，都只记 error 日志、这次不生效，不抛进 Controller', async () => {
+  const {fw, lgui, View, ItemView, pick, format, t, P} = await setup({production: true});
+  try {
+    assert.equal(fw.devMode(), false);
+    const fx = lgui.Model({blink: false, gold: 1, items: [1, 2]});
+    class Slot extends ItemView { static component = 'Bag/ItemSlot'; }
+    class MainView extends View {
+      static component = P; static layer = 'page';
+      bind = {blink: {playing: pick(fx, s => s.blink)}, gold: {text: pick(fx, s => s.gold), roll: {duration: 100}}, timer: {text: pick(fx, s => String(s.gold)), tick: -1}, list: {items: pick(fx, s => s.items), item: Slot}};
+    }
+    const view = await lgui.ui.open(MainView); // t.open 打开后马上查 error 日志，这里最后再查
+    assert.equal(t.text(`${P}.timer`), '1', 'tick 写错：照常显示，不定时重算');
+    void view.tween(view.ui.coin, {alpha: 0}, {duration: 1000});
+    fx.set({...fx.get(), blink: true}); // 不抛
+    assert.equal(view.__component.transition('blink').playing, false, '这次不放');
+    fx.set({...fx.get(), gold: 'x'}); // 不抛
+    assert.equal(t.text(`${P}.gold`), '1', '这次不滚，照旧显示原来的数');
+    assert.deepEqual(view.itemsOf(view.ui.list), []);
+    assert.equal(format.duration(65_000, 'long'), '01:05', '按 clock 显示');
+    view.stopTweens();
+    assert.throws(() => t.end(), e => ['LGUI-RT-282', 'LGUI-RT-284'].some(code => e.message.includes(code)), '都记了 error 日志');
+  } finally { teardown(); }
+});
+
+test('按下效果走手势识别：按住按钮开始拖动（比如在可滚动列表里）就弹回，不一直缩着', async () => {
+  const {View, fw, t, P} = await setup();
+  try {
+    class ShopView extends View { static component = P; static layer = 'page'; }
+    const view = await t.open(ShopView);
+    const button = view.__component.child('claim');
+    const backend = globalThis.__lguiTest.current.backend;
+    const send = (type, x) => {
+      const event = {type, pointerId: 1, pointerType: 'touch', x, y: 620, time: backend.state.now};
+      if (type === 'down') button.pointer.emit(event);
+      backend.state.handlers.pointer.emit(event);
+    };
+    send('down', 80);
+    await t.advance(60);
+    assert.ok(Math.abs(t.look(`${P}.claim`).scaleX - 0.8) < 1e-9, '按住：缩到 0.8');
+    send('move', 120); // 移出点击的范围：开始拖动
+    await t.advance(120);
+    assert.equal(t.look(`${P}.claim`).scaleX, 1, '开始拖动就弹回，手还按着');
+    send('up', 120);
+    await t.advance(120);
+    assert.equal(t.look(`${P}.claim`).scaleX, 1);
+    void fw;
+    t.end();
+  } finally { teardown(); }
+});
+
+test('打字机：[img]…[/img] 整段算一个字，不在图片地址中间截断；按钮的颜色补间也查 title 上的动效（LGUI-RT-282）', async () => {
+  const {lgui, View, pick, t, P} = await setup();
+  try {
+    const fx = lgui.Model({rich: '[img]ui://Bag/flag[/img]好的', flash: false});
+    class StoryView extends View { static component = P; static layer = 'page'; bind = {rich: {text: pick(fx, s => s.rich)}, 'claim.flash': {playing: pick(fx, s => s.flash)}}; }
+    const view = await t.open(StoryView);
+    await view.tween(view.ui.rich, {chars: 1}, {from: {chars: 0}, duration: 0});
+    assert.equal(t.text(`${P}.rich`), '[img]ui://Bag/flag[/img]');
+    await view.tween(view.ui.rich, {chars: 0}, {duration: 0});
+    assert.equal(t.text(`${P}.rich`), '');
+    fx.set({...fx.get(), flash: true});
+    assert.throws(() => view.tween(view.ui.claim, {color: '#00ff00'}, {duration: 100}), e => e.code === 'LGUI-RT-282' && /title/.test(e.message));
+    assert.throws(() => t.end(), /LGUI-RT-176.*LGUI-RT-282/, '故意写错的记了 error 日志');
   } finally { teardown(); }
 });

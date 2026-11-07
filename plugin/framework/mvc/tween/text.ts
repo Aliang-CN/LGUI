@@ -11,6 +11,15 @@ const typing = new WeakSet<UIObject>();
 
 // FairyGUI 的 UBB 标签：整段带上、不拆开，不算字数。
 const UBB = /^\[\/?(?:b|i|u|s|color|size|font|url|img|align|sup|sub)(?:=[^\]]*)?\]/i;
+// 图片 [img]地址[/img]：整段算一个看得见的单位，不在地址中间截断（没有结束标签的照普通标签处理）。
+const IMAGE = /^\[img\][\s\S]*?\[\/img\]/i;
+
+/** 从 i 开始的一个看得见的单位有多长（图片整段，否则一个 Unicode 码位）。 */
+function unit(text: string, i: number): number {
+  const image = IMAGE.exec(text.slice(i));
+  if (image) return image[0].length;
+  return (text.codePointAt(i) ?? 0) > 0xffff ? 2 : 1;
+}
 
 /** 能不能补 chars：文字、富文本、输入框，按钮、标签（标题）。 */
 export function hasText(object: UIObject): boolean { return 'title' in object || 'text' in object && 'color' in object; }
@@ -21,27 +30,27 @@ function setRaw(object: UIObject, text: string): void {
   else (object as UIText).text = text;
 }
 
-/** 看得见的字数（UBB 标签不算；一个字是一个 Unicode 码位）。 */
+/** 看得见的字数（UBB 标签不算；一个字是一个 Unicode 码位，一张 [img] 图片算一个）。 */
 export function visibleCount(text: string): number {
   let count = 0;
   for (let i = 0; i < text.length;) {
-    const tag = UBB.exec(text.slice(i));
-    if (tag) { i += tag[0].length; continue; }
-    i += (text.codePointAt(i) ?? 0) > 0xffff ? 2 : 1;
+    const size = IMAGE.test(text.slice(i)) ? 0 : UBB.exec(text.slice(i))?.[0].length ?? 0;
+    if (size) { i += size; continue; }
+    i += unit(text, i);
     count++;
   }
   return count;
 }
 
-/** 前 n 个看得见的字（中间的 UBB 标签整段带上）。 */
+/** 前 n 个看得见的字（中间的 UBB 标签整段带上，图片整张带上或整张不带）。 */
 export function firstChars(text: string, n: number): string {
   let count = 0;
   let i = 0;
   while (i < text.length) {
-    const tag = UBB.exec(text.slice(i));
-    if (tag) { i += tag[0].length; continue; }
+    const size = IMAGE.test(text.slice(i)) ? 0 : UBB.exec(text.slice(i))?.[0].length ?? 0;
+    if (size) { i += size; continue; }
     if (count >= n) break;
-    i += (text.codePointAt(i) ?? 0) > 0xffff ? 2 : 1;
+    i += unit(text, i);
     count++;
   }
   return text.slice(0, i);

@@ -86,6 +86,11 @@ export function valueAt(c: Channel, eased: number): number {
 
 // 浮点写进去再读出来可能差一点点（Unity 是 float）：差得不多就算没被别人改过。
 const same = (a: number, b: number): boolean => Math.abs(a - b) <= 1e-3 * Math.max(1, Math.abs(b));
+// 颜色按 r、g、b 分量比（各端换算可能差 1），不拿整数做相对容差。
+const sameColor = (a: number, b: number): boolean => [16, 8, 0].every(shift => Math.abs(((a >> shift) & 0xff) - ((b >> shift) & 0xff)) <= 1);
+
+/** 位置、尺寸：关联（屏幕尺寸变了）会挪它、拉它，原位要跟着走。 */
+const LAYOUT: readonly Key[] = ['x', 'y', 'width', 'height'];
 
 /** 「控件 + 属性」这一项归哪类东西管时报的说明：动效的哪一类项会改它。 */
 export const TOUCHED_BY: Record<TransitionTouch, Key[]> = {
@@ -144,8 +149,10 @@ class Engine {
   readonly tweens = new Set<Tween>();
   /** 控件 + 一项 → 正在改它的补间。 */
   readonly owners = new WeakMap<UIObject, Map<Key, Tween>>();
-  /** 控件在 ui/ 里的原值（第一次被补间碰到时记下；x、y 跟着关联的挪动更新）。 */
+  /** 控件在 ui/ 里的原值（第一次被补间碰到时记下；位置、尺寸跟着关联的挪动更新）。 */
   readonly origins = new WeakMap<UIObject, Map<Key, number>>();
+  /** 位置、尺寸上次由补间写进去的值：再读到不一样，就是关联挪过它，原位跟着挪同样多。 */
+  readonly written = new WeakMap<UIObject, Map<Key, number>>();
   private stopFrames: (() => void) | null = null;
 
   /** 有没有订阅帧回调（t.end() 检查）。 */
@@ -162,8 +169,40 @@ class Engine {
       value = key === 'chars' ? shownChars(object) : key === 'press' ? (object as UIButton).pressScale : key === 'roll' ? 0 : object.getProp(key);
       map.set(key, value);
       group.touched.add(object);
-    }
+    } else if (LAYOUT.includes(key)) value = this.follow(object, key);
     return value;
+  }
+
+  /** 位置、尺寸：上次补间写完以后被关联挪过、拉过，原位跟着挪同样多（补间结束以后也一样），返回现在的原位。 */
+  follow(object: UIObject, key: Key): number {
+    const origins = this.origins.get(object);
+    const origin = origins?.get(key) ?? 0;
+    const last = this.written.get(object)?.get(key);
+    if (!origins || last === undefined) return origin;
+    const now = object.getProp(key as TweenProp);
+    if (same(now, last)) return origin;
+    origins.set(key, origin + now - last);
+    this.written.get(object)?.set(key, now);
+    return origin + now - last;
+  }
+
+  /** 记下补间写进去的位置、尺寸。 */
+  private wrote(object: UIObject, key: Key, value: number): void {
+    let map = this.written.get(object);
+    if (!map) { map = new Map(); this.written.set(object, map); }
+    map.set(key, value);
+  }
+
+  /** 从引擎里摘下一个补间（重建时先摘、接到新组件上再加回来）：不结束、不 resolve。没有补间了就退订帧回调。 */
+  detach(tween: Tween): void {
+    for (const c of tween.channels) {
+      const map = this.owners.get(c.object);
+      if (map?.get(c.key) === tween) map.delete(c.key);
+      if (c.key === 'chars') setTyping(c.object, false);
+    }
+    this.tweens.delete(tween);
+    tween.group.tweens.delete(tween);
+    if (!this.tweens.size && this.stopFrames) { this.stopFrames(); this.stopFrames = null; }
   }
 
   /** 现在的值（x、y 是相对原位的偏移）。 */
@@ -248,23 +287,25 @@ class Engine {
       case 'press': if (c.last !== value) { c.last = value; (o as UIButton).pressScale = value; } return;
       case 'chars': if (c.last !== value) { c.last = value; showChars(o, value); } return;
       case 'x': case 'y': {
-        const origins = this.origins.get(o) as Map<Key, number>;
-        const now = o.getProp(c.key);
-        if (c.last !== null && !same(now, c.last)) origins.set(c.key, (origins.get(c.key) ?? 0) + now - c.last);
-        const target = (origins.get(c.key) ?? 0) + value;
+        // 位置：被关联挪了，按新的原位接着算偏移。
+        const target = this.follow(o, c.key) + value;
         c.last = target;
-        if (now !== target) o.setProp(c.key, target);
+        if (o.getProp(c.key) !== target) o.setProp(c.key, target);
+        this.wrote(o, c.key, target);
         return;
       }
       case 'width': case 'height': {
+        // 尺寸：被关联拉了，原位跟着变（关闭时还原成关联算出来的），补间照样往终值写。
+        this.follow(o, c.key);
         if (o.getProp(c.key) !== value) o.setProp(c.key, value);
         c.last = value;
+        this.wrote(o, c.key, value);
         return;
       }
       default: {
         if (c.last !== null && devMode()) {
           const now = o.getProp(c.key);
-          if (!same(now, c.last)) throw fail('LGUI-RT-282', `${o.name} 的 ${c.key} 正在补间，但被别的东西改了（比如开始放的 ui/ 动效、齿轮），两边抢同一个属性。`, '同一个控件的同一个属性只交给一方：动效和补间都要动它就套一层，外层归一方、里层归另一方（mvc-spec「代码补间」）。');
+          if (c.key === 'color' ? !sameColor(now, c.last) : !same(now, c.last)) throw fail('LGUI-RT-282', `${o.name} 的 ${c.key} 正在补间，但被别的东西改了（比如开始放的 ui/ 动效、齿轮），两边抢同一个属性。`, '同一个控件的同一个属性只交给一方：动效和补间都要动它就套一层，外层归一方、里层归另一方（mvc-spec「代码补间」）。');
         }
         if (c.last === value) return;
         c.last = value;
@@ -344,7 +385,10 @@ export class TweenGroup {
     for (const tween of [...this.tweens]) e.end(tween, false);
     for (const object of this.touched) {
       const origins = e.origins.get(object);
+      // 位置、尺寸还原成关联现在算出来的原位，不写回旧的。
+      if (origins && !object.disposed) for (const key of LAYOUT) if (origins.has(key)) e.follow(object, key);
       e.origins.delete(object);
+      e.written.delete(object);
       if (!origins || object.disposed) continue;
       for (const [key, value] of origins) {
         if (key === 'chars') showAll(object);
@@ -365,18 +409,17 @@ export class TweenGroup {
       const object = tween.channels[0]?.object;
       const steps = root && object && tween.kind === 'code' ? pathOf(root, object) : null;
       if (!steps) { e.end(tween, false); continue; }
-      for (const c of tween.channels) {
-        const map = e.owners.get(c.object);
-        if (map?.get(c.key) === tween) map.delete(c.key);
-        if (c.key === 'chars') setTyping(c.object, false);
-      }
-      e.tweens.delete(tween);
-      this.tweens.delete(tween);
+      e.detach(tween);
       moving.push({tween, steps});
     }
-    for (const object of this.touched) e.origins.delete(object);
+    for (const object of this.touched) { e.origins.delete(object); e.written.delete(object); }
     this.touched.clear();
     return moving;
+  }
+
+  /** 摘下来以后没接到新组件上的补间（新版里没有这个部件、界面关了）：真正结束，不 resolve。 */
+  drop(moving: readonly Moving[]): void {
+    for (const {tween} of moving) tween.ended = true;
   }
 
   /** 重建后：按路径在新组件上找到目标，接着走（进度不变；dx、dy 是偏移，换到另一个方向的版本上也对得上）。找不到报 LGUI-RT-281。 */
@@ -386,7 +429,7 @@ export class TweenGroup {
     for (const {tween, steps} of moving) {
       const object = follow(root, steps);
       if (!object) {
-        tween.ended = true;
+        tween.ended = true; // 已经从引擎里摘下来了：不再走，不 resolve
         failure ??= fail('LGUI-RT-281', `${where} 重建后按路径 ${describePath(steps)} 找不到补间的目标，补间停掉。`, '横版、竖版（和各语言的版本）里控件名要一致；补间的目标写成 this.ui.<控件>。');
         continue;
       }
