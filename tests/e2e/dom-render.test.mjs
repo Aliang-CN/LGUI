@@ -410,7 +410,7 @@ async function ninePage(browser, patched) {
     })().catch(error => { (window as any).failure = String(error); });`);
   // 复现用：把补丁 12 换成空的
   const stub = path.join(root, 'no-nine-slice.ts');
-  fs.writeFileSync(stub, 'export const nineSliceFields = [] as const; export function installNineSlice(): void {} export function setNineSliceOverlap(_: number): void {}');
+  fs.writeFileSync(stub, 'export const nineSliceFields = [] as const; export const nineSliceAssigned = [] as const; export function installNineSlice(): void {} export function setNineSliceOverlap(_: number): void {}');
   const plugins = patched ? [] : [{name: 'no-nine-slice', setup(b) { b.onResolve({filter: /nine-slice$/}, () => ({path: stub})); }}];
   await esbuild().build({entryPoints: [entry], bundle: true, format: 'esm', target: 'es2020', outfile: path.join(root, 'web/app.js'), logLevel: 'silent', plugins});
   fs.writeFileSync(path.join(root, 'web/index.html'), '<!doctype html><meta charset="utf-8"><style>body{margin:0;background:#fff}</style><body><script type="module" src="/app.js"></script>');
