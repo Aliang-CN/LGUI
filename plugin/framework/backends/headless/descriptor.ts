@@ -7,7 +7,12 @@ export interface GearsDescriptor {
   display?: {controller: string; pages: string[]};
   /** gearDisplay2：再加一个条件，condition 0 是「并且」、1 是「或者」。 */
   display2?: {controller: string; pages: string[]; condition: number};
+  /** 改属性的齿轮（gearText、gearColor、gearIcon、gearLook）和它跟的控制器：headless 不模拟，读到它管的属性时报 LGUI-RT-260。 */
+  props?: {gear: PropGear; controller: string}[];
 }
+
+/** 改属性的齿轮：gearText 改文字，gearColor 改颜色，gearIcon 改图标（加载器的地址），gearLook 改透明度、旋转、变灰和能不能点。 */
+export type PropGear = 'gearText' | 'gearColor' | 'gearIcon' | 'gearLook';
 
 /** 位置和尺寸由谁决定（headless 不算这些布局，读到受影响的位置、尺寸时报 LGUI-RT-260）。 */
 export interface LayoutDescriptor {
@@ -35,6 +40,10 @@ export interface GroupDescriptor {
   layout?: string;
   /** 组自己的关联（组挪动时组里的控件跟着动）。 */
   relations?: string[];
+  /** 组上有改位置的齿轮（gearXY）：组挪动时组里的控件跟着动。 */
+  gearXY?: boolean;
+  /** 组上有改尺寸的齿轮（gearSize）：有自动排布（layout）的组改尺寸时，组里的控件跟着改尺寸。 */
+  gearSize?: boolean;
 }
 
 /** 一个子控件。 */
@@ -55,7 +64,7 @@ export interface ChildDescriptor {
   props: {
     visible: boolean; enabled: boolean; touchable: boolean; customData?: string; text?: string; promptText?: string; url?: string; title?: string; icon?: string;
     selected?: boolean; selectedIndex?: number; value?: number; max?: number; min?: number; color?: string; items?: string[]; playing?: boolean; frame?: number; clickToExpand?: number; sound?: string; soundVolume?: number; scrollable?: boolean;
-    /** 文字的自动大小（none、both、height、shrink、ellipsis）。 */
+    /** 文字的自动大小（none、both、height、shrink、ellipsis）；加载器写 true 是尺寸跟着图片。 */
     autoSize?: string;
     /** 输入框最多能输入几个字（UTF-16 长度），不写是不限。 */
     maxLength?: number;

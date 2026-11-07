@@ -1,6 +1,6 @@
 // lgui.testing：只在 lgui test 里能用。用 headless 后端和假时钟启动 app（lgui test --browser 换成 h5 后端和真浏览器），提供模拟操作和读控件属性。
 // 路径写成「包/组件.控件路径」，列表子项用 list[序号]。
-// headless 只算规则、不算布局：读到布局算出来的位置和尺寸时报 LGUI-RT-260（要测就用 --browser）。
+// headless 只算规则、不算布局：读到布局算出来的位置和尺寸、改属性的齿轮管着的属性时报 LGUI-RT-260（要测就用 --browser）。
 import type {Backend, Insets, UIComponent, UIController, UIList, UIObject, UIText, UIButton, UILabel, UISlider, UIComboBox, UIMovieClip} from '../core/index';
 import {LgRuntimeError, notImplemented} from '../core/index';
 import type {AppDefinition, Snapshot, TestHarness} from './lgui';

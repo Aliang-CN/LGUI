@@ -266,6 +266,55 @@ test('h5 原始输入：真实主线程延迟 180ms，保留发生时间且不�
   } finally { await browser.close(); }
 });
 
+// 快滑的最后一次移动和抬起都排在第 80ms：驱动进程（或浏览器）在中途被占住时，两条命令会一起到；
+// 不写触点发生的时刻，Chromium 就按收到的时刻给两者盖同一个时间，算滑动速度的窗口（最后 100ms）里看不到移动，快滑就丢了（macOS CI 上偶发）。
+test('h5 一致性输入：快滑途中驱动进程卡住 150ms，触点仍按请求的时刻发生，快滑不丢', async t => {
+  const browser = await launchBrowser();
+  if (!browser) { t.skip('未找到 Chrome 或 Edge'); return; }
+  let context;
+  let moves = 0, blocked = 0;
+  const instrumented = {
+    async newPage(options) {
+      const page = await browser.newPage(options);
+      const browserContext = page.context();
+      const newSession = browserContext.newCDPSession.bind(browserContext);
+      browserContext.newCDPSession = async (...args) => {
+        const session = await newSession(...args);
+        const send = session.send.bind(session);
+        session.send = (method, params) => {
+          // 快滑是第一次触摸，第 4 次移动是它的最后一次：发出之前把驱动进程的主线程占住 150ms。
+          if (method === 'Input.dispatchTouchEvent' && params.type === 'touchMove' && ++moves === 4) {
+            const start = performance.now();
+            while (performance.now() - start < 150) { /* real driver-side work; no clock or event rewrite */ }
+            blocked = performance.now() - start;
+          }
+          return send(method, params);
+        };
+        return session;
+      };
+      return page;
+    }
+  };
+  try {
+    context = await conformanceProject();
+    const expected = await runHeadless(context, 'gestures');
+    const actual = await runH5(context, 'gestures', instrumented);
+    assert.deepEqual(actual, expected);
+    assert.ok(blocked >= 150, '必须实际让驱动进程在快滑途中卡住');
+    // 快滑的每个触点都发生在请求的时刻（0、20、40、60、80ms，第 80ms 抬起），不是驱动发出或浏览器收到的时刻；框架用的就是这个时刻。
+    const touches = context.h5Trace.dom.filter(event => event.pointerType === 'touch');
+    const down = touches.findIndex(event => event.type === 'pointerdown');
+    const up = touches.findIndex((event, i) => i > down && event.type === 'pointerup');
+    const offsets = touches.slice(down, up + 1).map(event => event.timestamp - touches[down].timestamp);
+    assert.ok(offsets.every(ms => [0, 20, 40, 60, 80].some(planned => Math.abs(ms - planned) <= 1)), JSON.stringify(offsets));
+    assert.ok(Math.abs(offsets.at(-1) - 80) <= 1, JSON.stringify(offsets));
+    assert.ok(touches.every(event => event.trusted), '必须由 Chromium 派发真实触摸，不注入 DOM 合成事件');
+  } catch (error) {
+    console.error(`h5 input trace (gestures, driver stall): ${JSON.stringify(context?.h5Trace)}`);
+    throw error;
+  } finally { await browser.close(); }
+});
+
 test('h5 一致性输入：真实抬起已消费但驱动应答悬挂，明确超时报错', async t => {
   const browser = await launchBrowser();
   if (!browser) { t.skip('未找到 Chrome 或 Edge'); return; }
