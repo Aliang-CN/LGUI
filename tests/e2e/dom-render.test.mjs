@@ -71,16 +71,21 @@ async function pixels(page, clip, match, scale = 1) {
 }
 
 const near = (r, g, b, [R, G, B], tolerance = 60) => Math.abs(r - R) + Math.abs(g - G) + Math.abs(b - B) <= tolerance;
-const BLACK = [0, 0, 0], RED = [255, 0, 0];
+const BLACK = [0, 0, 0];
 
-// 「露在字外多宽」只能保证下限，不能要求正好等于 outline：
-// - 按颜色数像素时，字面（黑）和描边（红）的抗锯齿边各会少算 0–1 像素，所以量出来的宽度比真实的最多少 1 像素；
-// - 文字描边在尖角处是斜接（miter），字形的尖角（「1」的旗、「A」的尖）处描边会比 outline 伸得更远，伸多少看字体。
-//   Mac 上各字体各字形量出来每边 3–5 像素（outline 4），Windows（默认字体 Times New Roman，DirectWrite）是左 6、上 4、右 5、下 5。
-// 所以断言每一边都 ≥ outline - 1，并用同一种量法证明没修时（描边一半压在字里）达不到：没修时每边 ≤ outline / 2 + 1。
-// outline 取 6，两者之间留出足够的间隔（≥ 5 对 ≤ 4）。描边宽度是不是 2 × outline 由计算后的样式断言。
-const OUTLINE = 6;
-test('补丁 7：粗描边画在字外，不吃笔画（paint-order: stroke fill，每一边露在字外至少 outline）', async t => {
+// 「露在字外多宽」量的是沿着字的边缘、描边伸出去的宽度，不是外接框：
+// - 外接框每边只看最远的那一个像素，它落在字形最尖的地方（「1」的旗、「A」的尖），文字描边在尖角处是斜接（miter），
+//   会比 outline 伸得更远，伸多少看字体和系统的栅格化。没修时（outline 8，应为 4）本机 13 种字体量出每边 3–6，
+//   Windows 的 Times New Roman 在 outline 6（应为 3）时量出左 5，和修好后本机 Menlo、苹方、Impact 的左边一样，分不开。
+// - 所以逐行（逐列）找「外侧是白底、内侧紧挨着字」的那一段描边，数它有几个像素；左、上、右、下各取中位数。
+//   斜接、曲线、被描边填满的字间空隙只占少数段，中位数就是直边处的描边宽度。
+// - 字和描边用同一个阈值分：白底的绿通道是 255，黑字和红描边都是 0，像素一半以上被盖住时绿通道 < 128。
+//   原来按「接近黑」「接近红」分，两种颜色的抗锯齿边要盖住的程度不同，会多算或少算一个像素。
+// 中位数和真实宽度允许差 2 像素：两端各按半个像素取整，最多差 1；各系统栅格化字和描边的边缘再差约 1。
+// 所以修好后每边 ≥ outline - 2，没修时（描边一半压在字里）每边 ≤ outline / 2 + 2。outline 取 10，两个门槛（≥ 8 对 ≤ 7）
+// 不重叠：没修时的量值过不了修好后的断言。本机实测没修每边 4–5，修好后 10–15。描边宽度是不是 2 × outline 由计算后的样式断言。
+const OUTLINE = 10;
+test('补丁 7：粗描边画在字外，不吃笔画（paint-order: stroke fill，每一边露在字外约 outline）', async t => {
   const browser = await launchBrowser();
   if (!browser) { t.skip('未找到 Chrome 或 Edge'); return; }
   const text = '1436 START 开始';
@@ -94,12 +99,30 @@ test('补丁 7：粗描边画在字外，不吃笔画（paint-order: stroke fill
     plain: (await pixels(page, {x: 0, y: 0, width: 760, height: 100}, (r, g, b) => near(r, g, b, BLACK))).count,
     stroked: (await pixels(page, area, (r, g, b) => near(r, g, b, BLACK))).count
   });
-  // 描边的外接框比字面的外接框每边大出多少（左、上、右、下）。字面取上面那行没描边的同一段字（同字体、同位置，描边不影响排版）：
-  // 没修时描边压住了大半笔画，带描边那行几乎找不到纯黑的像素。
+  // 描边露在字外多宽（左、上、右、下，各方向的中位数）。字取上面那行没描边的同一段字（同字体、同位置，描边不影响排版）：
+  // 没修时描边压住了大半笔画，带描边那行分不出哪里是字。
   const outside = async page => {
-    const ink = (await pixels(page, {...area, y: 0}, (r, g, b) => near(r, g, b, BLACK))).box;
-    const red = (await pixels(page, area, (r, g, b) => near(r, g, b, RED, 120))).box;
-    return {sides: [ink.x0 - red.x0, ink.y0 - red.y0, red.x1 - ink.x1, red.y1 - ink.y1], ink, red};
+    const {data, info} = await sharp()(await page.screenshot({clip: {x: 0, y: 0, width: area.width, height: 200}})).raw().toBuffer({resolveWithObject: true});
+    const width = info.width;
+    const inked = (row, x, y) => x >= 0 && x < width && y >= 0 && y < 100 && data[((row + y) * width + x) * info.channels + 1] < 128;
+    const glyph = (x, y) => inked(0, x, y), painted = (x, y) => inked(100, x, y);
+    const outer = (x, y) => painted(x, y) && !glyph(x, y);
+    const runs = [[], [], [], []];
+    // 沿一条线走，找连续的「字外的描边」：前面是白底、后面是字，记进 before 方向；前面是字、后面是白底，记进 after 方向
+    const scan = (lines, length, at, before, after) => {
+      for (let i = 0; i < lines; i++) for (let j = 0; j < length; j++) {
+        if (!outer(...at(i, j))) continue;
+        const start = j;
+        while (j + 1 < length && outer(...at(i, j + 1))) j++;
+        const head = at(i, start - 1), tail = at(i, j + 1);
+        if (!painted(...head) && glyph(...tail)) runs[before].push(j + 1 - start);
+        else if (glyph(...head) && !painted(...tail)) runs[after].push(j + 1 - start);
+      }
+    };
+    scan(100, width, (y, x) => [x, y], 0, 2);
+    scan(width, 100, (x, y) => [x, y], 1, 3);
+    const median = list => [...list].sort((a, b) => a - b)[list.length >> 1] ?? null;
+    return {sides: runs.map(median), runs: runs.map(list => list.length)};
   };
   try {
     // 复现：不装补丁，描边一半压进笔画，黑色的字面只剩一小半；露在字外的只有一半宽
@@ -108,7 +131,7 @@ test('补丁 7：粗描边画在字外，不吃笔画（paint-order: stroke fill
     const half = await outside(before.page);
     await before.close();
     assert.ok(lost.stroked < lost.plain * 0.5, `没修时字面被描边吃掉：${JSON.stringify(lost)}`);
-    assert.ok(Math.max(...half.sides) <= OUTLINE / 2 + 1, `没修时每边露在字外不超过 outline / 2 + 1：${JSON.stringify(half)}`);
+    assert.ok(half.sides.every(side => side !== null && side <= OUTLINE / 2 + 2), `没修时每边露在字外不超过 outline / 2 + 2：${JSON.stringify(half)}`);
 
     const after = await open(browser, {resources, files});
     const kept = await fill(after.page);
@@ -116,7 +139,7 @@ test('补丁 7：粗描边画在字外，不吃笔画（paint-order: stroke fill
     assert.deepEqual(style, ['stroke', `${OUTLINE * 2}px`], '先画描边再画字，描边宽度 2 × outline');
     assert.ok(kept.stroked > kept.plain * 0.9, `字面完整：${JSON.stringify(kept)}`);
     const out = await outside(after.page);
-    assert.ok(out.sides.every(side => side >= OUTLINE - 1), `每一边露在字外至少 outline - 1：${JSON.stringify(out)}`);
+    assert.ok(out.sides.every(side => side !== null && side >= OUTLINE - 2), `每一边露在字外至少 outline - 2：${JSON.stringify(out)}`);
     assert.deepEqual(after.errors, []);
     await after.close();
   } finally {
