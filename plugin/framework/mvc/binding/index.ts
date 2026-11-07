@@ -21,7 +21,6 @@ import {redDots, redDotState} from '../red-dot';
 import {renderArtText} from '../art-text';
 import {clickSound} from '../sound';
 import {later, updatesHeld} from '../language-switch';
-import {fault} from '../log';
 
 /** 绑定时要知道的事。 */
 export interface BindContext {
@@ -226,10 +225,9 @@ function bindObject(component: UIComponent, key: string, target: UIObject, bindi
 /** 单独的 Check、Radio 按钮：selected 显示 Model 的值，用户点击时由 click 交给 Controller 改 Model。
  * FairyGUI 点 Check、Radio 按钮时自己切换选中（在框架的点击处理之后），所以每次点完，下一帧（画出来之前）再按绑定的值写回一次，选中状态只跟 Model 走。 */
 function bindSelected(button: UIButton, value: unknown, ctx: BindContext, key: string): void {
-  const show = (selected: boolean): void => {
-    button.selected = selected;
-    if (selected && !button.selected) fault(new LgRuntimeError('LGUI-RT-242', `${ctx.where} 的 ${key} 绑定了 selected，但它是普通按钮（Common 模式），显示不出选中。`, '在 ui/ 里把这个按钮组件的模式改成 Check（开关）或 Radio（单选），或者去掉 selected。'), {where: ctx.where, key});
-  };
+  // 普通按钮（Common 模式）不保持选中：绑定时就报，不等值第一次变成 true。
+  if (button.mode !== 'Check' && button.mode !== 'Radio') fail('LGUI-RT-242', `${ctx.where} 的 ${key} 绑定了 selected，但它是 ${button.mode} 模式的按钮，显示不出选中。`, '在 ui/ 里把这个按钮组件的模式改成 Check（开关）或 Radio（单选），或者去掉 selected。');
+  const show = (selected: boolean): void => { button.selected = selected; };
   watch<boolean>(value, ctx, v => show(v === true));
   const {time} = runtime().backend.platform;
   let waiting: (() => void) | null = null;

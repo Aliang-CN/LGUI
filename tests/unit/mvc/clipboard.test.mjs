@@ -1,7 +1,8 @@
-// lgui.platform.clipboard：headless 存在内存里，h5 用 navigator.clipboard，Unity 用 UnityEngine.GUIUtility.systemCopyBuffer。
+// lgui.platform.clipboard：headless 存在内存里，h5 用 navigator.clipboard，Unity 用 LGUI.Platform 的 ClipboardGet / ClipboardSet（C# 里读写 GUIUtility.systemCopyBuffer）。
 // 游戏代码只用 lgui.platform.clipboard；用不了时 Promise 失败（LGUI-RT-241），用 lgui.request 包一层拿到 { ok }。
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import {fileURLToPath} from 'node:url';
 import {started} from '../../helpers/framework.mjs';
 import {importTs} from '../../helpers/ts.mjs';
@@ -42,22 +43,37 @@ const h5Entry = fileURLToPath(new URL('../../../plugin/framework/backends/h5/pla
 
 function unityOptions(clipboard) {
   const listener = {AddCapture() {}, RemoveCapture() {}};
-  const host = {Now: 0, ScreenWidth: 100, ScreenHeight: 100, SafeAreaTop: 0, SafeAreaRight: 0, SafeAreaBottom: 0, SafeAreaLeft: 0, IsComposing: false, SystemLanguage: 'zh-CN', InputMode: 'ui', WheelDeltaX: 0, Log() {}};
-  return {projectName: 'p', uiBase: 'UI', host, fgui: {Stage: {touchScreen: false, inst: listener}, GRoot: {inst: {}}, UIPackage: {}}, objects: {}, createLoader() {}, scale: {value: 1}, clipboard};
+  const host = {Now: 0, ScreenWidth: 100, ScreenHeight: 100, SafeAreaTop: 0, SafeAreaRight: 0, SafeAreaBottom: 0, SafeAreaLeft: 0, IsComposing: false, SystemLanguage: 'zh-CN', InputMode: 'ui', WheelDeltaX: 0, Log() {}, ...clipboard};
+  return {projectName: 'p', uiBase: 'UI', host, fgui: {Stage: {touchScreen: false, inst: listener}, GRoot: {inst: {}}, UIPackage: {}}, objects: {}, createLoader() {}, scale: {value: 1}};
 }
 
-test('Unity：读写 UnityEngine.GUIUtility.systemCopyBuffer；运行环境里没有它时报 LGUI-RT-241', async () => {
+test('Unity：走 LGUI.Platform 的 ClipboardGet / ClipboardSet；C# 抛错、旧版 Unity 包没有这两个方法时报 LGUI-RT-241', async () => {
   const {createUnityPlatform} = await importTs(unityEntry);
-  const native = {systemCopyBuffer: 'old'};
-  const {platform, dispose} = createUnityPlatform(unityOptions(() => native));
+  let copied = 'old';
+  const {platform, dispose} = createUnityPlatform(unityOptions({ClipboardGet: () => copied, ClipboardSet: text => { copied = text; }}));
   assert.equal(await platform.clipboard.readText(), 'old');
   await platform.clipboard.writeText('UID-1');
-  assert.equal(native.systemCopyBuffer, 'UID-1');
+  assert.equal(copied, 'UID-1');
   dispose();
   await assert.rejects(platform.clipboard.readText(), e => e.code === 'LGUI-RT-027', '后端停止以后照常报 RT-027');
-  const missing = createUnityPlatform(unityOptions(() => null));
-  await assert.rejects(missing.platform.clipboard.writeText('x'), e => e.code === 'LGUI-RT-241' && /GUIUtility/.test(e.message));
-  missing.dispose();
+  const failing = createUnityPlatform(unityOptions({ClipboardGet: () => { throw new Error('读取系统剪贴板失败：不支持'); }, ClipboardSet: () => { throw new Error('写入系统剪贴板失败：不支持'); }}));
+  await assert.rejects(failing.platform.clipboard.readText(), e => e.code === 'LGUI-RT-241' && /读取/.test(e.message) && /不支持/.test(e.message));
+  await assert.rejects(failing.platform.clipboard.writeText('x'), e => e.code === 'LGUI-RT-241' && /写入/.test(e.message));
+  failing.dispose();
+  const old = createUnityPlatform(unityOptions({}));
+  await assert.rejects(old.platform.clipboard.writeText('x'), e => e.code === 'LGUI-RT-241' && /ClipboardSet/.test(e.message));
+  await assert.rejects(old.platform.clipboard.readText(), e => e.code === 'LGUI-RT-241' && /ClipboardGet/.test(e.message));
+  old.dispose();
+});
+
+test('Unity 包：C# 有 ClipboardGet / ClipboardSet（读写 GUIUtility.systemCopyBuffer），link.xml 保留 GUIUtility', () => {
+  const pkg = fileURLToPath(new URL('../../../plugin/framework/backends/unity/package/Runtime/', import.meta.url));
+  const cs = fs.readFileSync(pkg + 'Platform/Clipboard.cs', 'utf8');
+  assert.match(cs, /public static string ClipboardGet\(\)/);
+  assert.match(cs, /public static void ClipboardSet\(string text\)/);
+  assert.match(cs, /GUIUtility\.systemCopyBuffer/);
+  assert.match(fs.readFileSync(pkg + 'Platform/Clipboard.cs.meta', 'utf8'), /^guid: [a-f0-9]{32}$/m);
+  assert.match(fs.readFileSync(pkg + 'link.xml', 'utf8'), /<assembly fullname="UnityEngine\.IMGUIModule">\s*<type fullname="UnityEngine\.GUIUtility" preserve="all" \/>/);
 });
 
 test('h5：用 navigator.clipboard；没有它（不是 https 页面）、浏览器拒绝时报 LGUI-RT-241', async t => {

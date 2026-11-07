@@ -3,4 +3,7 @@
   <assembly fullname="LGUI.Runtime" preserve="all" />
   <assembly fullname="com.tencent.puerts.core" preserve="all" />
   <assembly fullname="com.tencent.puerts.v8" preserve="all" />
+  <assembly fullname="UnityEngine.IMGUIModule">
+    <type fullname="UnityEngine.GUIUtility" preserve="all" />
+  </assembly>
 </linker>

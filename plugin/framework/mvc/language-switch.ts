@@ -5,6 +5,8 @@
 
 let queue: Promise<unknown> = Promise.resolve();
 let holding = false;
+// 开始过几次切换：拿着组件等的一方（排队的 modal 取了缓存组件）靠它知道中间换过语言。
+let switches = 0;
 let settled: Promise<void> | null = null;
 // 空窗里要做的刷新：同一个刷新只记一次（到时候按当时的数据做）；alive 为假（组件已经换掉、界面已经关了）就不做了。
 const deferred = new Map<() => void, () => boolean>();
@@ -14,6 +16,9 @@ export function updatesHeld(): boolean { return holding; }
 
 /** 内部用：空窗里先记下一次刷新，切换结束时再做。 */
 export function later(run: () => void, alive: () => boolean = () => true): void { deferred.set(run, alive); }
+
+/** 内部用：开始过几次语言切换。前后两次不一样，说明中间换过包，之前建的组件是旧语言的。 */
+export function languageSwitches(): number { return switches; }
 
 /** 内部用：是不是有语言正在切换（从开始换包到重建完）。 */
 export function languageSwitching(): boolean { return settled !== null; }
@@ -39,6 +44,7 @@ export function switchLanguage(swap: () => Promise<void>, rebuild: () => void): 
   const task = queue.then(async () => {
     let finish = (): void => {};
     settled = new Promise(resolve => { finish = resolve; });
+    switches++;
     holding = true;
     const errors: unknown[] = [];
     try {

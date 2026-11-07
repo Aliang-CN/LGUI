@@ -12,7 +12,7 @@ import {validateViewClass} from '../view';
 import {asActor, currentActor} from '../actor';
 import {bus, builtinEvents} from '../events';
 import {fault, notice} from '../log';
-import {languageSettled, languageSwitching, later, updatesHeld} from '../language-switch';
+import {languageSettled, languageSwitches, languageSwitching, later, updatesHeld} from '../language-switch';
 
 /** 从下到上的 5 层。 */
 export const LAYERS: readonly Layer[] = ['hud', 'page', 'popup', 'modal', 'toast'];
@@ -275,11 +275,12 @@ export class UIManager {
     this.reorder();
   }
 
-  /** 换过的组件是后加进去的，按栈的顺序重新排一遍，层内的上下关系不变。 */
+  /** 换过的组件是后加进去的，按栈的顺序重新排一遍，层内的上下关系不变。只调整顺序：已经在层里的界面移到最上面，不离开舞台
+   * （先移走再加回来会让里面的动效收到「离开舞台」而停住）。 */
   private reorder(): void {
     for (const layer of LAYERS) {
       const container = this.containers.get(layer) as UIComponent;
-      for (const entry of this.stacks[layer]) if (entry.component) { container.removeChild(entry.component); container.addChild(entry.component); }
+      for (const entry of this.stacks[layer]) if (entry.component) container.addChild(entry.component);
     }
   }
 
@@ -438,6 +439,8 @@ export class UIManager {
     // 正在换语言时不用缓存的组件：它是旧语言的（切完会清空缓存），等切完按新语言重新建。
     const cachedIndex = languageSwitching() ? -1 : this.cache.findIndex(c => c.cls === cls);
     if (cachedIndex >= 0) [entry.cached] = this.cache.splice(cachedIndex, 1);
+    // 取缓存组件时的语言切换次数：之后换过语言，缓存的组件就是旧语言的。
+    const switchesAtStart = languageSwitches();
     entry.ready = (async () => {
       // 打开失败或被取消：不留半成品，资源只释放一次，排在后面的 modal 照常放出。
       const abandon = (): void => {
@@ -453,8 +456,6 @@ export class UIManager {
       };
       try {
         if (!entry.cached) await this.acquire(entry.packages); // 缓存里的组件还占着包引用
-        // 加载期间开始换语言（包不在）：等切换完成再显示。
-        if (languageSwitching()) await languageSettled();
       } catch (error) {
         abandon();
         throw new LgRuntimeError('LGUI-RT-080', `打开 ${cls.name} 失败：${error instanceof Error ? error.message : String(error)}`, '确认界面包已经生成（lgui dev 会自动生成），包名和组件名都对。');
@@ -465,6 +466,15 @@ export class UIManager {
         entry.state = 'queued';
         await new Promise<void>(resolve => { entry.show = resolve; });
         if ((entry.state as Entry['state']) === 'closed') throw cancelled('排队');
+      }
+      // 显示之前：正在换语言（包不在）就等切完；排队、等待期间换过语言，取来的缓存组件是旧语言的，丢掉按新语言重新建（包引用还留着）。
+      if (languageSwitching()) {
+        await languageSettled();
+        if ((entry.state as Entry['state']) === 'closed') throw cancelled('等语言切换');
+      }
+      if (entry.cached && languageSwitches() !== switchesAtStart) {
+        entry.cached.component.dispose();
+        entry.cached = undefined;
       }
       try {
         this.show(entry, params);

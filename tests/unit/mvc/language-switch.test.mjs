@@ -137,3 +137,48 @@ test('换包期间打开界面缓存里的界面：不用缓存里旧语言的�
   assert.notEqual(view.__component, old, '没用缓存里旧语言的组件');
   assert.equal(view.__component.child('icon').url, 'ui://Bag/flag@en');
 });
+
+test('modal 队列：切换中放出排队的 modal，等切完再显示（不在包不在时建组件）', async () => {
+  const {fw, inWindow, release, calls} = await setup();
+  const {lgui, View, pick} = fw;
+  const slot = lgui.Model({url: 'ui://Bag/flag'});
+  class FirstModal extends View { static component = 'Common/CurrencyBar'; static layer = 'modal'; }
+  class SecondModal extends View {
+    static component = 'Bag/ItemSlot'; static layer = 'modal';
+    bind = {icon: {icon: pick(slot, s => s.url)}};
+    onOpen() { calls.push(`open ${lgui.language()}`); }
+  }
+  await lgui.ui.open(FirstModal);
+  const second = lgui.ui.open(SecondModal);
+  for (let i = 0; i < 5; i++) await new Promise(r => setImmediate(r));
+  const switching = lgui.setLanguage('en');   // 在 modal 里切语言，不等它
+  await inWindow();
+  lgui.ui.close(FirstModal);                   // 关掉，排队的 SecondModal 被放出
+  for (let i = 0; i < 5; i++) await new Promise(r => setImmediate(r));
+  assert.deepEqual(calls, ['start en'], '空窗里放出的 modal 不显示');
+  release();
+  const view = await second;
+  await switching;
+  assert.deepEqual(calls, ['start en', 'end en', 'open en']);
+  assert.equal(view.__component.child('icon').url, 'ui://Bag/flag@en');
+});
+
+test('modal 队列：排队时取了缓存组件，排队期间换了语言，轮到它时不用旧语言的组件', async () => {
+  const {fw, inWindow, release, ui} = await setup();
+  const {lgui, View} = fw;
+  ui.settings.uiCache = {keepClosedViews: 2};
+  class FirstModal extends View { static component = 'Common/CurrencyBar'; static layer = 'modal'; }
+  class SecondModal extends View { static component = 'Bag/ItemSlot'; static layer = 'modal'; }
+  const old = (await lgui.ui.open(SecondModal)).__component;
+  lgui.ui.close(SecondModal);
+  await lgui.ui.open(FirstModal);
+  const second = lgui.ui.open(SecondModal);   // 从缓存取组件，排在 FirstModal 后面
+  const switching = lgui.setLanguage('en');
+  await inWindow();
+  release();
+  await switching;                            // 整个切换都在它排队期间完成
+  lgui.ui.close(FirstModal);
+  const view = await second;
+  assert.notEqual(view.__component, old, '没用排队前取的旧语言组件');
+  assert.equal(ui.packageRefs().find(p => p.name === 'Bag')?.refs, 1, '包引用照常只记一份');
+});

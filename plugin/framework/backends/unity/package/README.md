@@ -18,6 +18,7 @@ FairyGUI 除 `Assets/Scripts` 外，还包含同一固定提交必需的 Image�
 - `Fetch` 使用 `UnityWebRequest`，在 Unity 主线程回调 JSON `{status, text, error}`。请求头参数为 JSON `{items: [{name, value}]}`。
 - `PlayAudio` 播放 `ui://` 音效或 HTTP(S) 音效；`PlayMusic` 换背景音乐（同一首只改音量，换曲淡入淡出）；`SetAudioPaused` 暂停或恢复全部 LGUI 声音。声音都用 LGUI 自己的 AudioSource 放；FairyGUI 自己的按钮音、动效音由 TypeScript 后端关掉（`Stage.soundVolume = 0`）。
 - `ButtonSoundUrl`、`TransitionAutoPlay`、`TransitionAutoPlayTimes`、`TransitionAutoPlayDelay` 读出 FairyGUI 不公开的按钮音效地址和动效自动播放设置。
+- `ClipboardGet` / `ClipboardSet` 读写系统剪贴板（`GUIUtility.systemCopyBuffer`，`link.xml` 里保留了它）；失败时抛错，TypeScript 后端报成 `LGUI-RT-241`。
 - `Log`、`SystemLanguage`、`IsComposing` 和 `SetInputMode` 提供其余平台信息。
 - `LGUIResourceLoader` 为 FairyGUI 的外部图片加载增加完成/失败事件和 HTTP(S) 支持。同一 URL 的预载与界面显示共享请求、纹理；占位图保持到预载成功，显示时直接接收已下载纹理。
 

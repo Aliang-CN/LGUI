@@ -62,10 +62,13 @@ export class ViewMotion {
     if (this.paused) { t.setPaused(true); this.held.add(t); }
   }
 
-  /** 界面关闭：停掉绑定表里写的动效，不再通知 done；记下的状态清掉（界面缓存里的组件再打开时从头算）。 */
+  /** 界面关闭：停掉绑定表里写的动效，不再通知 done；被盖住时暂停的动效（含自动播放的）也停掉——只清掉不停，
+   * 它就一直是「暂停着的在放」，组件进了界面缓存、再打开时不会从头放，永远停在那一帧。记下的状态清掉（缓存里的组件再打开时从头算）。 */
   stop(): void {
     this.paused = false;
+    const held = [...this.held];
     this.held.clear();
+    for (const t of held) if (t.playing) t.stop();
     for (const t of this.bound) { ours.delete(t); lastPlaying.delete(t); if (t.playing) t.stop(); }
     this.bound.clear();
   }
