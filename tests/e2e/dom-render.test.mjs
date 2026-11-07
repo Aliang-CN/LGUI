@@ -249,14 +249,15 @@ test('补丁 9：downEffect="scale" 的按压只是视觉效果，按钮跟兄�
 
     const {page, errors, close, result} = await run(true);
     assert.deepEqual(result, {x: 100, width: 400, pivot: [0, 0]}, '修好后位置不变、轴心是 XML 里的');
-    // 按下：元素视觉缩到 0.8，GObject 的位置、尺寸、scale 不变；松开恢复
+    // 按下：上游的一下子缩小已经关掉（按下与回弹由框架的补间引擎写元素的 CSS scale，见 tests/e2e/h5-tween.test.mjs），
+    // GObject 的位置、尺寸、scale 都不变
     const box = await page.evaluate(() => { const r = window.view.getChild('chat').element.getBoundingClientRect(); return {x: r.x + r.width / 2, y: r.y + r.height / 2, width: r.width}; });
     await page.mouse.move(box.x, box.y);
     await page.mouse.down();
-    const down = await page.evaluate(() => { const c = window.view.getChild('chat'); return {scale: c.element.style.scale, x: c.x, width: c.width, scaleX: c.scaleX, visual: Math.round(c.element.getBoundingClientRect().width)}; });
+    const down = await page.evaluate(() => { const c = window.view.getChild('chat'); return {scale: c.element.style.scale, x: c.x, width: c.width, scaleX: c.scaleX, effect: c._downEffect}; });
     await page.mouse.up();
     const up = await page.evaluate(() => { const c = window.view.getChild('chat'); return {scale: c.element.style.scale, x: c.x, scaleX: c.scaleX}; });
-    assert.deepEqual(down, {scale: '0.8', x: 100, width: 400, scaleX: 1, visual: Math.round(box.width * 0.8)});
+    assert.deepEqual(down, {scale: '', x: 100, width: 400, scaleX: 1, effect: 0});
     assert.deepEqual(up, {scale: '', x: 100, scaleX: 1});
     assert.deepEqual(errors, []);
     await close();

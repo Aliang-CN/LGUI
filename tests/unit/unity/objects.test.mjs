@@ -485,3 +485,39 @@ test('Unity 项目字体：启动时按名字注册 Resources 里的 UI/fonts/<�
   await containerBackend();
   dispose();
 });
+
+test('Unity 代码补间：属性读写、齿轮主人、按钮按下效果（关掉 FairyGUI 自己的缩放）、动效每一项，走 FairyGUI 和 LGUI.Platform（TweenInfo.cs）', async () => {
+  const calls = [];
+  const services = {
+    ...noServices,
+    gearController: (object, index) => object.name === 'geared' && index === 2 ? 'tabs' : '',
+    downEffect: () => ({type: 2, value: 0.8}),
+    disableDownEffect: button => calls.push(['disable', button.name]),
+    transitionItems: () => [{target: image, type: 4}, {target: image, type: 9}, {target: null, type: 0}]
+  };
+  const a = await adapter(fgui, () => 0, (x, y) => ({x, y}), undefined, services);
+  const look = {scaleX: 1, scaleY: 1, rotation: 0, alpha: 1, pivotX: 0.5, pivotY: 0.5, isDisposed: false, SetScale(x, y) { this.scaleX = x; this.scaleY = y; }};
+  const text = Object.assign(new Text(), look, {name: 'price', textFormat: {size: 20}});
+  const image = Object.assign(new Image(), look, {name: 'geared', fillMethod: 4});
+  const button = Object.assign(new Button(), look, {name: 'claim', titleColor: {r: 0, g: 0, b: 0, a: 1}, titleFontSize: 24, GetTextField: () => text});
+  const t = a.wrap(text), i = a.wrap(image), b = a.wrap(button);
+  assert.deepEqual([t.supports('color'), t.supports('fontSize'), t.supports('fillAmount'), i.supports('fillAmount'), i.supports('fontSize'), b.supports('color')], [true, true, false, true, false, true]);
+  t.setProp('color', 0xff3b30);
+  t.setProp('fontSize', 30);
+  assert.deepEqual([t.getProp('color'), text.textFormat.size, t.pivot], [0xff3b30, 30, {x: 0.5, y: 0.5}]);
+  i.setProp('alpha', 0.5);
+  i.setProp('x', 12);
+  assert.deepEqual([image.alpha, image.x], [0.5, 12]);
+  assert.deepEqual([i.ownerOf('scaleX'), i.ownerOf('alpha'), t.ownerOf('width')], ['齿轮 gearSize（控制器 tabs）', null, null]);
+  assert.deepEqual(b.downEffect, {type: 'scale', value: 0.8});
+  assert.deepEqual(b.downEffect, {type: 'scale', value: 0.8});
+  assert.deepEqual(calls, [['disable', 'claim']], '第一次读时关掉一次');
+  b.pressScale = 0.8;
+  assert.deepEqual([button.scaleX, button.scaleY], [0.8, 0.8]);
+  b.pressScale = 1;
+  assert.deepEqual([button.scaleX, b.pressScale], [1, 1]);
+  const transition = {name: 'blink', playing: false, Play() {}, Stop() {}, SetPaused() {}};
+  const owner = Object.assign(new Component(), {name: 'panel'});
+  owner.transitions.set('blink', transition);
+  assert.deepEqual(a.wrapComponent(owner).transition('blink').touches().map(x => [x.target.name, x.what]), [['geared', 'alpha']], 'Sound 这类项、没有目标的项不算');
+});

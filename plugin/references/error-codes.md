@@ -137,6 +137,12 @@ LGUI 的每条报错都带错误码，并写明：哪个文件哪一行（如果
 | `LGUI-RT-261` | 列表不能滚动（`ui/` 里没写 `overflow="scroll"`）却设成了虚拟列表（浏览器里 FairyGUI 报 `Virtual list must be scrollable!`，headless 照样报） | 要虚拟列表就给列表写 `overflow="scroll"`（不想显示滚动条再加 `scrollBar="hidden"`）；项数固定的短列表不用虚拟列表 |
 | `LGUI-RT-262` | 测试里用 `t.text` 读按钮或标签的文字，但组件里没有名为 `title` 的子控件：文字写进去了也不显示（浏览器里一样） | 在 `ui/` 里给这个组件加一个名为 `title` 的文字控件；要读组件里别的文字，路径写到那个子控件 |
 | `LGUI-RT-263` | `lgui test --browser` 不支持的写法：子测试（`t.test`）、`mock`、`done` 回调、`async` 的 `describe`、`t.advance` 一次超过 10 秒（浏览器里是真的等） | 浏览器里的测试只用 `test` / `describe`、`before` / `after` / `beforeEach` / `afterEach` 和 `node:assert/strict`；跨天这类长时间用 `lgui.time.setServerOffset`；必须用这些写法的测试不加 `--browser` |
+| `LGUI-RT-280` | 代码补间（`this.tween`）参数不对：`duration` 没写或为负；属性名不认识；控件不支持这一项（组件上写 `color`、图片上写 `fontSize`、没设填充方式写 `fillAmount`）；值不是有限数字或超出范围（`alpha`、`fillAmount` 不在 0–1，`progress` 不在 0–100，缩放、尺寸、字号、`chars` 为负，颜色不是 `#rrggbb`）；`scale` 和 `scaleX` / `scaleY` 写在一起；`from` 里有终值里没有的属性；缓动名不对；`repeat` 不是不小于 -1 的整数，或者一直循环又 `duration: 0`；`delay` 为负 | 按 mvc-spec 第 16 节的属性表和选项改 |
+| `LGUI-RT-281` | 补间的目标不对：不是控件、不在这个界面自己的组件里（跨界面）、已经销毁、重建后按路径在新组件上找不到；`itemsOf` 用在虚拟列表上（或者传的不是列表）。补间进行中目标被销毁（不是关闭、重建、列表换数据这几种情况）也报这个，说明框架漏了一种情况 | 目标写这个界面自己的 `this.ui.<控件>`；横版、竖版里控件名要一致；要逐个弹出的列表用不滚动的普通列表。补间中途目标被销毁的，把复现步骤报给 LGUI |
+| `LGUI-RT-282` | 这个属性还有别的主人，两边会抢：齿轮（`gearXY`、`gearSize`、`gearLook`、`gearColor`、`gearFontSize`）、正在放的 `ui/` 动效里改它的项（绑定表开始放动效时也反过来查）、按钮的 `downEffect="scale"`（缩放）/ `downEffect="dark"`（按钮里的颜色）、绑定表的 `progress` 和 `holdProgress`、写了 `roll` 的文字（`chars`）；`roll` 的文字归 `gearText` 或动效的 Text 项管；补间进行中属性被别人改了（开发模式） | 同一个控件的同一个属性只交给一方；两方都要动就套一层（外层归一方、里层归另一方） |
+| `LGUI-RT-283` | 补缩放或旋转，控件的轴心是 (0, 0)：会从左上角缩放、绕左上角转 | 在 `ui/` 里设轴心：从中间缩放、旋转设 (0.5, 0.5)；要从一边拉长（血条用 `scaleX`）设成 (0, 0.5) 这类 |
+| `LGUI-RT-284` | 绑定的 `roll` / `tick` 写法不对：`roll` 没配 `text` 或 `progress`、值不是 `pick`、取出的不是数字、`duration` 不对、写在 `ItemView` 里；`tick` 不是正数，或者这一项没有显示词 | 按 mvc-spec 第 6.4 节改 |
+| `LGUI-RT-285` | `format.duration` 的写法不是 `'clock'` 或 `'units'` | 写 `'clock'`（`05:09`）或 `'units'`（`1天2小时`） |
 | `LGUI-RT-027` | 后端还没启动就开始用 | 先调用 `backend.init(config)`（框架启动时会自动调用） |
 | `LGUI-RT-160` | Unity 启动脚本或 Resources 文本缺失、PuerTS 启动失败、每帧回调或宿主驱动、退出清理失败 | 每帧回调出错时按堆栈修正该回调，其他回调和后续帧继续运行；宿主启动失败时核对导出文件、PuerTS 3.0.3 本地包后重新启动场景 |
 | `LGUI-RT-161` | Unity 平台存储、HTTP、音频等服务失败 | 按日志检查存储权限、请求参数、资源地址或本地 PuerTS 环境 |

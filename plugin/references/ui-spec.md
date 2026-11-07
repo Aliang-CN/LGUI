@@ -225,7 +225,7 @@ ui/
 </component>
 ```
 
-**按下效果**写在按钮组件根节点的 `<Button>` 上：`<Button downEffect="scale" downEffectValue="0.95"/>` 按下缩到 95%（轴心自动设在按钮中间），`<Button downEffect="dark" downEffectValue="0.8"/>` 按下变暗到 80%；不写是没有效果。`downEffectValue` 不写是 0.8。
+**按下效果**写在按钮组件根节点的 `<Button>` 上：`<Button downEffect="scale" downEffectValue="0.95"/>` 按下缩到 95%，由框架带缓动地补：按下 50 毫秒缩小（`Quad.Out`），松开 100 毫秒弹回（`Back.Out`），参数固定；只是视觉效果，按按钮中间缩放，不改位置和尺寸。按钮本身的缩放归它管，别的动效、代码补间要缩放就放在里面的子组件上（运行时报 `LGUI-RT-282`），`<Button downEffect="dark" downEffectValue="0.8"/>` 按下变暗到 80%；不写是没有效果。`downEffectValue` 不写是 0.8。
 
 **标签组件**（`extention="Label"`，标题和图标控件名固定为 `title`、`icon`，实例上的 `<Label title>`、绑定表的 `text` 只写进 `title`；不能点选，要点的用按钮）：
 

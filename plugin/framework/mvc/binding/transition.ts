@@ -5,6 +5,7 @@ import {LgRuntimeError} from '../../core/index';
 import {asActor} from '../actor';
 import type {BindContext} from './index';
 import {watch} from './index';
+import {checkTransition} from '../tween/index';
 
 const words = ['playing', 'play', 'done'];
 
@@ -102,6 +103,8 @@ export function bindTransition(transition: UITransition, key: string, binding: R
     ctx.scope.add(() => { if (notify.get(transition) === handler) notify.delete(transition); });
   }
   const start = (playTimes: number, wait = 0): void => {
+    // 动效改的属性正在被代码补间改：两边抢同一个属性（LGUI-RT-282）。
+    checkTransition(transition, ctx.where);
     ours.add(transition);
     transition.play({times: playTimes, delay: wait}, () => { ours.delete(transition); notify.get(transition)?.(); });
     motion?.started(transition);
