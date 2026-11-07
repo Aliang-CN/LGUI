@@ -6,7 +6,7 @@ export type {
 export type {
   Platform, TimeService, StorageService, ResourceService, InputService, KeyInput, WheelInput,
   TextInputService, ScreenService, Insets, AudioService, LocaleService, Logger, LogLevel,
-  NetService, NetResponse, NetSocket
+  NetService, NetResponse, NetSocket, ClipboardService
 } from './platform';
 export type {Backend, BackendConfig} from './backend';
 export {LgRuntimeError, notImplemented} from './errors';

@@ -160,7 +160,7 @@ export class BagView extends View<BagPanelUI> {
 
 | 词 | 用在 | 值 | 例子 |
 |---|---|---|---|
-| `text` | 文字、按钮和标签的标题、输入框、`ArtText` | `pick`（不写固定字符串：固定文字放在 `ui/` 里）；输入框显示 Model 的值 | `text: pick(bagModel, s => s.gold, format.number)` |
+| `text` | 文字、按钮和标签的标题、输入框、`ArtText` | `pick`（不写固定字符串：固定文字放在 `ui/` 里）；输入框显示 Model 的值，`input` 跑完后框里写回这个值（Model 截断了，框里也截断） | `text: pick(bagModel, s => s.gold, format.number)` |
 | `visible` | 任意控件 | 布尔 | `visible: pick(bagModel, s => s.items.length === 0)` |
 | `enabled` | 任意控件 | 布尔；`false` 时变灰、不可点 | `enabled: pick(bagModel, s => s.selectedId !== null)` |
 | `icon` | 加载器、按钮和标签的图标 | 图片地址 | `icon: it => it.iconUrl` |
@@ -168,19 +168,19 @@ export class BagView extends View<BagPanelUI> {
 | `value` | 滑动条 | 数字，滑动条自己的单位（在 `ui/` 里写的 min 和 max 之间） | `value: pick(settingsModel, s => s.volume)` |
 | `playing` | 序列帧动画 | 布尔：真就播，假就停 | `playing: pick(fxModel, s => s.spinning)` |
 | `page` | 控制器 | 页名 | `page: pick(bagModel, s => s.tab)` |
-| `redDot` | 有 `redDot` 子控件的控件 | 红点路径 | `redDot: 'bag.equip'` |
-| `items` | 列表、树、下拉框 | 数组。树：每个节点的子节点放在 `children` 字段里；下拉框：每一项显示的文字 | `items: pick(bagModel, s => s.items)` |
+| `redDot` | 有 `redDot` 子控件的控件 | 红点路径；`ItemView` 里可以写成函数，按这一项返回路径 | `redDot: 'bag.equip'`、`` redDot: it => `sign.day${it.day}` `` |
+| `items` | 列表、树、下拉框 | 数组。树：每个节点的子节点放在 `children` 字段里；下拉框：每一项显示的文字。列表能滚动（`ui/` 里 `overflow="scroll"`）时自动用虚拟列表（只创建看得见的项），不滚动的列表每一项都创建 | `items: pick(bagModel, s => s.items)` |
 | `item` | 列表、树 | 子项（节点）的 `ItemView` 类 | `item: ItemSlotView` |
 | `key` | 列表、树 | 认出同一项的函数（参数要写上这一项的类型）；树必须写 | `key: (it: BagItem) => it.id` |
-| `selected` | 列表、树、下拉框 | 列表、树：选中项的 key；下拉框：选中项的序号，`-1` 表示没有选中 | `selected: pick(bagModel, s => s.selectedId)` |
-| `view` | 子组件 | `PartView` 类 | `view: CurrencyBarView` |
-| `click` / `doubleClick` | 任意控件 | 调用 Controller 方法 | `click: () => bagController.sell()` |
-| `hold` | 任意控件 | `{ ms, action }`，按满才执行 | `hold: { ms: 1000, action: () => bagController.salvage() }` |
+| `selected` | 列表、树、下拉框、Check / Radio 按钮 | 列表、树：选中项的 key；下拉框：选中项的序号，`-1` 表示没有选中；按钮：是否选中（布尔），用户点击时 `click` 交给 Controller 改，选中状态只跟 Model 走；普通按钮（Common 模式）报 `LGUI-RT-242` | `selected: pick(bagModel, s => s.selectedId)`、`muteToggle: { selected: pick(soundModel, s => s.muted), click: () => settingsController.toggleMute() }` |
+| `view` | 子组件（包括按钮、标签做成的） | `PartView` 类 | `view: CurrencyBarView` |
+| `click` / `doubleClick` | 任意控件 | 调用 Controller 方法；写在 `ItemView` 里时参数是这一项的数据 | `click: () => bagController.sell()`、`click: it => shopController.buy(it.id)` |
+| `hold` | 任意控件 | `{ ms, action }`，按满才执行；写在 `ItemView` 里时 `action` 的参数是这一项的数据 | `hold: { ms: 1000, action: () => bagController.salvage() }` |
 | `drag` / `swipe` / `pinch` / `wheel` / `hover` | 任意控件 | 收到手势参数，调用 Controller 方法；`wheel` 只认落在这个控件（或它里面的控件）上的滚动 | `swipe: e => mapController.pan(e.dx, e.dy)` |
 | `change` | 控制器、滑动条 | 用户切页时调用，参数是页名；用户拖动滑动条时调用，参数是新值 | `change: tab => bagController.switchTab(tab)` |
-| `input` | 输入框 | 用户改了文字时调用，参数是新文字（输入法还在选字时不调用，选完调用一次） | `input: text => searchController.setKeyword(text)` |
+| `input` | 输入框 | 用户改了文字时调用，参数是新文字（输入法还在选字时不调用，选完调用一次）；跑完后框里显示 `text` 绑定的值 | `input: text => searchController.setKeyword(text)` |
 | `select` | 列表、树、下拉框 | 用户点选时调用。列表、树：参数是 key；下拉框：参数是序号 | `select: id => bagController.select(id)` |
-| `lockWhilePending` | 有 `click` 的控件 | `true`：动作返回的 Promise 结束前保持锁住 | `lockWhilePending: true` |
+| `lockWhilePending` | 有 `click` 的控件 | `true`：动作返回的 Promise 结束前保持锁住；结束前界面关了就不再碰控件，动作照常跑完，失败照常报出来 | `lockWhilePending: true` |
 | `visibleOn` | 任意控件 | 只在这些输入类型下显示 | `visibleOn: ['keyboardMouse']` |
 | `placeholder` | 加载器 | 加载中和失败时显示的图，不写用工程配置的默认占位图 | `placeholder: 'ui://Bag/iconLoading'` |
 | `playing` | 动效 | 布尔；为真就播（按 `ui/` 里的播放次数，`-1` 一直循环），为假就停 | `glow: { playing: pick(bagModel, s => s.hasNew) }` |
@@ -193,7 +193,7 @@ export class BagView extends View<BagPanelUI> {
 - **显示类的值只有两种写法：** 固定值，或 `pick(数据, 取字段, 格式化?)`。`ItemView` 里写成函数：传入这一项的数据，返回要显示的内容。
 - **动作类只调用 Controller 的方法**，一句话写完，View 里不写业务逻辑。
 - **点击和手势绑在能接收输入的控件上：** 按钮、组件、列表、有填充的图形。文字、富文本、图片、序列帧动画自己收不到点击（FairyGUI 的各个运行时都这样），绑上去不会触发；`lgui test` 里点它们报 `LGUI-RT-032`。
-- **用户改值的控件：** 输入框、滑动条、下拉框都是「显示 Model 的值 + 用户改了就调用 Controller」：`text` / `value` / `selected` 显示，`input` / `change` / `select` 交给 Controller 改 Model，改完再显示回来。
+- **用户改值的控件：** 输入框、滑动条、下拉框、Check / Radio 按钮都是「显示 Model 的值 + 用户改了就调用 Controller」：`text` / `value` / `selected` 显示，`input` / `change` / `select` / `click` 交给 Controller 改 Model，改完再显示回来。Controller 没改（比如截断成和原来一样、拒绝修改），控件也回到 Model 的值。`input` 里同步改 Model：先 `await` 别的再改，框里会先回到旧值。
 - **手势速度按输入实际发生时间计算。** 网页保留原始 DOM `event.timeStamp`，浏览器主线程延迟处理事件时，也不会用消费时刻把慢拖压成快滑。
 - **绑定表里不写死用户能看到的文字。** 固定文字放在 `ui/` 里，动态文字用 `lgui.t`。
 - **动效：** `ui/` 里勾了自动播放的照旧自动播放，写了 `done` 时放完也通知。界面被全屏界面盖住时，它里面在放的动效（绑定的和自动播放的）都暂停，露出来接着放；界面关闭时停掉。动效放完不能当作业务完成（发奖、扣钱以 Controller 的结果为准）。
@@ -314,7 +314,7 @@ export class FakeBagService implements BagService {
 - 所有层合起来最上面那个界面是激活的，只有它收输入。
 - 打开全屏界面时，下面的界面都被盖住（隐藏、暂停定时器和动效）；关掉后自动露出来。
 - `hud` 层的界面和 `page` 层最底下的主界面按返回键关不掉；`keys.back` 写成函数时照常调用。
-- **再打开一个已经打开（或正在打开）的界面：** 返回同一个 Promise，这次的参数不用；这次又登记了 `onClose` 时报 `LGUI-RT-084`（这个回调不会被调用）。
+- **再打开一个已经打开（或正在打开）的界面：** 参数相同时返回同一个 Promise（按值比较：普通对象、数组逐项比，不管键的顺序；不传参数等于传 `static params` 的默认值）；参数不同报 `LGUI-RT-240`，不静默丢掉这次的参数——要依次显示好几份（比如几份奖励），在 Controller 里排队，前一个关了再开下一个。这次又登记了 `onClose` 时报 `LGUI-RT-084`（这个回调不会被调用）。
 - `popTo`、`closeAll` 全部关完才重新算一次激活：要关掉的界面收不到 `onActivate`、`onRevealed`。
 - **`onClose`：** B 不管怎么关（自己关、返回键、`closeAll`、`replace`）都调用一次；没交回东西时参数是 `undefined`；打开 B 的界面先关了，回调自动取消；旋转、换语言不算关闭。
 - 一个模块不能去改另一个界面的控件；要改就改它监听的 Model。
@@ -340,11 +340,12 @@ keys: Keys = {
 | `lgui.loading.show()` / `hide()` | 加载中，按次数计数，最后一次 `hide` 才消失 |
 | `lgui.redDot.set('bag.newItem', true \| false \| 3)` | 红点；上层路径自动汇总，数字显示合计 |
 | `lgui.t('bag.sold', { count })` | 取文本，占位符写成 `{count}` |
-| `format.number(n)`、`format.date(d)`、`format.currency(n, 'CNY')` | 按当前语言格式化 |
-| `lgui.setLanguage('en')` | 切换语言，已打开的界面自动重建 |
+| `format.number(n)`、`format.compact(n)`、`format.date(d)`、`format.currency(n, 'CNY')` | 按当前语言格式化；`compact` 是数字缩写：中文 `1.6万`、`1.2亿`，英文 `16.3K`、`1.2M`，最多一位小数，不到缩写的单位时原样（中文 `9999`、英文 `999`） |
+| `lgui.setLanguage('en')` | 切换语言，已打开的界面自动重建。同时调用几次按调用顺序一个一个切；切换期间（后端换界面包的那一段）已打开的界面先不刷新，切完按当时的数据显示，期间打开的界面等切完再加载 |
 | `lgui.time.now()`、`lgui.time.setServerOffset(毫秒)` | 当前时间（和服务器对齐） |
 | `await lgui.time.wait(毫秒)` | 等一段时间（Service 模拟延迟、重试间隔用；界面上的定时器用 View 的 `this.after`）。按帧累计，切到后台时不走；请求超时也是这样算的 |
 | `lgui.log.info('bag_opened', { count })` | 写日志（第 14.2 节） |
+| `await lgui.platform.clipboard.writeText(uid)`、`readText()` | 剪贴板（只在 Controller 里用）：放进文字、读出文字。读写不了时 Promise 失败（`LGUI-RT-241`，比如网页不是 https、浏览器拒绝），用 `lgui.request` 包一层拿 `{ ok }`；网页里写入放在点击动作里直接调用，不要先 `await` 别的 |
 | `lgui.sound.play(…)`、`setVolume`、`setMuted`、`settings` | 声音（第 15 节） |
 
 **文本表 `i18n/<语言>.json`：** 扁平的「键 → 文字」，键名是可读的点号键。要按数量变化的文字，值写成按复数形式分开的对象，用参数 `count` 选（形式名和 `Intl.PluralRules` 一致；中文、日文、韩文只写 `other`）：
@@ -478,7 +479,7 @@ TypeScript 自己的类型错误也一起报出来（带 TS 的错误码）。�
 | 类 | 什么情况 | 框架怎么做 | 例子 |
 |---|---|---|---|
 | ① 写错了 | 代码或界面写错了 | 抛 `LgRuntimeError`，并记一条 `error` 日志 | 缺文本键 `LGUI-RT-090`、加载器的图片所在的包没加载 `LGUI-RT-071`、ArtText 缺字符 `LGUI-RT-130`、字体的包没加载 `LGUI-RT-171`、没有 `Common/ActionHintBar` `LGUI-RT-172`、没配 `i18nBase` 就换语言 `LGUI-RT-173`、声音没登记 `LGUI-RT-170`、`lgui.sound` 参数不对 `LGUI-RT-174` |
-| ② 外部失败 | 网络、加载这类外部的东西失败了 | 不抛错，把失败交回给代码；记一条 `warn` 日志 | 请求失败 `LGUI-RT-100` / `101`（`run` 返回 `{ ok: false }`）、网络图片加载失败 `LGUI-RT-070`（留着占位图）、声音加载失败 `LGUI-RT-026`、存着的声音设置读不出来 `LGUI-RT-175` |
+| ② 外部失败 | 网络、加载这类外部的东西失败了 | 不抛错，把失败交回给代码；记一条 `warn` 日志 | 请求失败 `LGUI-RT-100` / `101`（`run` 返回 `{ ok: false }`）、网络图片加载失败 `LGUI-RT-070`（留着占位图）、声音加载失败 `LGUI-RT-026`、存着的声音设置读不出来 `LGUI-RT-175`、剪贴板读写不了 `LGUI-RT-241`（用 `lgui.request` 包着时） |
 | ③ 正常的先后顺序 | 不是错，只是先后顺序 | 记一条 `info` 日志 | `await` 之后要关的界面已经关了 `LGUI-RT-082` |
 
 **第 ① 类在开发和正式构建里不一样：**
@@ -506,7 +507,7 @@ log.debug('price_loaded', () => ({ prices }));             // 数据写成函数
 
 ### 14.3 换掉平台服务：`lgui.app({ platform })`
 
-游戏代码只用 `lgui.log.*` 和 `lgui.sound.*`；日志、声音真正写到哪里、从哪里放出来，由宿主在 `main.ts` 里决定。只换给出的几项，其余用后端自带的：
+游戏代码只用 `lgui.log.*`、`lgui.sound.*` 和 `lgui.platform.clipboard`；日志、声音、剪贴板真正写到哪里、从哪里来，由宿主在 `main.ts` 里决定。只换给出的几项，其余用后端自带的：
 
 ```ts
 export default lgui.app({
@@ -514,6 +515,7 @@ export default lgui.app({
   platform: {
     log: sdk.logger.child({}, 'ui'),   // 日志出口：形状和 Lumio 引擎的 Logger 一样，可以直接交进来
     // audio: myAudio,                 // 声音出口：play、music、setPaused（见 AudioService）
+    // clipboard: myClipboard,         // 剪贴板：writeText、readText（见 ClipboardService）
   },
   async start() { await lgui.ui.open(MainView); },
 });
@@ -523,6 +525,7 @@ export default lgui.app({
 |---|---|
 | `log`（`Logger`：`enabled`、`debug`、`info`、`warn`、`error`、`child`） | h5：浏览器控制台；headless：记进测试状态，`error` 级的让测试失败 |
 | `audio`（`AudioService`：`play`、`music`、`setPaused`） | h5：浏览器的 Web Audio；headless：记下放过的音效和当前的背景音乐 |
+| `clipboard`（`ClipboardService`：`writeText`、`readText`） | h5：浏览器的 `navigator.clipboard`（只有 https 或 localhost 的页面能用）；Unity：系统剪贴板（`GUIUtility.systemCopyBuffer`）；headless：存在内存里，测试里 `lgui.platform.clipboard.readText()` 读得到 |
 
 LGUI 不依赖 Lumio 引擎，只是日志接口照抄了引擎 `Logger` 的形状。`lgui test` 里 `platform` 不生效。
 

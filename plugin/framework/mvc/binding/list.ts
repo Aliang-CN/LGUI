@@ -1,4 +1,4 @@
-// 列表：items + item（子项 View）+ key + selected + select。开虚拟列表；用 key 认出同一项，数据变化时保留滚动位置。
+// 列表：items + item（子项 View）+ key + selected + select。能滚动的列表开虚拟列表，不滚动的按普通列表；用 key 认出同一项，数据变化时保留滚动位置。
 import type {UIComponent, UIList} from '../../core/index';
 import {LgRuntimeError} from '../../core/index';
 import {asActor} from '../actor';
@@ -22,7 +22,9 @@ export function bindList(list: UIList, binding: Record<string, unknown>, ctx: Bi
   let selectedKey: ItemKey | null = null;
   const views = new Map<UIComponent, ItemViewInstance>();
   const adopted: (() => void)[] = [];
-  if (!list.virtual) list.virtual = true;
+  // 只有能滚动的列表（ui/ 里 overflow="scroll"）才用虚拟列表：FairyGUI 的虚拟列表要有滚动面板，不滚动的列表开了会报错。
+  // 不滚动的列表（顶栏几个货币、固定几个页签、7 日签到格子）按普通列表，每一项都创建。各个后端按同一条规则。
+  if (list.scrollable && !list.virtual) list.virtual = true;
   list.itemRenderer = (index, component) => {
     if (!ItemClass) return;
     if (ItemClass.component && component.componentName && ItemClass.component !== component.componentName) {

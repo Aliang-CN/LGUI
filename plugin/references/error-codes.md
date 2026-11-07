@@ -118,6 +118,9 @@ LGUI 的每条报错都带错误码，并写明：哪个文件哪一行（如果
 | `LGUI-RT-230` | 网页端启动时 FairyGUI-dom 补丁装不上：上游没有要挂钩子的方法、属性或字段了（升级了上游，或者改了框架副本里的 `vendor/fairygui.module.js`）。错误里写着补丁编号 | 用户工程：不要改 `.lgui/framework/`，运行 `lgui upgrade` 换回插件带的框架。维护 LGUI：对照 `framework/backends/h5/vendor/PATCHES.md` 里那个编号重看补丁 |
 | `LGUI-RT-231` | 网页端启动时 FairyGUI-dom 补丁要加的方法，上游已经有同名的了 | 同 `LGUI-RT-230`；维护 LGUI 时判断上游是否已经实现了同样的功能，决定改用上游的还是去掉这个补丁 |
 | `LGUI-RT-232` | 网页端量 `autoSize="shrink"` 文字的宽度时浏览器给不出 Canvas 2D | 换一个支持 Canvas 2D 的浏览器或 WebView |
+| `LGUI-RT-240` | 对已经打开（或正在打开）的界面再 `open`，这次的参数和打开时的不同（不会生效，不静默丢掉） | 同一个界面同时只开一个：先用 `lgui.ui.isOpen` 判断，要换内容就改它绑定的 Model；要依次显示好几份（比如几份奖励），在 Controller 里排队，前一个关了再开下一个 |
+| `LGUI-RT-241` | 剪贴板读写失败（外部失败）：网页不是 https 或 localhost、浏览器拒绝，Unity 运行环境没有系统剪贴板 | 网页用 https 或 localhost；写入放在点击动作里直接调用；用 `lgui.request` 包一层，失败时拿到 `{ ok: false }` 并记 `warn` |
+| `LGUI-RT-242` | `selected` 绑在普通按钮（Common 模式）上，显示不出选中 | 在 `ui/` 里把按钮组件的模式改成 Check（开关）或 Radio（单选），或者去掉 `selected` |
 | `LGUI-RT-027` | 后端还没启动就开始用 | 先调用 `backend.init(config)`（框架启动时会自动调用） |
 | `LGUI-RT-160` | Unity 启动脚本或 Resources 文本缺失、PuerTS 启动失败、每帧回调或宿主驱动、退出清理失败 | 每帧回调出错时按堆栈修正该回调，其他回调和后续帧继续运行；宿主启动失败时核对导出文件、PuerTS 3.0.3 本地包后重新启动场景 |
 | `LGUI-RT-161` | Unity 平台存储、HTTP、音频等服务失败 | 按日志检查存储权限、请求参数、资源地址或本地 PuerTS 环境 |

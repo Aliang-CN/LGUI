@@ -3,7 +3,7 @@
 import type {UIButton, UIComboBox, UIComponent, UIController, UIImage, UIInput, UIList, UILoader, UIMovieClip, UIObject, UIProgress, UISlider, UIText, UITransition, UITree} from '../../core/index';
 import {LgRuntimeError} from '../../core/index';
 import {isPicked} from '../pick';
-import type {Scope} from '../scope';
+import {Scope} from '../scope';
 import {runtime} from '../runtime';
 import {asActor} from '../actor';
 import {inputType} from '../input/input-type';
@@ -20,6 +20,8 @@ import {pick} from '../pick';
 import {redDots, redDotState} from '../red-dot';
 import {renderArtText} from '../art-text';
 import {clickSound} from '../sound';
+import {later, updatesHeld} from '../language-switch';
+import {fault} from '../log';
 
 /** 绑定时要知道的事。 */
 export interface BindContext {
@@ -64,16 +66,19 @@ function resolve(component: UIComponent, key: string, where: string): {kind: 'co
   return {kind: 'object', target: target as UIObject};
 }
 
-/** 读一个显示类的值：固定值、pick，或者 ItemView 里的函数；变化时重新调用 apply。 */
+/** 一个显示类的值现在是多少：固定值、pick，或者 ItemView 里的函数（传入这一项的数据）。 */
+function current<T>(value: unknown, ctx: BindContext): T {
+  if (isPicked(value)) return value.get() as T;
+  if (typeof value === 'function' && ctx.item) return (value as (data: unknown) => T)(ctx.item.data);
+  return value as T;
+}
+
+/** 读一个显示类的值：固定值、pick，或者 ItemView 里的函数；变化时重新调用 apply。换语言的空窗里先不刷新，切完再按当时的值刷一次。 */
 export function watch<T>(value: unknown, ctx: BindContext, apply: (value: T) => void): void {
-  if (isPicked(value)) {
-    apply(value.get() as T);
-    ctx.scope.add(value.subscribe(() => apply(value.get() as T)));
-  } else if (typeof value === 'function' && ctx.item) {
-    apply((value as (data: unknown) => T)(ctx.item.data));
-  } else {
-    apply(value as T);
-  }
+  const update = (): void => apply(current<T>(value, ctx));
+  const refresh = (): void => { if (updatesHeld()) later(update, () => !ctx.scope.isClosed); else update(); };
+  refresh();
+  if (isPicked(value)) ctx.scope.add(value.subscribe(refresh));
 }
 
 function setText(target: UIObject, text: string, where: string, key: string): void {
@@ -125,15 +130,27 @@ function bindObject(component: UIComponent, key: string, target: UIObject, bindi
   if ('redDot' in binding) {
     const dot = 'child' in target ? (target as UIComponent).child('redDot') : null;
     if (!dot) fail('LGUI-UI-012', `${ctx.where} 的 ${key} 绑定了 redDot，但它里面没有名为 redDot 的子控件。`, '在 ui/ 里给这个控件放一个 Common/RedDot 的实例，名字叫 redDot（UI 开发规范第 10 节）。');
-    const path = String(binding.redDot);
-    watch<{lit: boolean; count: number}>(pick(redDots, () => redDotState(path), s => s), ctx, s => {
-      (dot as UIObject).visible = s.lit;
-      const count = (dot as UIComponent).child?.('count') as UIText | null;
-      if (count && 'text' in count) count.text = s.count > 0 ? String(s.count) : '';
+    // 路径可以是固定的，也可以在 ItemView 里按这一项算（it => `sign.day${it.day}`）；路径变了就改看新的路径。
+    let following = new Scope();
+    ctx.scope.add(() => following.dispose());
+    watch<string>(binding.redDot, ctx, path => {
+      if (typeof path !== 'string' || !path) fail('LGUI-RT-063', `${ctx.where} 的 ${key} 的 redDot 不是红点路径（${String(path)}）。`, 'redDot 写成红点路径，比如 \'bag.equip\'；ItemView 里可以写成函数，按这一项返回路径。');
+      following.dispose();
+      following = new Scope();
+      watch<{lit: boolean; count: number}>(pick(redDots, () => redDotState(path), s => s), {...ctx, scope: following}, s => {
+        (dot as UIObject).visible = s.lit;
+        const count = (dot as UIComponent).child?.('count') as UIText | null;
+        if (count && 'text' in count) count.text = s.count > 0 ? String(s.count) : '';
+      });
     });
   }
+  // 单独的 Check、Radio 按钮：selected 是选中状态
+  const isButton = 'selected' in target && 'title' in target;
+  if (isButton && 'selected' in binding) bindSelected(target as UIButton, binding.selected, ctx, key);
   // 列表、树、下拉框、部件
-  if (listWords.some(word => word in binding)) {
+  const listUse = listWords.filter(word => word in binding && !(isButton && word === 'selected'));
+  if (listUse.length) {
+    if (isButton) fail('LGUI-RT-063', `${ctx.where} 的 ${key} 是按钮，不能用 ${listUse.join('、')}。`, '按钮只能用 selected（Check、Radio 按钮的选中状态）；列表的子项写在列表上。');
     if ('setNodes' in target) bindTree(target as UITree, binding, ctx, key);
     else if ('numItems' in target) bindList(target as UIList, binding, ctx, key);
     else if ('items' in target) bindComboBox(target as UIComboBox, binding, ctx, key);
@@ -149,20 +166,33 @@ function bindObject(component: UIComponent, key: string, target: UIObject, bindi
   const dragging = 'dragData' in binding ? dragSource(target, key, binding, ctx, () => ctx.isActive() && !pending && target.enabled) : null;
   // 动作
   const lock = binding.lockWhilePending === true;
-  const run = (action: unknown, ...args: unknown[]): void => {
-    if (!ctx.isActive() || pending || !target.enabled) return;
+  // 执行一个动作，返回动作的结果（锁住时是等它结束再解锁的 Promise）。
+  const run = (action: unknown, ...args: unknown[]): unknown => {
+    if (!ctx.isActive() || pending || !target.enabled) return undefined;
     if (action === binding.click) clickSound(target);
     const result = asActor(ctx.owner, () => (action as (...a: unknown[]) => unknown)(...args));
     if (lock && result instanceof Promise) {
       pending = true;
       applyEnabled();
-      const done = (): void => { pending = false; applyEnabled(); };
-      result.then(done, done);
+      // 结束时界面可能已经关了（组件已销毁）：绑定还在才改控件。动作照常跑完；失败时错误沿着 Promise 照常报出来，不在这里吞掉。
+      return result.finally(() => { pending = false; if (!ctx.scope.isClosed) applyEnabled(); });
     }
+    return result;
   };
   if (binding.input) {
     if (!('promptText' in target)) fail('LGUI-RT-063', `${ctx.where} 的 ${key} 不能绑定 input（它不是输入框）。`, '换成输入框（inputtext），或者去掉 input。');
-    ctx.scope.add((target as UIInput).onChange(text => run(binding.input, text)));
+    const input = target as UIInput;
+    // 动作跑完以后，框里显示绑定的值：Model 截断或拒绝了这次修改时值没变，订阅不会触发，要在这里写回去。
+    const writeBack = (): void => {
+      if (!('text' in binding) || ctx.scope.isClosed) return;
+      const shown = String(current<string>(binding.text, ctx));
+      if (input.text !== shown) input.text = shown;
+    };
+    ctx.scope.add(input.onChange(text => {
+      const result = run(binding.input, text);
+      if (result instanceof Promise) void result.finally(writeBack);
+      else writeBack();
+    }));
   }
   if (binding.change) {
     if (!('min' in target)) fail('LGUI-RT-063', `${ctx.where} 的 ${key} 不能绑定 change（只有控制器和滑动条能用）。`, '控制器切页、滑动条改值时用 change；按钮用 click。');
@@ -171,12 +201,14 @@ function bindObject(component: UIComponent, key: string, target: UIObject, bindi
   const actions = actionWords.filter(word => word in binding);
   if (actions.length || dragging) {
     const handlers: GestureHandlers = {pointer: e => inputType.set(e.pointerType === 'mouse' ? 'keyboardMouse' : 'touch')};
-    if (binding.click) handlers.click = () => run(binding.click);
-    if (binding.doubleClick) handlers.doubleClick = () => run(binding.doubleClick);
+    // ItemView 里的点击、双击、长按：参数是这一项的数据（click: it => shopController.buy(it.id)）。
+    const item = ctx.item ? [ctx.item.data] : [];
+    if (binding.click) handlers.click = () => run(binding.click, ...item);
+    if (binding.doubleClick) handlers.doubleClick = () => run(binding.doubleClick, ...item);
     if (binding.hold) {
       const hold = binding.hold as {ms: number; action: () => unknown};
       const bar = 'child' in target ? (target as UIComponent).child('holdProgress') as UIProgress | null : null;
-      handlers.hold = {ms: hold.ms, action: () => run(hold.action), progress: ratio => { if (bar && 'max' in bar && ctx.isActive()) bar.value = ratio * bar.max; }};
+      handlers.hold = {ms: hold.ms, action: () => run(hold.action, ...item), progress: ratio => { if (bar && 'max' in bar && ctx.isActive()) bar.value = ratio * bar.max; }};
     }
     if (binding.drag || dragging) handlers.drag = g => { if (binding.drag) run(binding.drag, g); dragging?.(g); };
     if (binding.swipe) handlers.swipe = g => run(binding.swipe, g);
@@ -189,6 +221,27 @@ function bindObject(component: UIComponent, key: string, target: UIObject, bindi
   } else if (binding.lockWhilePending) {
     fail('LGUI-RT-063', `${ctx.where} 的 ${key} 写了 lockWhilePending，但没有动作。`, '和 click 一起用。');
   }
+}
+
+/** 单独的 Check、Radio 按钮：selected 显示 Model 的值，用户点击时由 click 交给 Controller 改 Model。
+ * FairyGUI 点 Check、Radio 按钮时自己切换选中（在框架的点击处理之后），所以每次点完，下一帧（画出来之前）再按绑定的值写回一次，选中状态只跟 Model 走。 */
+function bindSelected(button: UIButton, value: unknown, ctx: BindContext, key: string): void {
+  const show = (selected: boolean): void => {
+    button.selected = selected;
+    if (selected && !button.selected) fault(new LgRuntimeError('LGUI-RT-242', `${ctx.where} 的 ${key} 绑定了 selected，但它是普通按钮（Common 模式），显示不出选中。`, '在 ui/ 里把这个按钮组件的模式改成 Check（开关）或 Radio（单选），或者去掉 selected。'), {where: ctx.where, key});
+  };
+  watch<boolean>(value, ctx, v => show(v === true));
+  const {time} = runtime().backend.platform;
+  let waiting: (() => void) | null = null;
+  ctx.scope.add(button.onPointer(e => {
+    if (e.type !== 'up' || waiting) return;
+    const stop = time.onFrame(() => {
+      if (waiting) ctx.scope.remove(waiting);
+      if (!ctx.scope.isClosed) show(current<boolean>(value, ctx) === true);
+    });
+    waiting = () => { stop(); waiting = null; };
+    ctx.scope.add(waiting);
+  }));
 }
 
 /** 下拉框：items 是每一项的文字，selected 是选中项的序号，select 在用户选了一项时调用。 */

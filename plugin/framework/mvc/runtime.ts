@@ -1,5 +1,5 @@
 // 框架运行时：当前用的后端、工程配置和日志、声音的出口。由 lgui 启动时（网页、测试、Unity）设置。
-import type {AudioService, Backend, Logger} from '../core/index';
+import type {AudioService, Backend, ClipboardService, Logger} from '../core/index';
 import {LgRuntimeError} from '../core/index';
 
 /** 框架用到的工程配置（来自 .lgui/project.json）。 */
@@ -51,6 +51,8 @@ interface Current {
   log: Logger;
   /** 声音出口：lgui.app({ platform: { audio } }) 交进来的，没交就是后端自带的。 */
   audio: AudioService;
+  /** 剪贴板：lgui.app({ platform: { clipboard } }) 交进来的，没交就是后端自带的。 */
+  clipboard: ClipboardService;
 }
 
 /** lgui.app({ platform }) 里能换掉的平台服务。 */
@@ -59,6 +61,8 @@ export interface PlatformOverrides {
   log?: Logger;
   /** 声音出口。 */
   audio?: AudioService;
+  /** 剪贴板（宿主自己管剪贴板时交进来）。 */
+  clipboard?: ClipboardService;
 }
 
 let current: Current | null = null;
@@ -67,7 +71,7 @@ let current: Current | null = null;
 export function setRuntime(backend: Backend, config: RuntimeConfig, wallBase = Date.now(), deps: Record<string, string[]> = {}, platform: PlatformOverrides = {}): void {
   current = {
     backend, config, deps, ui: null, wallBase, monoBase: backend.platform.time.now(), serverOffset: 0,
-    log: platform.log ?? backend.platform.log, audio: platform.audio ?? backend.platform.audio
+    log: platform.log ?? backend.platform.log, audio: platform.audio ?? backend.platform.audio, clipboard: platform.clipboard ?? backend.platform.clipboard
   };
 }
 
