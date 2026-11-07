@@ -129,6 +129,9 @@ class H5Input extends H5Text implements UIInput {
   }
 }
 
+/** FairyGUI 的 ButtonMode（0、1、2）对应的名字。 */
+const buttonModes = ['Common', 'Check', 'Radio'];
+
 class H5Button extends H5Component implements UIButton {
   constructor(readonly native: fgui.GButton, componentName: string) { super(native, componentName); }
   get title(): string { return this.native.title; }
@@ -137,6 +140,7 @@ class H5Button extends H5Component implements UIButton {
   set icon(value: string) { this.native.icon = value; }
   get selected(): boolean { return this.native.selected; }
   set selected(value: boolean) { this.native.selected = value; }
+  get mode(): string { return buttonModes[this.native.mode] ?? `ButtonMode ${this.native.mode}`; }
   get sound(): string { return this.native.sound ?? ''; }
   get soundVolume(): number { return this.native.soundVolumeScale ?? 1; }
 }

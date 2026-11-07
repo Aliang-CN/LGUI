@@ -101,9 +101,13 @@ test('Radio 按钮：当前页签选中，点别的页签由 Controller 换 Mode
   assert.deepEqual([tabs.get().tab, panel.child('tabA').selected, panel.child('tabB').selected], ['b', false, true]);
 });
 
-test('selected 绑在普通按钮（Common 模式）上报 LGUI-RT-242；按钮上写列表的词报 LGUI-RT-063', async () => {
-  const {mount} = await setup();
+test('selected 绑在普通按钮（Common 模式）上报 LGUI-RT-242（绑定时就报）；按钮上写列表的词报 LGUI-RT-063', async () => {
+  const {fw, mount} = await setup();
   assert.throws(() => mount({sellButton: {selected: true}}), e => e.code === 'LGUI-RT-242' && /Check/.test(e.next));
+  // 初值是 false 也在绑定时就报，不等值第一次变成 true。
+  assert.throws(() => mount({sellButton: {selected: false}}), e => e.code === 'LGUI-RT-242' && /Common/.test(e.message));
+  const off = fw.lgui.Model({on: false});
+  assert.throws(() => mount({sellButton: {selected: fw.pick(off, s => s.on)}}), e => e.code === 'LGUI-RT-242');
   assert.throws(() => mount({muteToggle: {items: []}}), e => e.code === 'LGUI-RT-063' && /items/.test(e.message));
 });
 

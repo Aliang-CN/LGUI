@@ -172,7 +172,7 @@ export class BagView extends View<BagPanelUI> {
 | `items` | 列表、树、下拉框 | 数组。树：每个节点的子节点放在 `children` 字段里；下拉框：每一项显示的文字。列表能滚动（`ui/` 里 `overflow="scroll"`）时自动用虚拟列表（只创建看得见的项），不滚动的列表每一项都创建 | `items: pick(bagModel, s => s.items)` |
 | `item` | 列表、树 | 子项（节点）的 `ItemView` 类 | `item: ItemSlotView` |
 | `key` | 列表、树 | 认出同一项的函数（参数要写上这一项的类型）；树必须写 | `key: (it: BagItem) => it.id` |
-| `selected` | 列表、树、下拉框、Check / Radio 按钮 | 列表、树：选中项的 key；下拉框：选中项的序号，`-1` 表示没有选中；按钮：是否选中（布尔），用户点击时 `click` 交给 Controller 改，选中状态只跟 Model 走；普通按钮（Common 模式）报 `LGUI-RT-242` | `selected: pick(bagModel, s => s.selectedId)`、`muteToggle: { selected: pick(soundModel, s => s.muted), click: () => settingsController.toggleMute() }` |
+| `selected` | 列表、树、下拉框、Check / Radio 按钮 | 列表、树：选中项的 key；下拉框：选中项的序号，`-1` 表示没有选中；按钮：是否选中（布尔），用户点击时 `click` 交给 Controller 改，选中状态只跟 Model 走；普通按钮（Common 模式）绑定时就报 `LGUI-RT-242` | `selected: pick(bagModel, s => s.selectedId)`、`muteToggle: { selected: pick(soundModel, s => s.muted), click: () => settingsController.toggleMute() }` |
 | `view` | 子组件（包括按钮、标签做成的） | `PartView` 类 | `view: CurrencyBarView` |
 | `click` / `doubleClick` | 任意控件 | 调用 Controller 方法；写在 `ItemView` 里时参数是这一项的数据 | `click: () => bagController.sell()`、`click: it => shopController.buy(it.id)` |
 | `hold` | 任意控件 | `{ ms, action }`，按满才执行；写在 `ItemView` 里时 `action` 的参数是这一项的数据 | `hold: { ms: 1000, action: () => bagController.salvage() }` |
@@ -340,8 +340,8 @@ keys: Keys = {
 | `lgui.loading.show()` / `hide()` | 加载中，按次数计数，最后一次 `hide` 才消失 |
 | `lgui.redDot.set('bag.newItem', true \| false \| 3)` | 红点；上层路径自动汇总，数字显示合计 |
 | `lgui.t('bag.sold', { count })` | 取文本，占位符写成 `{count}` |
-| `format.number(n)`、`format.compact(n)`、`format.date(d)`、`format.currency(n, 'CNY')` | 按当前语言格式化；`compact` 是数字缩写：中文 `1.6万`、`1.2亿`，英文 `16.3K`、`1.2M`，最多一位小数，不到缩写的单位时原样（中文 `9999`、英文 `999`） |
-| `lgui.setLanguage('en')` | 切换语言，已打开的界面自动重建。同时调用几次按调用顺序一个一个切；切换期间（后端换界面包的那一段）已打开的界面先不刷新，切完按当时的数据显示，期间打开的界面等切完再加载 |
+| `format.number(n)`、`format.compact(n)`、`format.date(d)`、`format.currency(n, 'CNY')` | 按当前语言格式化；`compact` 是数字缩写：中文 `1.6万`、`1.2亿`，英文 `16.3K`、`1.2M`，最多一位小数，四舍五入后够到下一个单位就进位（`999.95` → `1K`，中文 `9999.95` → `1万`），不到缩写的单位时原样（中文 `9999`、英文 `999`）；三端都用框架内置的规则、不用 Intl，同一个数各端显示一样 |
+| `lgui.setLanguage('en')` | 切换语言，已打开的界面自动重建。同时调用几次按调用顺序一个一个切；切换期间（后端换界面包的那一段）已打开的界面先不刷新，切完按当时的数据显示，期间打开的界面（包括排队轮到的 modal）等切完再显示 |
 | `lgui.time.now()`、`lgui.time.setServerOffset(毫秒)` | 当前时间（和服务器对齐） |
 | `await lgui.time.wait(毫秒)` | 等一段时间（Service 模拟延迟、重试间隔用；界面上的定时器用 View 的 `this.after`）。按帧累计，切到后台时不走；请求超时也是这样算的 |
 | `lgui.log.info('bag_opened', { count })` | 写日志（第 14.2 节） |
@@ -548,7 +548,7 @@ export default lgui.app({
 |---|---|
 | `log`（`Logger`：`enabled`、`debug`、`info`、`warn`、`error`、`child`） | h5：浏览器控制台；headless：记进测试状态，`error` 级的让测试失败 |
 | `audio`（`AudioService`：`play`、`music`、`setPaused`） | h5：浏览器的 Web Audio；headless：记下放过的音效和当前的背景音乐 |
-| `clipboard`（`ClipboardService`：`writeText`、`readText`） | h5：浏览器的 `navigator.clipboard`（只有 https 或 localhost 的页面能用）；Unity：系统剪贴板（`GUIUtility.systemCopyBuffer`）；headless：存在内存里，测试里 `lgui.platform.clipboard.readText()` 读得到 |
+| `clipboard`（`ClipboardService`：`writeText`、`readText`） | h5：浏览器的 `navigator.clipboard`（只有 https 或 localhost 的页面能用）；Unity：系统剪贴板（Unity 包里 `LGUI.Platform` 的 `ClipboardGet` / `ClipboardSet`）；headless：存在内存里，测试里 `lgui.platform.clipboard.readText()` 读得到 |
 
 LGUI 不依赖 Lumio 引擎，只是日志接口照抄了引擎 `Logger` 的形状。`lgui test` 里 `platform` 不生效。
 

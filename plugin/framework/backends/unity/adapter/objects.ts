@@ -186,6 +186,8 @@ export function createObjectAdapter(fgui: NativeFairyGUI, now: () => number, toP
     set icon(value: string) { this.native.icon = value; }
     get selected(): boolean { return this.native.selected; }
     set selected(value: boolean) { this.native.selected = value; }
+    // FairyGUI.ButtonMode 经 PuerTS 读出来是数字：0 Common、1 Check、2 Radio。
+    get mode(): string { return ['Common', 'Check', 'Radio'][this.native.mode] ?? `ButtonMode ${this.native.mode}`; }
     get sound(): string { return services.buttonSound(this.native); }
     get soundVolume(): number { return this.native.soundVolumeScale; }
   }

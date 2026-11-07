@@ -32,6 +32,10 @@ export interface NativePlatformHost {
   TransitionAutoPlayTimes(transition: NativeTransition): number;
   TransitionAutoPlayDelay(transition: NativeTransition): number;
   Fetch(url: string, method: string, headersJson: string, body: string, complete: (responseJson: string) => void): void;
+  /** 系统剪贴板里的文字（GUIUtility.systemCopyBuffer），没有文字时是空字符串。 */
+  ClipboardGet(): string;
+  /** 把文字放进系统剪贴板。 */
+  ClipboardSet(text: string): void;
 }
 
 export interface NativeStage {
@@ -67,11 +71,6 @@ export type NativePlatformApi = NativeFairyGUI & {
   };
 };
 
-/** UnityEngine.GUIUtility：systemCopyBuffer 是系统剪贴板里的文字。 */
-export interface NativeClipboard {
-  systemCopyBuffer: string;
-}
-
 export interface UnityPlatformOptions {
   projectName: string;
   uiBase: string;
@@ -83,6 +82,4 @@ export interface UnityPlatformOptions {
   };
   createLoader(): NativeLoader;
   scale: {value: number};
-  /** 系统剪贴板（UnityEngine.GUIUtility）；运行环境里没有时返回 null，用的时候报 LGUI-RT-241。 */
-  clipboard(): NativeClipboard | null;
 }

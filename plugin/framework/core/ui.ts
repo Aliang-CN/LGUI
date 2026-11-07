@@ -71,7 +71,7 @@ export interface UIComponent<Name extends string = string> extends UIObject {
   allTransitions(): readonly UITransition[];
   /** 内部用：直接子控件的名字，按显示顺序。 */
   childNames(): readonly string[];
-  /** 内部用：把一个对象加到最上面（UIManager 往层里放界面时用）。 */
+  /** 内部用：把一个对象加到最上面（UIManager 往层里放界面时用）。已经是它的子对象时只移到最上面，不离开舞台（FairyGUI 的 addChild 就是这样）。 */
   addChild(child: UIObject): void;
   /** 内部用：移除一个子对象（不销毁）。 */
   removeChild(child: UIObject): void;
@@ -106,6 +106,8 @@ export interface UIButton extends UIComponent {
   icon: string;
   /** 是否选中（单选、多选按钮）。 */
   selected: boolean;
+  /** ui/ 里按钮组件的模式：'Common'（普通按钮，不保持选中）、'Check'（开关）、'Radio'（单选），和 FairyGUI 的名字一样。 */
+  readonly mode: string;
   /** ui/ 里给这个按钮设的点击音效（实例上写的优先，其次是按钮组件的），没设是空字符串。 */
   readonly sound: string;
   /** ui/ 里设的点击音效音量（0–1，没设是 1；0 表示这个按钮不出声）。 */

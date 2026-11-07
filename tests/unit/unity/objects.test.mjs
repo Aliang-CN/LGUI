@@ -57,7 +57,7 @@ class Component extends Obj {
 }
 class Text extends Obj { text = ''; color = {r: 1, g: 1, b: 1, a: 1}; }
 class Input extends Text { promptText = ''; onChanged = new Listener(); }
-class Button extends Component { title = ''; icon = ''; selected = false; sound = null; soundVolumeScale = 1; }
+class Button extends Component { title = ''; icon = ''; selected = false; mode = 0; sound = null; soundVolumeScale = 1; }
 class Label extends Component { title = null; icon = null; }
 class Slider extends Component { value = 0; min = 0; max = 100; onChanged = new Listener(); }
 // 和 FairyGUI 一样：ApplyListChange 把 -1 改成 0、把超出的改成最后一项。itemList 像 PuerTS 里的 C# List。
@@ -287,6 +287,8 @@ test('Unity 对象：shown、hitDepth、onWheel、按钮音效和动效设置走
   const root = new Component(); const panel = new Component(); const button = new Button();
   root.AddChild(panel); panel.AddChild(button);
   const wrapped = a.wrap(button);
+  assert.equal(wrapped.mode, 'Common', 'FairyGUI.ButtonMode 0 是 Common');
+  button.mode = 1; assert.equal(wrapped.mode, 'Check'); button.mode = 2; assert.equal(wrapped.mode, 'Radio'); button.mode = 0;
   assert.equal(wrapped.shown, true);
   panel.displayObject.visible = false; assert.equal(wrapped.shown, false, 'a hidden ancestor hides it');
   panel.displayObject.visible = true; button.onStage = false; assert.equal(wrapped.shown, false, 'gear or group removed it from the stage');

@@ -68,6 +68,8 @@ export class GButton extends GComponent {
   title: string;
   icon: string;
   selected: boolean;
+  /** ButtonMode：0 Common、1 Check、2 Radio。 */
+  readonly mode: number;
   sound: string | null;
   soundVolumeScale: number;
 }
