@@ -419,7 +419,7 @@ test('选中道具后出售，金币增加', async () => {
 | `open(View, 参数?)` | 打开界面 |
 | `click(路径)`、`hold(路径, 毫秒)`、`drag(路径, dx, dy)`、`dragTo(从哪, 到哪)`、`swipe(路径, dx, dy)`、`pinch(路径, 比例)`、`wheel(路径, dy)`、`key(按键名)` | 模拟操作；`dragTo` 是拖放：从一个控件拖到另一个控件上松手 |
 | `type(路径, 文字)`、`setValue(路径, 值)`、`choose(路径, 序号)` | 模拟改值：在输入框里打字（先点一下、全选，再一个字一个字地输入，每个字调用一次 `input`，第二个字起接在框里现在的文字后面；遵守 `ui/` 里的 `maxLength`，满了以后再打的字进不去；空字符串清空）；把滑动条拖到某个值（夹在范围内、按 `ui/` 的设置取整，值变了才调用 `change`）；点开下拉框选第几项（从 0 开始） |
-| `text(路径)`、`visible(路径)`、`enabled(路径)`、`page(路径)`、`items(路径)`、`value(路径)`、`playing(路径)` | 读控件属性：文字（字符串；按钮、标签的文字显示在名为 `title` 的子控件里，没有这个子控件时报 `LGUI-RT-262`）；显示（布尔，「真的显示」：自己和各级父组件都显示，也没被齿轮或组藏起来）；可用（布尔）；控制器当前页（页名）；列表项数、树显示着的节点数（数字）；滑动条、进度条的值，下拉框的选中序号（数字）；序列帧动画是否在播放（布尔） |
+| `text(路径)`、`visible(路径)`、`enabled(路径)`、`page(路径)`、`items(路径)`、`value(路径)`、`playing(路径)` | 读控件属性：文字（字符串；按钮、标签的文字显示在名为 `title` 的子控件里，没有这个子控件时报 `LGUI-RT-262`）；显示（布尔，「真的显示」：自己和各级父组件都显示，也没被齿轮或组藏起来）；可用（布尔）；控制器当前页（页名）；列表项数、树显示着的节点数（数字）；滑动条、进度条的值，下拉框的选中序号（数字）；序列帧动画是否在播放（布尔）。headless 里文字、可用状态由改属性的齿轮（`gearText`、`gearLook`）决定时报 `LGUI-RT-260` |
 | `setScreen(宽, 高)`、`setLanguage(语言)`、`setInputType('touch' \| 'keyboardMouse')` | 模拟旋转、换语言、换输入设备 |
 | `advance(毫秒)` | 让时钟往前走：headless 是假时钟，按每帧 16 毫秒走；`--browser` 是真的等（一次最多 10 秒） |
 | `sounds()` | 放过的音效，按顺序：`[{ url: 'ui://Common/click', volume: 1 }]`（音量是最终音量） |
@@ -443,10 +443,11 @@ lgui test tests/layout.test.ts --browser    # 在真浏览器里跑（h5 后端�
 **headless 照浏览器的规则执行，不算渲染：**
 
 - **规则和浏览器一样，照样报错：** 控件树、属性、控制器、显示齿轮（`gearDisplay`、`gearDisplay2`）和组；动效按 `ui/` 里写的时长走；点不到的控件报 `LGUI-RT-032`；只有能滚动（`overflow="scroll"`）的列表能设成虚拟列表（`LGUI-RT-261`）；按钮、标签的文字写进 `title` 子控件；点 Check 按钮切换选中、点 Radio 按钮选中；打字遵守 `maxLength`。
-- **渲染 headless 不算，读到就报 `LGUI-RT-260`：** 关联（relation）、列表和组的排布、文字自动大小和排版度量（`autoSize` 是 both、height）、`gearXY` / `gearSize` 决定的位置和尺寸。`lgui.ui.find` 读到它们（控件自己或路径上的上级受影响）时报错，写明是哪个控件、哪个原因；不受影响的照常返回（`ui/` 里写的值、框架摆的界面和 `safe`）。屏幕尺寸、安全区变了以后，受关联影响的控件位置会变，这些在 headless 里本来就报不支持。
-- **headless 不模拟、也不报错的（要看就用 `--browser` 或 `lgui verify`）：** 命中测试（被同级控件挡住的按钮 headless 照样点得到，`--browser` 报 `LGUI-RT-032`）；虚拟列表的回收（headless 里每一项都有对象；浏览器里看不见的项没有对象，`list[序号]` 拿不到，先滚过去）；改属性的齿轮（`gearText`、`gearColor`、`gearIcon` 等，headless 读到的是 `ui/` 里的初始值）；按钮直接绑控制器、按钮选中时的 `selectedTitle`；悬停时按钮的 over 页。
+- **渲染 headless 不算，读到就报 `LGUI-RT-260`：** 关联（relation）、列表和组的排布、文字自动大小和排版度量（`autoSize` 是 both、height）、加载器的自动大小（`autoSize="true"`，尺寸跟着图片）、控件或组上的 `gearXY` / `gearSize`（组上的 `gearSize` 只有带排布的组才改组里控件的尺寸，和 FairyGUI 一样）决定的位置和尺寸。`lgui.ui.find` 读到它们（控件自己或路径上的上级受影响）时报错，写明是哪个控件、哪个原因；不受影响的照常返回（`ui/` 里写的值、框架摆的界面和 `safe`）。屏幕尺寸、安全区变了以后，受关联影响的控件位置会变，这些在 headless 里本来就报不支持。
+- **改属性的齿轮 headless 不模拟，读到就报 `LGUI-RT-260`：** `gearText`（文字）、`gearColor`（颜色）、`gearIcon`（图标、加载器的地址）、`gearLook`（可用、能不能点，还有透明度、旋转）管着的属性跟着控制器的页变。读它（`t.text`、`t.enabled`，或者代码里直接读）、点它（有 `gearLook` 的控件和它的上级 headless 不知道能不能点）都报错，写明是哪个控件、哪个齿轮、哪个控制器。代码自己写过这个属性以后（比如绑定写了文字）headless 就知道它，直到这个控制器再换页。
+- **headless 不模拟、也不报错的（要看就用 `--browser` 或 `lgui verify`）：** 命中测试（被同级控件挡住的按钮 headless 照样点得到，`--browser` 报 `LGUI-RT-032`）；虚拟列表的回收（headless 里每一项都有对象；浏览器里看不见的项没有对象，`list[序号]` 拿不到，先滚过去）；按钮直接绑控制器、按钮选中时的 `selectedTitle`；悬停时按钮的 over 页。
 
-**什么时候用 `--browser`：** 要测位置、尺寸、安全区、文字排版、谁挡住了谁，或者确认 headless 绿了的测试在浏览器里也对。同一个测试文件、同一套 `t.*`，在 Chrome 或 Edge 里用 h5 后端跑，点击、拖拽、打字发的是真实的鼠标、触摸、键盘输入。和 headless 的差别：
+**什么时候用 `--browser`：** 要测位置、尺寸、安全区、文字排版、谁挡住了谁、改属性的齿轮换页以后的样子，或者确认 headless 绿了的测试在浏览器里也对。同一个测试文件、同一套 `t.*`，在 Chrome 或 Edge 里用 h5 后端跑，点击、拖拽、打字发的是真实的鼠标、触摸、键盘输入。和 headless 的差别：
 
 - 每个测试开一个新页面：Model 等模块状态每个测试都是新的，`before`、`after` 每个测试各跑一次。
 - `t.advance` 是真的等，一次最多 10 秒；动效、请求按真实时间走。

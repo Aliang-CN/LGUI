@@ -1,5 +1,6 @@
 // headless 照浏览器里 FairyGUI 的规则执行：虚拟列表要能滚动、按钮和标签的文字写进 title 子控件、Check / Radio 点了切换选中、
-// 打字遵守 maxLength；布局算出来的位置和尺寸（关联、列表和组的排布、文字自动大小、gearXY）记下原因，测试读到时报 LGUI-RT-260。
+// 打字遵守 maxLength；布局算出来的位置和尺寸（关联、列表和组的排布、文字和加载器的自动大小、gearXY / gearSize）记下原因，测试读到时报 LGUI-RT-260；
+// 改属性的齿轮（gearText、gearColor、gearIcon、gearLook）不模拟，读到它们管的属性时报 LGUI-RT-260。
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -35,9 +36,11 @@ function writeRules(root) {
     <component id="frame001" name="Frame.xml" path="/"/>
     <component id="check001" name="Check.xml" path="/"/>
     <component id="radio001" name="Radio.xml" path="/"/>
+    <component id="gtitle01" name="GearTitle.xml" path="/"/>
   </resources>
 </packageDescription>`),
     'RulesPanel.xml': xml(`<component size="1000,800">
+  <controller name="state" pages="0,a,1,b" selected="0"/>
   <displayList>
     <list id="n1" name="fixed" xy="0,0" size="400,60" layout="row" defaultItem="ui://rules001item0001"/>
     <list id="n2" name="scroller" xy="0,100" size="400,300" defaultItem="ui://rules001item0001" overflow="scroll"/>
@@ -53,6 +56,20 @@ function writeRules(root) {
     <graph id="n12" name="stretched" xy="10,20" size="30,40" type="rect"><relation target="" sidePair="width-width"/></graph>
     <group id="n13" name="row" xy="600,0" size="200,60" advanced="true" layout="hz"/>
     <graph id="n14" name="inRow" xy="600,0" size="50,50" type="rect" group="n13"/>
+    <text id="n15" name="geared" xy="0,700" size="200,40" fontSize="24" autoSize="none" text="甲"><gearText controller="state" pages="1" values="乙" default="甲"/></text>
+    <graph id="n16" name="tinted" xy="300,700" size="50,50" type="rect" fillColor="#ff0000"><gearColor controller="state" pages="1" values="#00ff00" default="#ff0000"/></graph>
+    <loader id="n17" name="pic" xy="400,700" size="100,100" autoSize="true"/>
+    <loader id="n18" name="iconLoader" xy="500,700" size="100,100"><gearIcon controller="state" pages="1" values="" default=""/></loader>
+    <component id="n19" name="lookBtn" src="titled01" xy="600,700" size="200,60"><gearLook controller="state" pages="1" values="1,0,1,0" default="1,0,0,1"/></component>
+    <component id="n20" name="gearTitle" src="gtitle01" xy="600,600" size="200,60"/>
+    <component id="n21" name="gearFrame" src="frame001" xy="600,500" size="200,60"><gearText controller="state" pages="1" values="乙" default="甲"/><Label title="标题"/></component>
+    <component id="n22" name="noGear" src="titled01" xy="600,400" size="200,60"><Button title="照常"/></component>
+    <group id="n23" name="mover" xy="800,0" size="50,50" advanced="true"><gearXY controller="state" pages="1" values="10,10" default="800,0"/></group>
+    <graph id="n24" name="inMover" xy="800,0" size="50,50" type="rect" group="n23"/>
+    <group id="n25" name="sizer" xy="800,100" size="100,50" advanced="true" layout="hz"><gearSize controller="state" pages="1" values="200,50,1,1" default="100,50,1,1"/></group>
+    <graph id="n26" name="inSizer" xy="800,100" size="50,50" type="rect" group="n25"/>
+    <group id="n27" name="plainSizer" xy="800,200" size="100,50" advanced="true"><gearSize controller="state" pages="1" values="200,50,1,1" default="100,50,1,1"/></group>
+    <graph id="n28" name="inPlain" xy="800,200" size="50,50" type="rect" group="n27"/>
   </displayList>
 </component>`),
     'Item.xml': xml(`<component size="100,60">
@@ -67,6 +84,15 @@ function writeRules(root) {
     <text id="n1" name="title" xy="0,0" size="200,60" fontSize="24" autoSize="none" text="默认"/>
   </displayList>
   <Label/>
+</component>`),
+    // 按钮的 title 子控件自己有 gearText（跟按钮组件里的控制器 c）
+    'GearTitle.xml': xml(`<component size="200,60" extention="Button">
+  <controller name="button" pages="0,up,1,down,2,over,3,selectedOver" selected="0"/>
+  <controller name="c" pages="0,x,1,y" selected="0"/>
+  <displayList>
+    <text id="n1" name="title" xy="0,0" size="200,60" fontSize="24" autoSize="none" text="原来"><gearText controller="c" pages="1" values="换了" default="原来"/></text>
+  </displayList>
+  <Button/>
 </component>`),
     'Check.xml': button('Check', ''),
     'Radio.xml': button('Radio', '')
@@ -160,4 +186,38 @@ test('布局算出来的位置、尺寸记下原因：关联、文字自动大�
   assert.deepEqual(moved.rect, {x: 10, y: 20, width: 30, height: 40}, '内部读 rect 照常返回 ui/ 里的值（框架自己用）');
   moved.rect = {x: 1, y: 2, width: 3, height: 4};
   assert.deepEqual(moved.unknownLayout, {position: null, size: null});
+});
+
+test('改属性的齿轮（gearText、gearColor、gearIcon、gearLook）不模拟：读到它管的属性报 LGUI-RT-260；代码写过就知道，这个控制器换页又不知道', async () => {
+  const {backend, panel, sim} = await setup();
+  const unsupported = (where, what, gear) => e => e.code === 'LGUI-RT-260' && e.message.includes(`${where} 的${what}`) && e.message.includes(gear) && e.message.includes('lgui test --browser');
+  const geared = panel.child('geared');
+  assert.throws(() => geared.text, unsupported('Rules/RulesPanel.geared', '文字', 'gearText（控制器 state）'));
+  geared.text = '代码写的';
+  assert.equal(geared.text, '代码写的', '写过以后知道');
+  panel.controller('state').selectedPage = 'b';
+  assert.throws(() => geared.text, /LGUI-RT-260/, '控制器换页又不知道');
+  assert.throws(() => panel.child('tinted').color, unsupported('Rules/RulesPanel.tinted', '颜色', 'gearColor（控制器 state）'));
+  assert.throws(() => panel.child('iconLoader').url, unsupported('Rules/RulesPanel.iconLoader', '地址（图标）', 'gearIcon（控制器 state）'));
+  // gearLook 管可用和能不能点：读 enabled、点它都报（headless 不知道它现在能不能点）
+  const look = panel.child('lookBtn');
+  assert.throws(() => look.enabled, unsupported('Rules/RulesPanel.lookBtn', '可用状态', 'gearLook（控制器 state）'));
+  await assert.rejects(sim.click(backend, look), /LGUI-RT-260/);
+  look.enabled = true;
+  await sim.click(backend, look);
+  // 标签自己的 gearText 改的就是 title；按钮的 title 子控件有 gearText 而实例没写 title：按钮记下的文字也不知道
+  assert.throws(() => panel.child('gearFrame').title, unsupported('Rules/RulesPanel.gearFrame', '文字', 'gearText（控制器 state）'));
+  assert.throws(() => panel.child('gearTitle').title, unsupported('Rules/RulesPanel.gearTitle', '文字', 'title 子控件上的改属性的齿轮 gearText（控制器 c）'));
+  // 没有这些齿轮的照常读
+  assert.deepEqual([panel.child('fixedText').text, panel.child('noGear').title, panel.child('noGear').enabled, panel.child('moved').color], ['定', '照常', true, '#ffffff']);
+});
+
+test('加载器的自动大小、组上的 gearXY / gearSize 也记下原因（和 FairyGUI 一样，gearSize 只有带排布的组才改组里控件的尺寸）', async () => {
+  const {panel} = await setup();
+  const unknown = name => panel.child(name).unknownLayout;
+  assert.deepEqual(unknown('pic'), {position: null, size: '加载器的自动大小（autoSize="true"，尺寸跟着图片）'});
+  assert.deepEqual(unknown('iconLoader'), {position: null, size: null});
+  assert.deepEqual(unknown('inMover'), {position: '组 mover 上改位置的齿轮（gearXY）', size: null});
+  assert.deepEqual(unknown('inSizer'), {position: '组 sizer 的排布（layout="hz"）', size: '组 sizer 上改尺寸的齿轮（gearSize，组的排布 layout="hz"）'});
+  assert.deepEqual(unknown('inPlain'), {position: null, size: null});
 });

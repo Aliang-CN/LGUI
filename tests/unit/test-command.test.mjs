@@ -170,6 +170,30 @@ test('C 通过了但没调 t.end()', async () => {
   assert.deepEqual(json.data.results.map(r => [r.name, r.ok]), [['A 断言失败，没走到 t.end()', false], ['B 只有这个测试的界面收到广播', true], ['C 通过了但没调 t.end()', true]], JSON.stringify(json.errors));
 });
 
+test('lgui test：通过了、没调 t.end()、又留下了没关的界面：lgui test 补调的 end() 让它失败（LGUI-RT-112），同一个文件后面的测试不受连带', async () => {
+  const root = await project();
+  // 框架自己的打开、关闭路径都会把界面和包清干净；这里把这次测试的关闭换成什么都不做，模拟一个关不掉的界面。
+  fs.writeFileSync(path.join(root, 'tests/main.test.ts'), `import { test } from 'node:test';
+import { lgui } from 'lgui';
+import app from '../src/main';
+
+test('A 通过了、没调 t.end()、主界面关不掉', async () => {
+  const t = await lgui.testing.start(app);
+  (t as unknown as { ui: { closeAll(layer: string): void } }).ui.closeAll = () => {};
+});
+
+test('B 后面的测试照常', async () => {
+  const t = await lgui.testing.start(app);
+  t.end();
+});
+`);
+  const r = await run(['test', '--json'], root);
+  const json = JSON.parse(r.stdout);
+  assert.equal(r.code, 1);
+  assert.deepEqual(json.data.results.map(x => [x.name, x.ok]), [['A 通过了、没调 t.end()、主界面关不掉', false], ['B 后面的测试照常', true]], JSON.stringify(json.data.failed));
+  assert.match(json.data.failed[0].error, /LGUI-RT-112.*MainView/);
+});
+
 test('lgui test：配了 uiCache.keepClosedViews 时 t.end() 先清掉界面缓存再查泄漏，不报假的 LGUI-RT-112', async () => {
   const root = await project();
   const config = path.join(root, '.lgui/project.json');
