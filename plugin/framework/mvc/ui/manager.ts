@@ -669,7 +669,7 @@ export class UIManager {
   }
 
   /** 内部用：每个界面的监听和定时器数量。 */
-  views(): {name: string; listeners: number; timers: number}[] {
-    return this.all().filter(e => e.state === 'open').map(e => ({name: e.cls.name, listeners: e.view.__listeners, timers: e.view.__timers.size}));
+  views(): {name: string; listeners: number; timers: number; tweens: number}[] {
+    return this.all().filter(e => e.state === 'open').map(e => ({name: e.cls.name, listeners: e.view.__listeners, timers: e.view.__timers.size, tweens: (e.view as {__tweenCount?: number}).__tweenCount ?? 0}));
   }
 }

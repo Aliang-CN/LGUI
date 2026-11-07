@@ -69,7 +69,11 @@ export function createUnityBackend(bridge?: NativeBridge): Backend {
             return display?.gOwner ?? null;
           },
           buttonSound: button => host.ButtonSoundUrl(button),
-          transitionSettings: transition => ({autoPlay: host.TransitionAutoPlay(transition), times: host.TransitionAutoPlayTimes(transition), delay: Math.round(host.TransitionAutoPlayDelay(transition) * 1000)})
+          transitionSettings: transition => ({autoPlay: host.TransitionAutoPlay(transition), times: host.TransitionAutoPlayTimes(transition), delay: Math.round(host.TransitionAutoPlayDelay(transition) * 1000)}),
+          gearController: (object, index) => host.GearController(object, index),
+          downEffect: button => ({type: host.ButtonDownEffect(button), value: host.ButtonDownEffectValue(button)}),
+          disableDownEffect: button => host.DisableButtonDownEffect(button),
+          transitionItems: transition => Array.from({length: host.TransitionItemCount(transition)}, (_, i) => ({target: host.TransitionItemTarget(transition, i), type: host.TransitionItemType(transition, i)}))
         }, component => { containers.delete(component); });
       nativePlatform = createUnityPlatform({
         projectName: options.projectName, uiBase: options.uiBase, host: found.LGUI.Platform,
