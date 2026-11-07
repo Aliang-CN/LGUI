@@ -88,7 +88,7 @@ export async function runVerify(root, project, {size, view, params, lang} = {}) 
   const verifyProject = {...project, languages};
   const entry = writeWebBootstrap(root, verifyProject, {texts, dir: site});
   try {
-    await esbuild().build(webBuildOptions(root, entry, {outdir: site}));
+    await esbuild().build(webBuildOptions(root, entry, {outfile: path.join(site, 'app.js')}));
   } catch (error) {
     throw bundleErrors(error, root);
   }

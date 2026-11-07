@@ -63,7 +63,7 @@ export async function startDev(root, project, {port = project.devPort, log = () 
   const bundle = async () => {
     translations();
     const entry = writeWebBootstrap(root, project, {dir: site});
-    if (!context) context = await createWebContext(root, entry, {outdir: site});
+    if (!context) context = await createWebContext(root, entry, {outfile: path.join(site, 'app.js')});
     try {
       await context.rebuild();
     } catch (error) {
@@ -139,9 +139,13 @@ export async function startDev(root, project, {port = project.devPort, log = () 
     if (ui) await run(async () => { await generateUi(); await bundle(); }, '重新生成界面');
     else if (code) await run(bundle, '重新打包');
   };
+  // 生成物都在 .lgui/build/ 里：devWatch 写成工程根目录或它的上级时会监视到这里，不跳过的话打包写盘又触发打包，一直循环。
+  const output = path.join(root, '.lgui', 'build');
   const watch = (dir, kind) => {
     if (!fs.existsSync(dir)) return;
-    watchers.push(fs.watch(dir, {recursive: fs.statSync(dir).isDirectory()}, () => {
+    watchers.push(fs.watch(dir, {recursive: fs.statSync(dir).isDirectory()}, (_, name) => {
+      const changed = name ? path.resolve(dir, name.toString()) : null;
+      if (changed && (changed === output || changed.startsWith(output + path.sep))) return;
       pending[kind] = true;
       clearTimeout(timer);
       timer = setTimeout(flush, kind === 'ui' ? 200 : 50);

@@ -190,8 +190,7 @@ export async function unityExport({args, flags, cwd, projectRoot, project}) {
   fs.mkdirSync(stageGame, {recursive: true});
   const entry = writeBootstrap(projectRoot, stage, project, deps, texts);
   try {
-    await esbuild().build({...webBuildOptions(projectRoot, entry), format: 'iife', platform: 'neutral', sourcemap: false,
-      define: {LGUI_DEV: 'false'}, outfile: path.join(stageGame, 'game.js.txt')});
+    await esbuild().build({...webBuildOptions(projectRoot, entry, {dev: false, outfile: path.join(stageGame, 'game.js.txt')}), format: 'iife', platform: 'neutral', sourcemap: false});
   } catch (cause) { throw bundleErrors(cause, projectRoot); }
   for (const directory of [stageUi, stageGame]) fs.writeFileSync(path.join(directory, 'README.txt'), generatedNotice);
 

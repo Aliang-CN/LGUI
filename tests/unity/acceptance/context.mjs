@@ -6,7 +6,7 @@ import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {copyFramework} from '../../../plugin/tools/lib/commands/init.mjs';
 import {readProject} from '../../../plugin/tools/lib/project.mjs';
-import {generateWeb, generateProjectTypes, headlessDir, uiProjectPath, webUiDir} from '../../../plugin/tools/lib/generate/index.mjs';
+import {generateWeb, generateProjectTypes, headlessDir, uiProjectPath} from '../../../plugin/tools/lib/generate/index.mjs';
 import {readUiModel} from '../../../plugin/tools/lib/generate/model.mjs';
 import {extractTexts, generateTranslations, translationMaps} from '../../../plugin/tools/lib/generate/i18n.mjs';
 import {readTexts} from '../../../plugin/tools/lib/dev/bundle.mjs';
@@ -109,7 +109,7 @@ export default {screen:{width:1280,height:720},run:(t:Parameters<typeof runBindi
   return runBindingCoverage(t,{imageURL:base+'/gated.png',releaseURL:base+'/release',onCheckpoint});
 }};\n`);
   const project = readProject(root);
-  await generateWeb(uiProjectPath(root), webUiDir(root));
+  await generateWeb(uiProjectPath(root), path.join(root, '.lgui', 'build', 'web', 'ui'));
   await generateProjectTypes(root, {validated: true});
   const model = readUiModel(uiProjectPath(root));
   const texts = readTexts(root, project.languages);

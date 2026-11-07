@@ -10,10 +10,8 @@ import {generateHeadless} from './headless.mjs';
 
 export {generateWeb, generateUnity, readUiModel, generateTypes, generateHeadless};
 
-// 工程里的固定位置：ui/UI.fairy → .lgui/build/web/ui/、.lgui/build/unity/ui/。
+// 工程里的固定位置：界面工程 ui/UI.fairy；几条命令共用的类型和 headless 描述。网页界面包由各命令写进自己的生成目录（paths.mjs 的 buildDir）。
 export const uiProjectPath = root => path.join(root, 'ui', 'UI.fairy');
-export const webUiDir = root => path.join(root, '.lgui', 'build', 'web', 'ui');
-export const unityUiDir = root => path.join(root, '.lgui', 'build', 'unity', 'ui');
 export const typesDir = root => path.join(root, '.lgui', 'build', 'types');
 export const headlessDir = root => path.join(root, '.lgui', 'build', 'headless');
 
@@ -52,10 +50,3 @@ export function packageDeps(model) {
   return deps;
 }
 
-export async function generateProjectUi(root, {web = true, unity = false} = {}) {
-  const fairy = uiProjectPath(root);
-  return {
-    web: web ? await generateWeb(fairy, webUiDir(root)) : null,
-    unity: unity ? await generateUnity(fairy, unityUiDir(root)) : null
-  };
-}

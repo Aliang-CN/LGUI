@@ -7,7 +7,7 @@
 1. 先 `lgui ui list` 看现有的包、组件和控件。
 2. 新界面用 `lgui new view <包>/<组件> --pattern <模式>` 一次生成横竖两版骨架（第 7 节）；改已有界面就直接编辑 `ui/` 里的 XML。
 3. 改完运行 `lgui check`，把报错全部改掉。
-4. `lgui dev` 打开预览看效果。地址是 `http://127.0.0.1:<端口>/`：开发服务只监听、也只认 `127.0.0.1`，用 `localhost` 打不开（设计如此，挡住 DNS 重绑定）。改 `ui/`、`src/`、`i18n/` 会自动刷新；工程用到的别的目录（宿主代码、仓库根的 `Config/` 等）写进工程配置 `devWatch`（相对工程根目录，比如 `["../Config"]`），改了也会刷新。
+4. `lgui dev` 打开预览看效果。地址是 `http://127.0.0.1:<端口>/`：开发服务只监听、也只认 `127.0.0.1`，用 `localhost` 打不开（设计如此，挡住 DNS 重绑定）。改 `ui/`、`src/`、`i18n/` 会自动刷新；工程用到的别的目录（宿主代码、仓库根的 `Config/` 等）写进工程配置 `devWatch`（相对工程根目录，比如 `["../Config"]`），改了也会刷新。`devWatch` 写成工程根目录（`.`）或它的上级时不监视 `.lgui/build/`（生成物在这里，监视它会自己触发自己）。
 5. `lgui verify` 按标准尺寸横竖截图（同一个画面只截一次，按尺寸模拟刘海），逐张看一遍。只截一个界面写 `--view <View 名>`；它要参数就再写 `--params '<JSON 对象>'`（字段见这个 View 的 `static params`，比如 `--view ShopView --params '{"tab":"gift"}'`）。
 
 `lgui dev`、`lgui verify`、`lgui test` 各用各的生成目录（`.lgui/build/<命令>/`），`lgui dev` 开着时照样可以跑另外两个。
@@ -83,7 +83,7 @@ ui/
 
 - 每个组件 XML 和图片都要登记；登记的文件必须存在，存在的文件也都要登记。
 - **九宫格：** 在图片上写 `scale="9grid"` 和 `scale9grid="左,上,宽,高"`（中间可拉伸区域），区域不能超出图片。边距按图片真实的边框像素取，不要统一取边长的四分之一。
-- **图集：** 生成时按包自动打图集，一般不用管。每张图不能比所在包的图集上限大，默认 4096×4096；超了生成时报 `LGUI-CLI-113`，写明是哪张图。某个包确实要更大的图，在它的 `package.xml` 里 `</resources>` 后面写 `<publish name="包名" maxAtlasSize="8192"/>`（多数手机支持到 4096，更大先确认目标设备）。
+- **图集：** 生成时按包自动打图集，一般不用管。每张图不能比所在包的图集上限大。全局上限是 `ui/settings/Publish.json` 里的 `atlasSetting.maxSize`（编辑器「发布设置」里改的就是它），没写是 4096×4096；超了生成时报 `LGUI-CLI-113`，写明是哪张图、上限是从哪来的。某个包确实要更大的图，在它的 `package.xml` 里 `</resources>` 后面写 `<publish name="包名" maxAtlasSize="8192"/>`（多数手机支持到 4096，更大先确认目标设备）。
 - **声音：** mp3，登记成 `<sound>` 并导出（`exported="true"`）。代码和 View 的 `static music` 里写 `ui://<包名>/<声音名>`（`ui://Bag/coin`）；按钮的 `sound` 属性和别的资源引用一样写 `ui://<包ID><资源ID>`（`ui://bag00001coin0001`）。用法见 MVC 开发规范第 15 节。
 - `lgui art split`、`lgui art cut` 拆出来的小图会自动登记。
 
@@ -190,7 +190,7 @@ ui/
 <!-- 图形 -->
 <graph id="n8" name="mask" xy="0,0" size="1920,1080" type="rect" lineSize="0" fillColor="#80000000"/>
 
-<!-- 组 -->
+<!-- 组：普通组只在编辑时有，生成界面包时会被去掉；要用动效动整组写 advanced="true"（高级组） -->
 <group id="n9" name="footer" xy="0,980" size="1920,100"/>
 ```
 
@@ -208,7 +208,7 @@ ui/
 <text id="n1" name="gold" xy="20,20" size="200,48" fontSize="32" color="#ffd84a" bold="true" strokeColor="#3a1f00" strokeSize="2" shadowColor="#80000000" shadowOffset="0,2" align="center" vAlign="middle" autoSize="shrink" singleLine="true" text="1436"/>
 ```
 
-**按钮组件**（`extention="Button"`，标题和图标控件名固定为 `title`、`icon`：实例上的 `<Button title>`、绑定表的 `text` 只写进名为 `title` 的子控件，按钮组件里有文字却没有 `title` 时网页上显示不出来，`lgui check` 报 `LGUI-UI-066`）：
+**按钮组件**（`extention="Button"`，标题和图标控件名固定为 `title`、`icon`：实例上的 `<Button title>`、绑定表的 `text` 只写进名为 `title` 的子控件，按钮组件里有文字却没有 `title` 时网页上显示不出来，`lgui check` 报 `LGUI-UI-066`；标签、下拉框也一样）：
 
 ```xml
 <component size="160,56" extention="Button">
@@ -227,7 +227,7 @@ ui/
 
 **按下效果**写在按钮组件根节点的 `<Button>` 上：`<Button downEffect="scale" downEffectValue="0.95"/>` 按下缩到 95%（轴心自动设在按钮中间），`<Button downEffect="dark" downEffectValue="0.8"/>` 按下变暗到 80%；不写是没有效果。`downEffectValue` 不写是 0.8。
 
-**标签组件**（`extention="Label"`，标题和图标控件名固定为 `title`、`icon`；不能点选，要点的用按钮）：
+**标签组件**（`extention="Label"`，标题和图标控件名固定为 `title`、`icon`，实例上的 `<Label title>`、绑定表的 `text` 只写进 `title`；不能点选，要点的用按钮）：
 
 ```xml
 <component size="300,60" extention="Label">
@@ -256,7 +256,7 @@ ui/
 </component>
 ```
 
-**下拉框组件**（`extention="ComboBox"`，选中项的文字显示在 `title` 里；`dropdown` 指向弹出的组件，它里面要有一个名为 `list` 的列表，子项是按钮。弹出组件和子项要导出；放在别的包里也行，打开界面时会一起加载那个包）：
+**下拉框组件**（`extention="ComboBox"`，选中项的文字（实例上的 `<item title>`、绑定表的 `items`）显示在 `title` 里，没有 `title` 报 `LGUI-UI-066`；`dropdown` 指向弹出的组件，它里面要有一个名为 `list` 的列表，子项是按钮。弹出组件和子项要导出；放在别的包里也行，打开界面时会一起加载那个包）：
 
 ```xml
 <!-- ComboBox.xml -->
@@ -322,6 +322,7 @@ ui/
 ```
 
 - `time`、`duration` 的单位是帧，帧率是 `frameRate`（不写是每秒 24 帧）；`repeat` 是这一项再重复几次（`-1` 一直重复）。
+- **动效要动整组，组写成高级组**（`<group … advanced="true"/>`）：普通组只在编辑时有，生成界面包时会被去掉，动效找不到它、动不了，`lgui check` 报 `LGUI-UI-069`。
 - **旋转（`Rotation`）、缩放（`Scale`）先给目标控件设轴心**：控件上写 `pivot="0.5,0.5"`（绕中心）；不写轴心是左上角，会绕左上角转、朝右下缩放。确实要绕左上角就写 `pivot="0,0"`。没设报 `LGUI-UI-067`（同一个动效里用 `Pivot` 项设了、按下缩放的按钮自动在中间的不报）。
 - `autoPlay="true"`：界面创建时自动播放（旋转、换语言重建组件时会再播一次）；`autoPlayDelay` 是自动播放前等几秒。
 - `autoPlayRepeat`：播放次数，`-1` 一直循环；绑定表里的 `playing` 也按它放。
@@ -522,8 +523,9 @@ ui/
 | `LGUI-UI-063`（警告） | 横竖两版同一个控件的固定文字一样 | 两版都是 `text="背包"` | 竖版写 `text="我的背包"` |
 | `LGUI-UI-064` | 全屏界面（`static fullScreen = true`）的组件，横竖两版都有名为 `safe` 的直接子控件 | 见第 7.3 节 | 全屏界面没有 `safe` |
 | `LGUI-UI-065` | 音效（按钮的 `sound`、工程配置的 `sounds.click`）指向存在、已登记的 mp3；`sound=""` 表示不出声 | `<Button sound="ui://Bag/click"/>`，`click.mp3` 登记在 Bag 包里 | 没登记、文件不存在、`click.wav` |
-| `LGUI-UI-066` | 给按钮写了标题（实例上的 `<Button title>`、绑定表的 `text`），按钮组件里就要有名为 `title` 的子控件 | 按钮组件里的文字叫 `title` | 文字叫 `text`、`label`，绑定表还给它写 `text` |
+| `LGUI-UI-066` | 给按钮、标签写了标题（实例上的 `<Button title>`、`<Label title>`，绑定表的 `text`），给下拉框写了选项（实例上的 `<item title>`，绑定表的 `items`），组件里就要有名为 `title` 的子控件 | 组件里的文字叫 `title` | 文字叫 `text`、`label`，绑定表还给它写 `text` / `items` |
 | `LGUI-UI-067` | 动效里旋转、缩放的控件设了轴心 | `pivot="0.5,0.5"`（要绕左上角写 `pivot="0,0"`） | 不写 `pivot` 就做 `Rotation` / `Scale` |
 | `LGUI-UI-068` | `shrink`、`ellipsis` 的文字，框只放得下一行时写 `singleLine="true"` | `size="300,40" fontSize="28" autoSize="shrink" singleLine="true"` | `size="300,40" fontSize="28" autoSize="shrink"` |
+| `LGUI-UI-069` | 动效的目标不是普通组（普通组只在编辑时有，生成界面包时会被去掉，动效动不了它） | 要动整组就用高级组 `<group … advanced="true"/>`，或者让动效直接动组里的控件 | `<group id="n8" …/>` + `<item type="XY" target="n8" …/>` |
 
 靠人看、机器查不出的：图里不放文字；同一个工程的图风格一致；文字在各尺寸下没有被截断（看 `lgui verify` 的截图）。
