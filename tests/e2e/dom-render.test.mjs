@@ -265,7 +265,7 @@ test('补丁 9：downEffect="scale" 的按压只是视觉效果，按钮跟兄�
   }
 });
 
-test('补丁 10：界面离开舞台再回来（换版重排、齿轮藏起来又显示），代码放的动效暂停后接着放，不停在半路', async t => {
+test('补丁 10：界面离开舞台再回来（显示齿轮藏起来又显示），代码放的动效暂停后接着放，不停在半路', async t => {
   const browser = await launchBrowser();
   if (!browser) { t.skip('未找到 Chrome 或 Edge'); return; }
   // fly：12 帧（0.5 秒）从 y=400 飞到 y=0；loop：一直来回改透明度；atEnd：options=4，离开舞台时照上游跳到结束
@@ -286,7 +286,7 @@ test('补丁 10：界面离开舞台再回来（换版重排、齿轮藏起来�
     const removed = await page.evaluate(() => {
       const v = window.view;
       for (const name of ['fly', 'loop', 'atEnd']) v.getTransition(name).play(null, name === 'loop' ? -1 : 1);
-      // UIManager 重排层内顺序时就是这样：从容器里拿出来再放回去
+      // 从容器里拿出来再放回去：和显示齿轮把界面藏起来又显示一样，都会收到「离开舞台」「回到舞台」
       window.fgui.GRoot.inst.removeChild(v); window.fgui.GRoot.inst.addChild(v);
       return {coin: v.getChild('coin').y, gem: v.getChild('gem').y};
     });
