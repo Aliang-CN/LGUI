@@ -17,6 +17,47 @@ async function project() {
   await run(['init', 'game'], parent);
   return path.join(parent, 'game');
 }
+const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+
+/** 连上 lgui dev 的推送（/__lgui/events），数收到了几次刷新。 */
+async function listen(server) {
+  const events = {reloads: 0, close: () => req?.destroy()};
+  let req;
+  await new Promise((resolve, reject) => {
+    req = http.get(`${server.url}__lgui/events`, res => {
+      res.setEncoding('utf8');
+      res.on('data', chunk => {
+        if (chunk.startsWith(': lgui')) resolve();
+        events.reloads += (chunk.match(/event: reload/g) ?? []).length;
+      });
+    });
+    req.on('error', reject);
+  });
+  return events;
+}
+
+// macOS 上 fs.watch（FSEvents）在 fs.watch() 返回以后才异步开始监视，开始之前改的文件不会报（不是晚报，是没有）：
+// 本机实测要 0–13 毫秒，有负载时到 50 毫秒，CI 的 macOS 机器更慢。没有「监视已生效」的通知，
+// 所以改一次、等 300 毫秒，没收到刷新就再改，直到收到——收到了就说明监视已经生效。总共还是最多等 5 秒。
+async function changeUntilReload(events, change, what) {
+  const before = events.reloads;
+  const start = Date.now();
+  for (let i = 1; events.reloads === before && Date.now() - start < 5000; i++) {
+    change(i);
+    for (let t = 0; t < 300 && events.reloads === before; t += 25) await sleep(25);
+  }
+  assert.ok(events.reloads > before, `${what}以后 5 秒内没有推送刷新`);
+}
+
+// 不再改文件以后要安静下来：已经触发的打包做完，连续 2 秒没有新的刷新（最多等 10 秒）。
+async function settles(events) {
+  let last = events.reloads, since = Date.now();
+  for (const start = Date.now(); Date.now() - start < 10000; await sleep(50)) {
+    if (events.reloads !== last) { last = events.reloads; since = Date.now(); }
+    if (Date.now() - since >= 2000) return true;
+  }
+  return false;
+}
 const get = url => new Promise((resolve, reject) => http.get(url, res => { let body = ''; res.on('data', c => { body += c; }); res.on('end', () => resolve({status: res.statusCode, body})); }).on('error', reject));
 
 // 一个要参数的界面：没有 id 就在 onOpen 里报错
@@ -83,26 +124,13 @@ test('lgui dev：devWatch 写成工程根目录或它的上级时不监视 .lgui
     const file = path.join(root, '.lgui/project.json');
     fs.writeFileSync(file, JSON.stringify({...JSON.parse(fs.readFileSync(file, 'utf8')), devWatch: [watch]}, null, 2));
     const server = await startDev(root, readProject(root), {port: 0});
-    let req, reloads = 0;
+    let events;
     try {
-      await new Promise((resolve, reject) => {
-        req = http.get(`${server.url}__lgui/events`, res => {
-          res.setEncoding('utf8');
-          res.on('data', chunk => {
-            if (chunk.startsWith(': lgui')) resolve();
-            reloads += (chunk.match(/event: reload/g) ?? []).length;
-          });
-        });
-        req.on('error', reject);
-      });
-      fs.writeFileSync(path.join(root, 'notes.txt'), 'x');
-      for (let waited = 0; reloads === 0 && waited < 5000; waited += 50) await new Promise(resolve => setTimeout(resolve, 50));
-      assert.ok(reloads >= 1, `devWatch ${watch}：改了工程根目录下的 notes.txt 以后 5 秒内没有推送刷新`);
-      const after = reloads;
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      assert.equal(reloads, after, `devWatch ${watch}：没有再改文件，2 秒里又推送了 ${reloads - after} 次刷新（打包写进 .lgui/build/ 又触发了打包）`);
+      events = await listen(server);
+      await changeUntilReload(events, i => fs.writeFileSync(path.join(root, 'notes.txt'), `x${i}`), `devWatch ${watch}：改了工程根目录下的 notes.txt`);
+      assert.ok(await settles(events), `devWatch ${watch}：不再改文件以后 10 秒内一直在推送刷新（共 ${events.reloads} 次）：打包写进 .lgui/build/ 又触发了打包`);
     } finally {
-      req?.destroy();
+      events?.close();
       await server.close();
     }
   }
@@ -120,22 +148,12 @@ test('lgui dev：devWatch 里的目录改了就推送刷新；路径不存在报
 
   fs.writeFileSync(file, JSON.stringify({...raw, devWatch: ['../Config']}, null, 2));
   const server = await startDev(root, readProject(root), {port: 0});
-  let req;
+  let events;
   try {
-    const reloaded = new Promise((resolve, reject) => {
-      const timer = setTimeout(() => reject(new Error('改了 ../Config 以后 5 秒内没有推送刷新')), 5000);
-      req = http.get(`${server.url}__lgui/events`, res => {
-        res.setEncoding('utf8');
-        res.on('data', chunk => {
-          if (chunk.startsWith(': lgui')) fs.writeFileSync(path.join(config, 'items.json'), '{"a":2}\n'); // 连上以后再改
-          if (chunk.includes('event: reload')) { clearTimeout(timer); resolve(); }
-        });
-      });
-      req.on('error', reject);
-    });
-    await reloaded;
+    events = await listen(server);
+    await changeUntilReload(events, i => fs.writeFileSync(path.join(config, 'items.json'), `{"a":${i + 1}}\n`), '改了 ../Config/items.json');
   } finally {
-    req?.destroy();
+    events?.close();
     await server.close();
   }
 });
