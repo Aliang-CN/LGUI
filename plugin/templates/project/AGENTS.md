@@ -18,7 +18,7 @@ LGUI 是面向 AI Agent 的 UI 框架：界面在 `ui/`（FairyGUI 格式）里�
 |---|---|
 | `lgui dev` | 打开网页预览，改动后自动刷新 |
 | `lgui check` | 类型检查和规范检查 |
-| `lgui test` | 跑 `tests/` 里的测试 |
+| `lgui test [文件或目录] [--name 名字] [--browser]` | 跑 `tests/` 里的测试（默认 headless；`--browser` 在真浏览器里跑） |
 | `lgui verify` | 按标准尺寸横竖截图（同一个画面只截一次，按尺寸模拟刘海） |
 | `lgui ui list` | 列出 `ui/` 里的组件和控件 |
 | `lgui new module <名字> [--pattern <模式>]` | 生成一个功能的骨架（带模式时连横竖两版界面一起生成） |

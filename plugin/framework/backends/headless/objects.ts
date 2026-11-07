@@ -1,10 +1,12 @@
 // headless 后端的 UI 对象：按 headless 描述建控件树，只模拟属性和显示齿轮，不算布局、不渲染。
+// 规则（虚拟列表要能滚动、按钮和标签的文字写进 title 子控件、输入框的 maxLength……）照浏览器里的 FairyGUI 执行；
+// 布局算出来的位置和尺寸（关联、列表和组的排布、文字自动大小、gearXY / gearSize）不算，记下原因，测试读到时报 LGUI-RT-260。
 import type {
   PointerInput, Rect, UIObject, UIComponent, UIText, UIInput, UIButton, UIImage, UILoader, UIList, UIController, UITransition, UIProgress, UIGraph, UIKind, Unsubscribe,
   UILabel, UISlider, UIComboBox, UIMovieClip, UITree, UITreeNode, WheelInput
 } from '../../core/index';
 import {LgRuntimeError} from '../../core/index';
-import type {ChildDescriptor, ComponentDescriptor, GearsDescriptor} from './descriptor';
+import type {ChildDescriptor, ComponentDescriptor, GearsDescriptor, LayoutDescriptor} from './descriptor';
 
 // 一组回调。
 export class Handlers<T> {
@@ -22,15 +24,28 @@ export class HeadlessGroup {
   visible = true;
   gearVisible = true;
   group: HeadlessGroup | null = null;
+  /** 组会挪动组里的控件时写着原因（自动排布、组自己的关联），否则是 null。 */
+  moves: string | null = null;
   constructor(readonly name: string) {}
   shown(): boolean { return this.visible && this.gearVisible && (!this.group || this.group.shown()); }
+}
+
+/** 位置、尺寸由 headless 不算的布局决定时写着原因，null 是 ui/ 里写的值或者框架自己摆的（和网页一致）。 */
+export interface LayoutUnknown {
+  position: string | null;
+  size: string | null;
 }
 
 export class HeadlessObject implements UIObject {
   visible = true;
   enabled = true;
   touchable = true;
-  rect: Rect = {x: 0, y: 0, width: 0, height: 0};
+  private box: Rect = {x: 0, y: 0, width: 0, height: 0};
+  /** 内部用：哪些位置、尺寸 headless 不知道（见 LayoutUnknown）。框架写 rect 时清掉：框架自己算的位置和网页一致。 */
+  unknownLayout: LayoutUnknown = {position: null, size: null};
+  /** 位置和尺寸：ui/ 里写的初始值或框架摆的值。受布局影响的值在网页上会不一样，测试读它们走 Harness（LGUI-RT-260）。 */
+  get rect(): Rect { return {...this.box}; }
+  set rect(value: Rect) { this.box = {x: value.x, y: value.y, width: value.width, height: value.height}; this.unknownLayout = {position: null, size: null}; }
   customData = '';
   parent: HeadlessComponent | null = null;
   /** 内部用：被显示齿轮藏起来时是 false（FairyGUI 的 internalVisible）。 */
@@ -56,9 +71,9 @@ export class HeadlessObject implements UIObject {
   }
   /** 内部用：设计尺寸下在屏幕上的位置（各级父组件的位置相加）。 */
   globalRect(): Rect {
-    let {x, y} = this.rect;
-    for (let p = this.parent; p; p = p.parent) { x += p.rect.x; y += p.rect.y; }
-    return {x, y, width: this.rect.width, height: this.rect.height};
+    let {x, y} = this.box;
+    for (let p = this.parent; p; p = p.parent) { x += p.box.x; y += p.box.y; }
+    return {x, y, width: this.box.width, height: this.box.height};
   }
   /** 内部用：真的显示着，自己和各级父组件也都可用、接收输入时才能点到。 */
   reachable(): boolean {
@@ -115,13 +130,29 @@ class HeadlessText extends HeadlessObject implements UIText {
 
 class HeadlessInput extends HeadlessText implements UIInput {
   promptText = '';
+  /** 最多能输入几个字（UTF-16 长度，和浏览器的 maxlength 一样），0 是不限。只限制打字，代码写 text 不截断（和浏览器一样）。 */
+  maxLength = 0;
   readonly changes = new Handlers<string>();
   onChange(handler: (text: string) => void): Unsubscribe { return this.changes.add(handler); }
 }
 
+// 和 FairyGUI 一样：按钮、标签、下拉框的文字显示在名为 title 的子控件里（文字控件写 text，标签、按钮写 title）；没有这个子控件就不显示。
+export function titleChild(component: HeadlessComponent): HeadlessObject | null { return component.children.find(c => c.name === 'title') ?? null; }
+function displayText(o: HeadlessObject): string {
+  if (o instanceof HeadlessText) return o.text;
+  if (o instanceof HeadlessLabel || o instanceof HeadlessButton) return o.title;
+  return '';
+}
+function setDisplayText(o: HeadlessObject, value: string): void {
+  if (o instanceof HeadlessText) o.text = value;
+  else if (o instanceof HeadlessLabel || o instanceof HeadlessButton) o.title = value;
+}
+
+// 标签：和 FairyGUI 一样，title 就是 title 子控件的文字；没有 title 子控件时读到空字符串，写了也不显示。
 class HeadlessLabel extends HeadlessComponent implements UILabel {
-  title = '';
   icon = '';
+  get title(): string { const t = titleChild(this); return t ? displayText(t) : ''; }
+  set title(value: string) { const t = titleChild(this); if (t) setDisplayText(t, value); }
 }
 
 export class HeadlessSlider extends HeadlessComponent implements UISlider {
@@ -165,12 +196,15 @@ class HeadlessMovieClip extends HeadlessObject implements UIMovieClip {
   frame = 0;
 }
 
+// 按钮：和 FairyGUI 一样，title 自己记一份，同时写进 title 子控件（没有这个子控件就不显示）；一开始是 title 子控件自己的文字。
 class HeadlessButton extends HeadlessComponent implements UIButton {
-  title = '';
+  private label = '';
   icon = '';
   sound = '';
   soundVolume = 1;
   mode = 'Common';
+  get title(): string { return this.label; }
+  set title(value: string) { this.label = value; const t = titleChild(this); if (t) setDisplayText(t, value); }
   private isSelected = false;
   // 和 FairyGUI 一样：Common 模式不保持选中；Check、Radio 选中时 button 控制器到 down 页，取消时回到 up 页。
   get selected(): boolean { return this.isSelected; }
@@ -179,6 +213,11 @@ class HeadlessButton extends HeadlessComponent implements UIButton {
     this.isSelected = value;
     const controller = this.controllers.get('button');
     if (controller && controller.pages.includes('down') && controller.pages.includes('up')) controller.selectedPage = value ? 'down' : 'up';
+  }
+  /** 内部用：用户点了这个按钮。和 FairyGUI 一样：Check 模式切换选中，Radio 模式没选中时选中（列表、树的子项由列表管，不走这里）。 */
+  clicked(): void {
+    if (this.mode === 'Check') this.selected = !this.selected;
+    else if (this.mode === 'Radio' && !this.selected) this.selected = true;
   }
 }
 
@@ -212,8 +251,19 @@ class HeadlessLoader extends HeadlessObject implements UILoader {
 
 export class HeadlessList extends HeadlessComponent implements UIList {
   itemRenderer: ((index: number, item: UIComponent) => void) | null = null;
-  virtual = false;
-  scrollPosition = {x: 0, y: 0};
+  private isVirtual = false;
+  private position = {x: 0, y: 0};
+  // 和浏览器一样：只有能滚动的列表能设成虚拟列表，设了就不能改回去。
+  get virtual(): boolean { return this.isVirtual; }
+  set virtual(value: boolean) {
+    if (value === this.isVirtual) return;
+    if (!value) throw new LgRuntimeError('LGUI-RT-021', '列表一旦设成虚拟列表就不能改回去。', '在第一次给数据之前决定要不要虚拟列表。');
+    if (!this.scrollable) throw new LgRuntimeError('LGUI-RT-261', `列表 ${this.name} 不能滚动（ui/ 里没写 overflow="scroll"），不能设成虚拟列表（浏览器里 FairyGUI 报 Virtual list must be scrollable!）。`, '要虚拟列表就在 ui/ 里给列表写 overflow="scroll"（不想显示滚动条再加 scrollBar="hidden"）；项数固定的短列表不用虚拟列表。');
+    this.isVirtual = true;
+  }
+  // 和浏览器一样：不能滚动的列表滚动位置总是 0，设了也不动。
+  get scrollPosition(): {x: number; y: number} { return {...this.position}; }
+  set scrollPosition(value: {x: number; y: number}) { if (this.scrollable) this.position = {x: value.x, y: value.y}; }
   private selected = -1;
   /** 选中项：和 FairyGUI 一样同步到子项按钮（Check、Radio 模式的按钮才显示选中）。 */
   get selectedIndex(): number { return this.selected; }
@@ -233,6 +283,7 @@ export class HeadlessList extends HeadlessComponent implements UIList {
     while (this.children.length > value) (this.children[this.children.length - 1] as HeadlessComponent).dispose();
     while (this.children.length < value) {
       const item = buildComponent(this.lookup(this.itemName as string), this.lookup, String(this.children.length), undefined, undefined, this.tr);
+      item.unknownLayout.position = '列表的排布';
       this.addChild(item);
     }
     this.count = value;
@@ -312,6 +363,7 @@ export class HeadlessTree extends HeadlessComponent implements UITree {
         let cell = this.cells.get(node.key);
         if (!cell) {
           cell = buildComponent(this.lookup(this.itemName as string), this.lookup, String(node.key), undefined, undefined, this.tr);
+          cell.unknownLayout.position = '树的排布';
           this.cells.set(node.key, cell);
           this.keys.set(cell, node.key);
         }
@@ -415,7 +467,7 @@ function buildChild(child: ChildDescriptor, lookup: Lookup, owner: string | unde
   let object: HeadlessObject;
   switch (child.kind) {
     case 'text': case 'richtext': { const t = new HeadlessText(child.name, child.kind); t.text = p.text ?? ''; object = t; break; }
-    case 'input': { const t = new HeadlessInput(child.name, 'input'); t.text = p.text ?? ''; t.promptText = p.promptText ?? ''; object = t; break; }
+    case 'input': { const t = new HeadlessInput(child.name, 'input'); t.text = p.text ?? ''; t.promptText = p.promptText ?? ''; t.maxLength = p.maxLength ?? 0; object = t; break; }
     case 'image': object = new HeadlessImage(child.name, 'image'); break;
     case 'loader': { const l = new HeadlessLoader(child.name, 'loader'); if (p.url) l.url = p.url; object = l; break; }
     case 'graph': { const g = new HeadlessGraph(child.name, 'graph'); g.color = p.color ?? '#ffffff'; object = g; break; }
@@ -433,7 +485,26 @@ function buildChild(child: ChildDescriptor, lookup: Lookup, owner: string | unde
   object.touchable = p.touchable;
   const [x, y, width, height] = child.rect;
   object.rect = {x, y, width, height};
+  markLayout(object, child.layout, p.autoSize);
   return object;
+}
+
+// 关联的 sidePair 改的是位置还是尺寸（结尾的 % 是按比例，一样算）：leftext、topext 挪边，位置和尺寸都改。
+const MOVES = /^(left|right|center|top|middle|bottom|leftext|topext)-/;
+const RESIZES = /^(width|height|leftext|rightext|topext|bottomext)-/;
+
+// 记下这个控件哪些位置、尺寸 headless 不算：关联、gearXY / gearSize、文字自动大小（both、height）。
+function markLayout(object: HeadlessObject, layout: LayoutDescriptor | undefined, autoSize: string | undefined): void {
+  const unknown = object.unknownLayout;
+  for (const pair of layout?.relations ?? []) {
+    const moves = MOVES.test(pair), resizes = RESIZES.test(pair);
+    const reason = `关联（relation ${pair}）`;
+    if ((moves || !resizes) && !unknown.position) unknown.position = reason;
+    if ((resizes || !moves) && !unknown.size) unknown.size = reason;
+  }
+  if (layout?.gearXY && !unknown.position) unknown.position = '改位置的齿轮（gearXY）';
+  if (layout?.gearSize && !unknown.size) unknown.size = '改尺寸的齿轮（gearSize）';
+  if ((autoSize === 'both' || autoSize === 'height') && !unknown.size) unknown.size = `文字的自动大小（autoSize="${autoSize}"）`;
 }
 
 // 显示齿轮：和 FairyGUI 一样，gearDisplay 定下显不显示，gearDisplay2 再按条件（0 并且、1 或者）合进去；控制器换页时重算。
@@ -459,7 +530,6 @@ export function buildComponent(descriptor: ComponentDescriptor, lookup: Lookup, 
   const extension = descriptor.extension;
   if (kind === 'button' || extension === 'Button') {
     const button = new HeadlessButton(name, descriptor.name, 'button');
-    button.title = props?.title ?? '';
     button.icon = props?.icon ?? '';
     button.mode = descriptor.buttonMode ?? 'Common';
     // 和 FairyGUI 一样：实例上写的音效、音量各自优先，其次是按钮组件的。
@@ -501,6 +571,8 @@ export function buildComponent(descriptor: ComponentDescriptor, lookup: Lookup, 
   for (const g of descriptor.groups ?? []) {
     const group = new HeadlessGroup(g.name);
     group.visible = g.visible;
+    if (g.layout) group.moves = `组 ${g.name} 的排布（layout="${g.layout}"）`;
+    else if (g.relations?.length) group.moves = `组 ${g.name} 的关联（relation ${g.relations.join(',')}）`;
     groups.set(g.id, group);
     applyGears(group, g.gears, component);
   }
@@ -508,16 +580,21 @@ export function buildComponent(descriptor: ComponentDescriptor, lookup: Lookup, 
   for (const child of descriptor.children) {
     const object = buildChild(child, lookup, owner, tr);
     object.group = child.group ? groups.get(child.group) ?? null : null;
+    for (let g = object.group; g && !object.unknownLayout.position; g = g.group) if (g.moves) object.unknownLayout.position = g.moves;
     applyGears(object, child.gears, component);
     component.addChild(object);
   }
-  // 标签没写 title 时显示组件里 title 文字自己的内容；下拉框的项在子控件建好以后再给（选中项的文字要写进 title）。
-  if (component instanceof HeadlessLabel) component.title = props?.title ?? (component.child('title') as HeadlessText | null)?.text ?? '';
+  // 按钮、标签没写 title 时显示 title 子控件自己的文字（和 FairyGUI 一样，子控件建好以后再写）；下拉框的项也在子控件建好以后再给（选中项的文字要写进 title）。
+  if (component instanceof HeadlessButton) {
+    const t = titleChild(component);
+    component.title = props?.title ?? (t ? displayText(t) : '');
+  }
+  if (component instanceof HeadlessLabel && props?.title !== undefined) component.title = props.title;
   if (component instanceof HeadlessComboBox) { component.items = props?.items ?? []; component.selectedIndex = props?.selectedIndex ?? -1; }
   return component;
 }
 
-export {HeadlessLoader, HeadlessInput, HeadlessText};
+export {HeadlessLoader, HeadlessInput, HeadlessText, HeadlessButton, HeadlessLabel};
 
 /** 按地址建一张图片（ArtText 用）。 */
 export function buildImage(url: string, size: {width: number; height: number} | null): HeadlessObject {

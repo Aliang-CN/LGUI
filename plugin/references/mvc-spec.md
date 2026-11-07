@@ -412,31 +412,53 @@ test('选中道具后出售，金币增加', async () => {
 });
 ```
 
-`lgui.testing.start(app, 选项?)` 用 headless 后端和假时钟启动，返回的对象有：
+`lgui.testing.start(app, 选项?)` 用 headless 后端和假时钟启动（`lgui test --browser` 换成 h5 后端和真浏览器，写法一样），返回的对象有：
 
 | 方法 | 作用 |
 |---|---|
 | `open(View, 参数?)` | 打开界面 |
 | `click(路径)`、`hold(路径, 毫秒)`、`drag(路径, dx, dy)`、`dragTo(从哪, 到哪)`、`swipe(路径, dx, dy)`、`pinch(路径, 比例)`、`wheel(路径, dy)`、`key(按键名)` | 模拟操作；`dragTo` 是拖放：从一个控件拖到另一个控件上松手 |
-| `type(路径, 文字)`、`setValue(路径, 值)`、`choose(路径, 序号)` | 模拟改值：在输入框里打字（先点一下、全选，再一个字一个字地输入，每个字调用一次 `input`，第二个字起接在框里现在的文字后面；空字符串清空）；把滑动条拖到某个值（夹在范围内、按 `ui/` 的设置取整，值变了才调用 `change`）；点开下拉框选第几项（从 0 开始） |
-| `text(路径)`、`visible(路径)`、`enabled(路径)`、`page(路径)`、`items(路径)`、`value(路径)`、`playing(路径)` | 读控件属性：文字（字符串）；显示（布尔，「真的显示」：自己和各级父组件都显示，也没被齿轮或组藏起来）；可用（布尔）；控制器当前页（页名）；列表项数、树显示着的节点数（数字）；滑动条、进度条的值，下拉框的选中序号（数字）；序列帧动画是否在播放（布尔） |
+| `type(路径, 文字)`、`setValue(路径, 值)`、`choose(路径, 序号)` | 模拟改值：在输入框里打字（先点一下、全选，再一个字一个字地输入，每个字调用一次 `input`，第二个字起接在框里现在的文字后面；遵守 `ui/` 里的 `maxLength`，满了以后再打的字进不去；空字符串清空）；把滑动条拖到某个值（夹在范围内、按 `ui/` 的设置取整，值变了才调用 `change`）；点开下拉框选第几项（从 0 开始） |
+| `text(路径)`、`visible(路径)`、`enabled(路径)`、`page(路径)`、`items(路径)`、`value(路径)`、`playing(路径)` | 读控件属性：文字（字符串；按钮、标签的文字显示在名为 `title` 的子控件里，没有这个子控件时报 `LGUI-RT-262`）；显示（布尔，「真的显示」：自己和各级父组件都显示，也没被齿轮或组藏起来）；可用（布尔）；控制器当前页（页名）；列表项数、树显示着的节点数（数字）；滑动条、进度条的值，下拉框的选中序号（数字）；序列帧动画是否在播放（布尔） |
 | `setScreen(宽, 高)`、`setLanguage(语言)`、`setInputType('touch' \| 'keyboardMouse')` | 模拟旋转、换语言、换输入设备 |
-| `advance(毫秒)` | 让假时钟往前走 |
+| `advance(毫秒)` | 让时钟往前走：headless 是假时钟，按每帧 16 毫秒走；`--browser` 是真的等（一次最多 10 秒） |
 | `sounds()` | 放过的音效，按顺序：`[{ url: 'ui://Common/click', volume: 1 }]`（音量是最终音量） |
 | `music()` | 正在放的背景音乐（`'ui://Common/bgm'`），没有是 `null` |
 | `snapshot()` | 返回 `lgui.debug.snapshot()` |
-| `end()` | 关闭所有界面，检查监听和定时器都已清理 |
+| `end()` | 关闭所有界面、清掉界面缓存（`uiCache.keepClosedViews`），检查监听和定时器都已清理 |
 
 路径写成 `<包>/<组件>.<控件路径>`；列表子项用 `list[序号]`，树的节点也一样（`tree[序号]` 是显示着的第几个节点）。
 
-- **点不到的控件：** 模拟操作的控件自己或上级没显示、被齿轮或组藏起来、不可用或不接收输入时报 `LGUI-RT-032`；`type`、`setValue`、`choose` 用在不对的控件上报 `LGUI-RT-150`。
-- **headless 不模拟、和网页可能不一样的地方：** 布局（关联、自动排布、文字自动缩放；控件的位置和尺寸是 `ui/` 里写的初始值）；命中测试（被同级控件挡住的按钮在测试里照样点得到）；虚拟列表的回收（列表的每一项在测试里都有对象，网页上看不见的项可能没有）；改属性的齿轮（`gearXY`、`gearText` 等，只模拟 `gearDisplay`、`gearDisplay2`）；按钮直接绑控制器。这些用 `lgui verify` 的截图看。
+**怎么跑：**
 
-- **假时钟：** 点了按钮以后，打开新界面、请求返回都要等一帧，先 `await t.advance(16)` 再读；一串请求就多等几帧。动效按 `ui/` 里写的时长走：要等 `done`，就 `await t.advance(动效的毫秒数)`。
-- **记了 `error` 日志也算失败：** 代码或界面写错了（第 14.1 节），或者游戏代码自己 `lgui.log.error(…)`，这个测试失败，报 `LGUI-RT-176` 并写明是哪条日志。外部失败（请求、网络图片、声音加载）记 `warn`，不算失败。
-- **日志和声音总是记进 headless：** `lgui.app({ platform })` 在 `lgui test` 里不生效。
+```bash
+lgui test                                   # tests/ 里的全部测试，headless
+lgui test tests/bag.test.ts tests/shop/     # 只跑这些文件、这些目录里的测试文件
+lgui test --name 出售                        # 只跑名字（连同所在 describe 的名字）里含「出售」的测试
+lgui test tests/layout.test.ts --browser    # 在真浏览器里跑（h5 后端）
+```
+
+输出写清跑了几个文件（指定了文件时还有 `tests/` 里一共几个）、几个测试，通过、失败、跳过（`skip`、`todo`）、按 `--name` 筛掉了几个；`--json` 里每个失败的测试带原因。路径写错报 `LGUI-CLI-130`，`--name` 一个也没匹配到报 `LGUI-CLI-131`。
+
+**headless 照浏览器的规则执行，不算渲染：**
+
+- **规则和浏览器一样，照样报错：** 控件树、属性、控制器、显示齿轮（`gearDisplay`、`gearDisplay2`）和组；动效按 `ui/` 里写的时长走；点不到的控件报 `LGUI-RT-032`；只有能滚动（`overflow="scroll"`）的列表能设成虚拟列表（`LGUI-RT-261`）；按钮、标签的文字写进 `title` 子控件；点 Check 按钮切换选中、点 Radio 按钮选中；打字遵守 `maxLength`。
+- **渲染 headless 不算，读到就报 `LGUI-RT-260`：** 关联（relation）、列表和组的排布、文字自动大小和排版度量（`autoSize` 是 both、height）、`gearXY` / `gearSize` 决定的位置和尺寸。`lgui.ui.find` 读到它们（控件自己或路径上的上级受影响）时报错，写明是哪个控件、哪个原因；不受影响的照常返回（`ui/` 里写的值、框架摆的界面和 `safe`）。屏幕尺寸、安全区变了以后，受关联影响的控件位置会变，这些在 headless 里本来就报不支持。
+- **headless 不模拟、也不报错的（要看就用 `--browser` 或 `lgui verify`）：** 命中测试（被同级控件挡住的按钮 headless 照样点得到，`--browser` 报 `LGUI-RT-032`）；虚拟列表的回收（headless 里每一项都有对象；浏览器里看不见的项没有对象，`list[序号]` 拿不到，先滚过去）；改属性的齿轮（`gearText`、`gearColor`、`gearIcon` 等，headless 读到的是 `ui/` 里的初始值）；按钮直接绑控制器、按钮选中时的 `selectedTitle`；悬停时按钮的 over 页。
+
+**什么时候用 `--browser`：** 要测位置、尺寸、安全区、文字排版、谁挡住了谁，或者确认 headless 绿了的测试在浏览器里也对。同一个测试文件、同一套 `t.*`，在 Chrome 或 Edge 里用 h5 后端跑，点击、拖拽、打字发的是真实的鼠标、触摸、键盘输入。和 headless 的差别：
+
+- 每个测试开一个新页面：Model 等模块状态每个测试都是新的，`before`、`after` 每个测试各跑一次。
+- `t.advance` 是真的等，一次最多 10 秒；动效、请求按真实时间走。
+- 测试文件只能 import `node:test` 和 `node:assert/strict`（别的 Node 模块打包时报错）；子测试（`t.test`）、`mock`、`done` 回调、`async` 的 `describe` 报 `LGUI-RT-263`，这样的测试只在 headless 里跑。
+- 要装 Chrome 或 Edge（没有报 `LGUI-CLI-132`）；生成物在 `.lgui/build/test/browser/`。
+
+- **假时钟：** 点了按钮以后，打开新界面、请求返回都要等一帧，先 `await t.advance(16)` 再读；一串请求就多等几帧。动效按 `ui/` 里写的时长走：要等 `done`，就 `await t.advance(动效的毫秒数)`。**跨天、几小时这类长时间推进用 `lgui.time.setServerOffset(毫秒)`，不要用 `t.advance` 一帧一帧推**（headless 按帧走，推一天要五百多万帧；`--browser` 里是真的等）。
+- **每个测试结束时都清干净：** 没调 `t.end()` 的，`lgui test` 在测试结束时补上：测试通过了照样关界面、查泄漏和 `error` 日志（有问题这个测试失败）；测试已经失败了（比如 `t.end()` 之前的断言没过）只把界面全关掉、缓存清掉，不再加新的错，同一个文件后面的测试不受连带。
+- **记了 `error` 日志也算失败：** 代码或界面写错了（第 14.1 节），或者游戏代码自己 `lgui.log.error(…)`，这个测试失败，报 `LGUI-RT-176` 并写明是哪条日志。外部失败（请求、网络图片、声音加载）记 `warn`，不算失败。`--browser` 一样。
+- **日志和声音总是记进测试：** `lgui.app({ platform })` 在 `lgui test` 里不生效。
 - **整个文件没跑起来也算失败：** 测试文件加载时出错（顶层抛错、import 失败）或者测试结束后还有没处理的错误，`lgui test` 把这个文件记为失败（失败项是 `tests/` 里的文件名）。
-- **Model 在测试之间不重置**（同一个测试文件里的测试共用一份）：给 Model 加一个 `reset()` 规则，在 `beforeEach` 里调用：
+- **Model 在测试之间不重置**（headless 里同一个测试文件的测试共用一份）：给 Model 加一个 `reset()` 规则，在 `beforeEach` 里调用：
 
 ```ts
 import { test, beforeEach } from 'node:test';
