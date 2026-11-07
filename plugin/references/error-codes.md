@@ -68,6 +68,9 @@ LGUI 的每条报错都带错误码，并写明：哪个文件哪一行（如果
 | `LGUI-CLI-130` | `lgui test` 指定的文件或目录不存在、不在 `tests/` 里，或者不是测试文件（`*.test.ts`）、目录里没有测试文件 | 写 `tests/` 里的测试文件或目录（路径按当前目录算），比如 `lgui test tests/bag.test.ts`；不写就跑全部 |
 | `LGUI-CLI-131` | `lgui test --name` 一个测试也没匹配到 | `--name` 按测试名（和所在 `describe` 的名字）里的一段文字筛选，区分大小写；不写就跑全部 |
 | `LGUI-CLI-132` | `lgui test --browser` 没找到 Chrome 或 Edge | 装一个 Chrome 或 Edge；或者先不加 `--browser`，用 headless 跑 |
+| `LGUI-CLI-140` | `ui/fonts/` 里的字体文件用不了：文件名不能当字体名（要大写字母开头、只用字母和数字）、两个文件同名、格式不支持（TTC、WOFF、WOFF2）、内容不是 TTF / OTF、是可变字体，或者做子集失败 | 换成单字重的 TTF / OTF，按报错改文件名；许可说明之类的别的文件可以放着 |
+| `LGUI-CLI-141` | 静态文字里有字体没有的字（报错里列出是哪些字、在哪个文件或文本键）：`ui/` 里写了 `font` 的文字查那个字体，其余的 `ui/` 文字、`i18n/` 文案和框架自己显示的字（`format.compact` 的单位，按工程 `languages`）查默认字体 | 换一个有这些字的字体；表情符号这类字体里没有的字改用图片或 ArtText；写错的字改掉 |
+| `LGUI-CLI-142` | 工程配置的 `defaultFont` 不是 `ui/fonts/` 里的字体（系统字体名也不行，各平台不一样） | 把字体文件放进 `ui/fonts/<名字>.ttf`，或者把 `defaultFont` 改成 `ui/fonts/` 里的名字，或者改成 `null`（用系统默认字体） |
 | `LGUI-CLI-999` | 命令行内部错误（LGUI 自己的缺陷） | 把输出报告给维护者 |
 
 ## LGUI-RT-xxx
@@ -150,3 +153,5 @@ LGUI 的每条报错都带错误码，并写明：哪个文件哪一行（如果
 | `LGUI-RT-174` | `lgui.sound` 的参数不对：声道不是 `music` / `sfx`，音量不在 0–1，静音不是布尔值，地址是空的 | 照 mvc-spec.md 第 15 节写 |
 | `LGUI-RT-175` | 本地存储里的声音设置读不出来，用默认值（外部失败，记 `warn`） | 不需要处理；玩家下次改音量时会重新存 |
 | `LGUI-RT-176` | `lgui test` 里这个测试记了 `error` 级的日志（报错里写明是哪条） | 按日志改代码或界面 |
+| `LGUI-RT-180` | 网页端启动时项目字体加载失败（报错里写明地址和原因：HTTP 状态、浏览器解不开、浏览器没有 FontFace）。启动就停下，不悄悄换成系统字体 | 重新运行生成它的命令（`lgui dev`、`verify`、`test --browser`）；部署网页时 `ui/fonts/` 要和界面包一起发布 |
+| `LGUI-RT-181` | Unity 启动时注册不了项目字体：`Resources/UI/fonts/<名字>` 没有或没被导入成字体，或者工程里的 LGUI Unity 包是旧版（没有 `LGUI.Platform.RegisterFont`） | 重新 `lgui unity export`，回到 Unity 等导入完成再点 Play；旧版包先 `lgui upgrade` |

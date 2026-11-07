@@ -96,7 +96,7 @@ Windows Player 可设置为 Windowed 并开启 Resizable Window，通过改变�
 
 ## 接入后要看的三件事
 
-1. **文字。** Unity 和浏览器测量文字的方式不同；检查项目使用的字体、中文和其他语言有没有缺字或截断，横竖两版都看。
+1. **文字。** Unity 和浏览器测量文字的方式不同；检查项目使用的字体、中文和其他语言有没有缺字或截断，横竖两版都看。项目字体（`ui/fonts/`）由 `lgui unity export` 做成子集写到 `Assets/LGUI/Resources/UI/fonts/`，Unity 导入成动态字体，启动时按名字注册给 FairyGUI（注册不上报 `LGUI-RT-181`）；运行时才知道的文字里子集外的字由 Unity 换成系统字体。
 2. **平台服务。** Unity 存档位于 `Application.persistentDataPath/LGUI/` 下，按工程和键名隔离；它与浏览器存储各自独立。HTTP 使用 UnityWebRequest，检查产品实际使用的地址、权限和错误处理。WebSocket 暂未实现，会报 `LGUI-RT-001`。
 3. **格式化。** 本次 Windows 验证使用的 PuerTS 3.0.3 V8 没有 `Intl`。框架会使用内置千分位、`年-月-日 时:分` 和 `货币代码 数值` 格式；中文、日文、韩文复数取 `other`，其他语言按 `1/其他` 区分。日期、货币和部分数字显示可能与浏览器的 `Intl` 不同，应按产品用到的语言和值核对。
 

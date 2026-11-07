@@ -8,6 +8,7 @@ import {pluginVersion} from '../version.mjs';
 import {esbuild} from '../vendor.mjs';
 import {generateUnity, generateProjectTypes, uiProjectPath} from '../generate/index.mjs';
 import {generateTranslations} from '../generate/i18n.mjs';
+import {fontNames, generateFonts} from '../generate/fonts.mjs';
 import {runtimeConfig, readTexts, bundleErrors, webBuildOptions} from '../dev/bundle.mjs';
 
 const originalHash = '318425f7f5eb857b5fc1f664e77b68ff569a99a62641c02ae4819261b0f03aaf';
@@ -126,7 +127,7 @@ function writeBootstrap(root, stage, project, deps, texts) {
     'const globals = globalThis as unknown as {__lguiStart: () => Promise<void>; __lguiReady?: boolean; __lguiDispose?: () => void};\n' +
     'globals.__lguiStart = async () => {\n  try {\n' +
     '    const backend = createUnityBackend();\n' +
-    '    await backend.init({projectName: ' + JSON.stringify(project.name) + ', defaultFont: ' + JSON.stringify(project.defaultFont) + ', uiBase: "UI", i18nBase: "UI/i18n"});\n' +
+    '    await backend.init({projectName: ' + JSON.stringify(project.name) + ', defaultFont: ' + JSON.stringify(project.defaultFont) + ', fonts: ' + JSON.stringify(fontNames(root)) + ', uiBase: "UI", i18nBase: "UI/i18n"});\n' +
     '    await boot(backend, app, ' + JSON.stringify(runtimeConfig(project)) + ', ' + JSON.stringify(deps) + ', {texts: ' + JSON.stringify(texts) + '});\n' +
     '    globals.__lguiReady = true;\n' +
     '  } catch (error) {\n    const e = error as {code?: string; message?: string};\n' +
@@ -187,6 +188,7 @@ export async function unityExport({args, flags, cwd, projectRoot, project}) {
   await generateUnity(uiProjectPath(projectRoot), stageUi);
   const {model, deps} = await generateProjectTypes(projectRoot, {validated: true});
   generateTranslations(projectRoot, model, project.languages, path.join(stageUi, 'i18n'), project.defaultLanguage);
+  await generateFonts(projectRoot, project, model, path.join(stageUi, 'fonts'), 'sfnt'); // Unity 导入成动态字体，适配层按 UI/fonts/<名字> 注册
   fs.mkdirSync(stageGame, {recursive: true});
   const entry = writeBootstrap(projectRoot, stage, project, deps, texts);
   try {

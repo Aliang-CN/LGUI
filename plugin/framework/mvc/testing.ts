@@ -34,6 +34,8 @@ interface TestEnv {
   deps: Record<string, string[]>;
   config: RuntimeConfig;
   texts: Record<string, TextTable>;
+  /** 项目字体的名字（ui/fonts/）；headless 只登记。 */
+  fonts?: string[];
   /** 每个测试结束后（afterEach）：记下当前快照（失败时 lgui test 附上它），再收尾（见 Harness.finish）。 */
   current: {snapshot(): Snapshot; finish(passed: boolean): string | null} | null;
 }
@@ -283,7 +285,7 @@ class Harness implements TestHarness {
 export async function startTest(app: AppDefinition, options: {services?: Record<string, () => object>; language?: string; screen?: {width: number; height: number}} = {}): Promise<TestHarness> {
   const e = env();
   const backend = e.createBackend();
-  await backend.init({projectName: e.config.name, defaultFont: null, uiBase: ''});
+  await backend.init({projectName: e.config.name, defaultFont: null, fonts: e.fonts, uiBase: ''});
   if (options.screen) {
     // headless 直接设屏幕尺寸；浏览器里（lgui test --browser）在启动前把页面换成这个尺寸。
     if (backend.state?.screen) backend.state.screen = {...options.screen};

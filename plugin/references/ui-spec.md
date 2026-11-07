@@ -403,7 +403,12 @@ ui/
 
 ## 8. 文字
 
-- **默认字体**在工程配置 `defaultFont` 里设置；XML 里不写 `font`，除非这一处必须用别的字体。
+- **字体**：项目自带的字体文件放 `ui/fonts/<名字>.ttf` 或 `.otf`，文件名（去掉扩展名）就是字体名，以大写字母开头、只用字母和数字（比如 `NotoSansSC.otf`、`TitleBold.ttf`）。默认字体在工程配置 `defaultFont` 里写这个名字；某一处要用别的字体，XML 写 `font="<名字>"`，富文本写 `[font=<名字>]…[/font]`。`font` 只能写 `ui/fonts/` 里有的名字，系统字体名（各平台不一样）、包里的 `ui://` 字体资源都报 `LGUI-UI-080`。`defaultFont` 是 `null` 时用系统默认字体。
+  - **自动精简**：`lgui dev`、`verify`、`test --browser`、`unity export` 按项目实际用到的字做子集（网页 WOFF2，Unity 原格式）：ASCII 可见字符、`ui/` 里写的文字、`i18n/` 全部语言的文案、框架自己显示的字（`format.compact` 的「万」「亿」等）。几 MB 的中文字体一般只剩几十 KB。
+  - **缺字报错**（`lgui check` 和上面这些命令都报 `LGUI-CLI-141`，写明是哪个字、在哪里）：写了 `font` 的文字要那个字体有；其余的固定文字要默认字体有。表情符号这类字体里没有的字改用图片或 ArtText。
+  - **运行时才知道的文字**（玩家名、服务器下发的数据、输入框里打的字）不在子集里的字，浏览器和 Unity 按字换成系统字体显示，不报错。
+  - 粗体照旧写 `bold="true"`（由浏览器、Unity 加粗）；要真正的粗体字重，再放一个粗体文件当另一个字体用。可变字体、字体集（TTC）、WOFF 不收（`LGUI-CLI-140`），用单字重的 TTF / OTF。
+  - 字体的许可由项目自己负责：子集算修改版，OFL 字体如果有保留字体名（比如思源黑体、Noto CJK 保留了 “Source”），文件名里别用它。
 - **最小字号 20**（按设计尺寸）。小于 20 时 `lgui check` 报 `LGUI-UI-011`；没写 `fontSize` 的按 FairyGUI 默认的 12 号算，也报。
 - **每个文字控件都要声明文字超长时怎么处理**，就是 `autoSize` 的取值：
 
@@ -527,5 +532,6 @@ ui/
 | `LGUI-UI-067` | 动效里旋转、缩放的控件设了轴心 | `pivot="0.5,0.5"`（要绕左上角写 `pivot="0,0"`） | 不写 `pivot` 就做 `Rotation` / `Scale` |
 | `LGUI-UI-068` | `shrink`、`ellipsis` 的文字，框只放得下一行时写 `singleLine="true"` | `size="300,40" fontSize="28" autoSize="shrink" singleLine="true"` | `size="300,40" fontSize="28" autoSize="shrink"` |
 | `LGUI-UI-069` | 动效的目标不是普通组（普通组只在编辑时有，生成界面包时会被去掉，动效动不了它） | 要动整组就用高级组 `<group … advanced="true"/>`，或者让动效直接动组里的控件 | `<group id="n8" …/>` + `<item type="XY" target="n8" …/>` |
+| `LGUI-UI-080` | XML 的 `font`、富文本的 `[font=…]`（也查 `i18n/` 的文案）只写 `ui/fonts/` 里的字体名 | `font="NotoSansSC"` | `font="Microsoft YaHei"`、`font="ui://bag00001font0001"` |
 
 靠人看、机器查不出的：图里不放文字；同一个工程的图风格一致；文字在各尺寸下没有被截断（看 `lgui verify` 的截图）。

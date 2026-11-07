@@ -44,6 +44,8 @@ export interface NativePlatformHost {
   ClipboardGet(): string;
   /** 把文字放进系统剪贴板。 */
   ClipboardSet(text: string): void;
+  /** 把 Resources 里的项目字体（lgui unity export 写的 UI/fonts/<名字>）按名字注册给 FairyGUI；没有这个资源或不是字体时返回 false。 */
+  RegisterFont(name: string, resourcePath: string): boolean;
 }
 
 export interface NativeStage {
