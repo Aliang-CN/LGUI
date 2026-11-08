@@ -61,7 +61,7 @@ LGUI 的每条报错都带错误码，并写明：哪个文件哪一行（如果
 | `LGUI-CLI-110` | `lgui editor` 的端口（工程配置 `editorPort`，默认 4174）已经被占用，常见原因是另一个 `lgui editor` 还开着 | 先关掉占用它的程序；要换端口就改 `editorPort`（换了端口，浏览器要重新授权 `ui/` 文件夹） |
 | `LGUI-CLI-111` | `lgui art cut` 整页用同一个比例缩放后，有物件在不拉伸的方向上都不到尺寸的一半（同一页里画的比例差太多，图标会悄悄变得很小） | 让 AI 按同一个比例重画；或者把尺寸差得多的物件分到另一页单独拆；尺寸写错了就改名字文件里的 `宽x高` |
 | `LGUI-CLI-112` | `lgui art cut` 要替换的图片原来登记成九宫格，名字文件里这一项没写 `9grid` | 写上 `9grid=左,上,右,下`（按导出尺寸量）；确实不要九宫格了，先删掉 `package.xml` 里这张图的 `scale` 和 `scale9grid` |
-| `LGUI-CLI-113` | 生成界面包时图片打不进图集：有图比所在包的图集上限大（包的 `<publish maxAtlasSize>`；没写就是 `ui/settings/Publish.json` 的 `atlasSetting.maxSize`；都没写是 4096），或者一个包的图太多 | 把图缩到上限以内、大图拆开；确实要这么大，在包的 `package.xml` 里写 `<publish name="包名" maxAtlasSize="8192"/>`（ui-spec.md 第 5 节） |
+| `LGUI-CLI-113` | 生成界面包时图片打不进图集：有图比所在包的图集上限大（包的 `<publish maxAtlasSize>`；没写就是 `ui/settings/Publish.json` 的 `atlasSetting.maxSize`；都没写是 4096），或者一个包的图太多 | 把图缩到上限以内、大图拆开；确实要这么大，在包的 `package.xml` 已有的 `<publish>` 上加 `maxAtlasSize="8192"`，没有 `<publish>` 才写 `<publish name="包名" maxAtlasSize="8192"/>`（ui-spec.md 第 5 节） |
 | `LGUI-CLI-114` | `lgui verify --params` 写法不对：不是 JSON 对象，或者没和 `--view` 一起用 | 写成 `--view BagView --params '{"tab":"equip"}'` |
 | `LGUI-CLI-115` | `lgui verify --view` 打开界面时出错（报错里带着原来的错误码） | 界面要参数就用 `--params` 传（字段见 View 的 `static params`）；不然按报错改代码 |
 | `LGUI-CLI-116` | 工程配置 `devWatch` 里的路径不存在 | 写相对工程根目录的路径（比如 `../Config`），或者删掉这一项 |
