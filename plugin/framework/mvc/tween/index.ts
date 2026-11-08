@@ -96,8 +96,12 @@ function checkOwner(object: UIObject, key: Key, playing: readonly UITransition[]
     for (let o: UIObject | null = object; o; o = o.parent) if ('downEffect' in o && (o as UIButton).downEffect.type === 'dark') throw owned(object, key, `按钮 ${o.name} 的 downEffect="dark"（按下时改按钮里各控件的颜色）`, where);
   }
   if (key === 'progress' && boundProgress.has(object)) throw owned(object, key, '绑定表里的 progress（或长按的 holdProgress）', where);
+  // 按钮、标签的标题颜色、字号就是 title 子控件的：动效改 title 的颜色也算（齿轮那一侧由后端的 ownerOf 查）。
+  const title = (key === 'color' || key === 'fontSize') && 'title' in object && 'child' in object ? (object as unknown as UIComponent).child('title') : null;
   for (const t of playing) {
-    for (const touch of t.touches()) if (touch.target === object && TOUCHED_BY[touch.what].includes(key)) throw owned(object, key, `正在放的 ui/ 动效 ${t.name}`, where);
+    for (const touch of t.touches()) {
+      if ((touch.target === object || touch.target === title) && TOUCHED_BY[touch.what].includes(key)) throw owned(object, key, `正在放的 ui/ 动效 ${t.name}${touch.target === title ? '（改的是标题 title）' : ''}`, where);
+    }
   }
 }
 
@@ -172,11 +176,21 @@ export function stopTweens(group: TweenGroup, where: string, target: UIObject | 
   void where;
 }
 
-/** 内部用：this.itemsOf。 */
+/** 内部用：this.itemsOf。写错了（虚拟列表、不是列表）开发模式抛出；正式构建记 error 日志，返回空数组（补间马上 resolve，什么也不动）。 */
 export function itemsOf(group: TweenGroup, where: string, list: UIList): UIComponent[] {
+  void group;
+  try {
+    return listItems(where, list);
+  } catch (e) {
+    if (!(e instanceof LgRuntimeError)) throw e;
+    fault(e, {where});
+    return [];
+  }
+}
+
+function listItems(where: string, list: UIList): UIComponent[] {
   if (!list || typeof list !== 'object' || !('numItems' in list) || !('itemAt' in list)) throw error('LGUI-RT-281', `${where} 的 this.itemsOf 要的是列表（${String(list && (list as UIObject).name)} 不是）。`, '写成 this.itemsOf(this.ui.<列表>)。');
   if (list.virtual) throw error('LGUI-RT-281', `${where} 的 this.itemsOf 用在了虚拟列表 ${list.name} 上：虚拟列表只创建看得见的子项，还会重复使用，按序号对不上。`, '要逐个弹出的列表用不滚动的普通列表（ui/ 里不写 overflow="scroll"）；能滚动的长列表不做逐项补间。');
-  void group;
   const items: UIComponent[] = [];
   for (let i = 0; i < list.numItems; i++) { const item = list.itemAt(i); if (item) items.push(item); }
   return items;
@@ -215,8 +229,8 @@ export function checkTransition(transition: UITransition, where: string): void {
   }
 }
 
-/** 内部用：t.look 读引擎记的原位（算 dx、dy）；没被补间碰过时是现在的位置。 */
-export function originOf(object: UIObject, key: 'x' | 'y'): number { return engine().origins.get(object)?.get(key) ?? object.getProp(key); }
+/** 内部用：t.look 读引擎记的原位（算 dx、dy；跟着关联挪过的）；没被补间碰过时是现在的位置。 */
+export function originOf(object: UIObject, key: 'x' | 'y'): number { const e = engine(); return e.origins.get(object)?.has(key) ? e.follow(object, key) : object.getProp(key); }
 
 /** 内部用：补间碰过这个控件的这一项没有（碰过以后 headless 知道它的值）。 */
 export function tweened(object: UIObject, key: Key): boolean { return engine().origins.get(object)?.has(key) ?? false; }

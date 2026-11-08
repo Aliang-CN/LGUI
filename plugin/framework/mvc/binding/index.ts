@@ -27,6 +27,7 @@ import {writeText} from '../tween/text';
 import {eachTransition} from '../tween/engine';
 import type {TweenGroup} from '../tween/engine';
 import {isEase} from '../tween/ease';
+import {fault} from '../log';
 import type {ViewTimers} from '../timers';
 
 /** 绑定时要知道的事。 */
@@ -98,6 +99,18 @@ export function watch<T>(value: unknown, ctx: BindContext, apply: (value: T) => 
 
 const bindingError = (ctx: BindContext, key: string, message: string, fix: string): never => fail('LGUI-RT-284', `${ctx.where} 的 ${key} ${message}`, fix);
 
+/** roll、tick 写错了（第 ① 类）：开发模式里抛出；正式构建只记 error 日志，返回 false，这一项不生效（照常显示，不滚、不定时重算）。 */
+function soft(run: () => void): boolean {
+  try {
+    run();
+    return true;
+  } catch (error) {
+    if (!(error instanceof LgRuntimeError)) throw error;
+    fault(error);
+    return false;
+  }
+}
+
 /** 绑定所在界面的补间组和定时器（roll、tick 用；ctx.owner 不是界面——测试里直接绑——时没有）。 */
 function ownerParts(ctx: BindContext): {tweens: TweenGroup | null; timers: ViewTimers | null} {
   const owner = ctx.owner as {__tweens?: TweenGroup; __timers?: ViewTimers};
@@ -106,7 +119,11 @@ function ownerParts(ctx: BindContext): {tweens: TweenGroup | null; timers: ViewT
 
 /** roll：text（或 progress）的 pick 取出的数字从旧值平滑滚到新值。打开时直接显示当前值；滚动中值又变了，从现在显示的数接着滚。
  * show 收到滚动中的数字（text 时已经交给格式化函数），格式化后的结果变了才写。 */
-function bindRoll(component: UIComponent, value: unknown, binding: Record<string, unknown>, ctx: BindContext, key: string, target: UIObject, show: (n: number) => void): void {
+function bindRoll(component: UIComponent, value: unknown, binding: Record<string, unknown>, ctx: BindContext, key: string, target: UIObject, show: (n: number) => void): boolean {
+  return soft(() => setupRoll(component, value, binding, ctx, key, target, show));
+}
+
+function setupRoll(component: UIComponent, value: unknown, binding: Record<string, unknown>, ctx: BindContext, key: string, target: UIObject, show: (n: number) => void): void {
   const options = binding.roll as {duration?: unknown; ease?: unknown};
   if (ctx.item) bindingError(ctx, key, '在 ItemView 里写了 roll（列表子项会被重复使用，认不出旧值）。', '把滚动的数字放到 View 或 PartView 里；列表子项直接显示 text。');
   if (typeof options !== 'object' || options === null || typeof options.duration !== 'number' || !Number.isFinite(options.duration) || options.duration < 0) bindingError(ctx, key, `的 roll 要写成 { duration: 毫秒 }（现在是 ${JSON.stringify(options)}）。`, '写成 roll: { duration: 500 }，缓动可选 ease。');
@@ -118,6 +135,7 @@ function bindRoll(component: UIComponent, value: unknown, binding: Record<string
     if (typeof n !== 'number' || !Number.isFinite(n)) bindingError(ctx, key, `写了 roll，但 pick 取出的不是数字（${JSON.stringify(n)}）。`, 'pick 取出数字，带文字的写进格式化函数：n => lgui.t(\'main.gold\', { n: format.number(n) })。');
     return n as number;
   };
+  let shown = read();
   // 和别的主人抢文字：齿轮 gearText、动效的 Text 项（LGUI-RT-282）。
   if ('text' in binding) {
     const gear = target.ownerOf('text');
@@ -127,14 +145,15 @@ function bindRoll(component: UIComponent, value: unknown, binding: Record<string
     claimRoll(target);
   }
   const {tweens} = ownerParts(ctx);
-  let shown = read();
   show(shown);
   let stop: (() => void) | null = null;
   ctx.scope.add(() => stop?.());
   const integers = (a: number, b: number): boolean => Number.isInteger(a) && Number.isInteger(b);
   const change = (): void => {
     if (ctx.scope.isClosed) return;
-    const to = read();
+    let to = shown;
+    // 后来取出的不是数字：开发模式抛出，正式构建记 error、这次不滚，照旧显示原来的数。
+    if (!soft(() => { to = read(); })) return;
     const from = shown;
     if (to === from) return;
     stop?.();
@@ -179,13 +198,12 @@ function bindObject(component: UIComponent, key: string, target: UIObject, bindi
   if ('enabled' in binding) refreshes0.push(watch<boolean>(binding.enabled, ctx, v => { enabled = v; applyEnabled(); }));
   // 定时重算（tick）：每个显示词按现在的值再刷一次。
   const refreshes: (() => void)[] = [];
-  if ('roll' in binding && !('text' in binding) && !('progress' in binding)) bindingError(ctx, key, '写了 roll，但没写 text 或 progress。', 'roll 配 text（数字文字）或 progress（进度条）用。');
+  if ('roll' in binding && !('text' in binding) && !('progress' in binding)) soft(() => bindingError(ctx, key, '写了 roll，但没写 text 或 progress。', 'roll 配 text（数字文字）或 progress（进度条）用。'));
   if ('text' in binding) {
-    if ('roll' in binding) {
-      const parts = pickParts(binding.text);
-      let last: string | null = null;
-      bindRoll(component, binding.text, binding, ctx, key, target, n => { const s = String(parts?.format ? parts.format(n) : n); if (s !== last) { last = s; setText(target, s, ctx.where, key); } });
-    } else refreshes.push(watch<string>(binding.text, ctx, v => setText(target, String(v), ctx.where, key)));
+    const parts = pickParts(binding.text);
+    let last: string | null = null;
+    const rolled = 'roll' in binding && bindRoll(component, binding.text, binding, ctx, key, target, n => { const s = String(parts?.format ? parts.format(n) : n); if (s !== last) { last = s; setText(target, s, ctx.where, key); } });
+    if (!rolled) refreshes.push(watch<string>(binding.text, ctx, v => setText(target, String(v), ctx.where, key)));
   }
   if ('icon' in binding) {
     if (!('url' in target) && !('icon' in target)) fail('LGUI-RT-063', `${ctx.where} 的 ${key} 不能绑定 icon（它不是加载器或按钮）。`, '换成加载器，或者去掉 icon。');
@@ -195,8 +213,8 @@ function bindObject(component: UIComponent, key: string, target: UIObject, bindi
     if (!('max' in target)) fail('LGUI-RT-063', `${ctx.where} 的 ${key} 不能绑定 progress（它不是进度条）。`, '换成进度条组件，或者去掉 progress。');
     claimProgress(target);
     const write = (v: number): void => { const bar = target as UIProgress; bar.value = (Math.max(0, Math.min(100, v)) / 100) * bar.max; };
-    if ('roll' in binding && !('text' in binding)) bindRoll(component, binding.progress, binding, ctx, key, target, write);
-    else refreshes.push(watch<number>(binding.progress, ctx, write));
+    const rolled = 'roll' in binding && !('text' in binding) && bindRoll(component, binding.progress, binding, ctx, key, target, write);
+    if (!rolled) refreshes.push(watch<number>(binding.progress, ctx, write));
   }
   if ('value' in binding) {
     if (!('min' in target)) fail('LGUI-RT-063', `${ctx.where} 的 ${key} 不能绑定 value（它不是滑动条）。`, '换成滑动条组件（扩展类型 Slider），或者去掉 value。');
@@ -306,8 +324,11 @@ function bindObject(component: UIComponent, key: string, target: UIObject, bindi
 
 /** tick：每隔这么多毫秒按现在的值重算这一项的每个显示词（结果变了才写，写的时候各个控件自己比较）；被盖住时不算，露出来马上算一次。 */
 function bindTick(ms: unknown, refreshes: readonly (() => void)[], ctx: BindContext, key: string): void {
-  if (typeof ms !== 'number' || !Number.isFinite(ms) || ms <= 0) bindingError(ctx, key, `的 tick 是 ${String(ms)}，要写正数（毫秒）。`, '写成 tick: 1000（倒计时每秒重算一次）。');
-  if (!refreshes.length) bindingError(ctx, key, '写了 tick，但这一项没有显示词（text、visible、enabled、icon、progress、value、playing）。', 'tick 定时重算显示词的值；没有显示词就去掉 tick。');
+  const ok = soft(() => {
+    if (typeof ms !== 'number' || !Number.isFinite(ms) || ms <= 0) bindingError(ctx, key, `的 tick 是 ${String(ms)}，要写正数（毫秒）。`, '写成 tick: 1000（倒计时每秒重算一次）。');
+    if (!refreshes.length) bindingError(ctx, key, '写了 tick，但这一项没有显示词（text、visible、enabled、icon、progress、value、playing）。', 'tick 定时重算显示词的值；没有显示词就去掉 tick。');
+  });
+  if (!ok) return;
   const {timers} = ownerParts(ctx);
   if (!timers) return;
   ctx.scope.add(timers.tick(ms as number, () => { for (const refresh of refreshes) refresh(); }));

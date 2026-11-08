@@ -67,6 +67,7 @@ abstract class ViewBase<UI> {
     if (motion?.isPaused) motion.pause(component);
     // downEffect="scale" 的按钮：按下与回弹由框架补（用所在界面的补间组，跟着它暂停、停掉）。
     attachPress(component, tweensOf(owner) ?? this.__tweens, scope);
+    // 最后才接补间：新组件上按路径找不到目标时报错（开发模式抛出），这时绑定都已经接好了；换版的调用方保证别的界面照样换。
     if (moving.length) {
       try { this.__tweens.reattach(component, moving, this.constructor.name); } catch (e) { if (e instanceof LgRuntimeError) fault(e); else throw e; }
     }
@@ -80,11 +81,13 @@ abstract class ViewBase<UI> {
     this.__component = null;
   }
 
-  /** 内部用：彻底清理（停掉补间并还原碰过的属性、解绑、停掉动效、取消定时器和收听）。 */
+  /** 内部用：彻底清理（停掉补间并还原碰过的属性、解绑、停掉动效、取消定时器和收听）。
+   * 补间先停：部件（PartView）的补间也在这里停掉并还原——解绑时部件会先解开（__unmount），那时再停就只剩「摘下来等重建」的了。 */
   __dispose(): void {
     this.__tweens.dispose();
+    for (const child of this.__children) child.__tweens?.dispose();
     this.__unmount();
-    this.__moving.length = 0;
+    this.__tweens.drop(this.__moving.splice(0));
     this.__motion.stop();
     this.__scope.dispose();
   }

@@ -5,7 +5,7 @@ import type {
   UILabel, UISlider, UIComboBox, UIMovieClip, UITree, UITreeNode, WheelInput, TweenProp, TransitionTouch
 } from '../../../core/index';
 import {LgRuntimeError} from '../../../core/index';
-import {scaleDownEffect} from '../fairygui-patches/button-press';
+import {drivePress, scaleDownEffect} from '../fairygui-patches/button-press';
 import {pointerEventTypes, toPointerInput} from '../pointer';
 import {stage, toDesign} from '../scale';
 
@@ -229,7 +229,7 @@ class H5Button extends H5Component implements UIButton {
   private press = 1;
   get pressScale(): number { return this.press; }
   // 只设元素的 CSS scale（补丁 9）：和 FairyGUI 写的 transform 叠加，按元素中心缩放，GObject 的位置、尺寸、scale 都不变。
-  set pressScale(value: number) { this.press = value; this.native.element.style.scale = value === 1 ? '' : String(value); }
+  set pressScale(value: number) { drivePress(this.native); this.press = value; this.native.element.style.scale = value === 1 ? '' : String(value); }
 }
 
 const fillMethods = ['none', 'horizontal', 'vertical', 'radial90', 'radial180', 'radial360'] as const;

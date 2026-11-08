@@ -139,7 +139,11 @@ export const format = {
   compact(value: number): string { return compact(value, state.language); },
   /** 时长（毫秒，向上取整到秒，负数当 0）：'clock'（默认）是 05:09，满 1 小时是 1:02:03；'units' 取最大的两个单位，比如 1天2小时、5分9秒（单位按当前语言的文本键 lgui.time.*）。 */
   duration(ms: number, style: 'clock' | 'units' = 'clock'): string {
-    if (style !== 'clock' && style !== 'units') throw new LgRuntimeError('LGUI-RT-285', `format.duration 的写法 ${String(style)} 不认识。`, "写 'clock'（05:09）或 'units'（1天2小时）。");
+    // 写法不认识：开发模式抛出；正式构建记 error 日志，按 clock 显示。
+    if (style !== 'clock' && style !== 'units') {
+      fault(new LgRuntimeError('LGUI-RT-285', `format.duration 的写法 ${String(style)} 不认识。`, "写 'clock'（05:09）或 'units'（1天2小时）。"), {style}, `duration:${String(style)}`);
+      return duration(ms, 'clock');
+    }
     return duration(ms, style);
   },
   /** 货币，currency 是 ISO 代码（CNY、USD）。 */

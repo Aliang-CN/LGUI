@@ -18,6 +18,7 @@ const extra = `
     <image id="t3" name="cool" src="flag0001" xy="300,300" size="64,64" pivot="0.5,0.5" fillMethod="radial360" fillAmount="100"/>
     <text id="t4" name="price" xy="0,400" size="200,40" fontSize="20" color="#ffffff" autoSize="none" text="100"/>
     <component id="t7" name="claim" src="pbtn0001" xy="600,600" size="160,56"/>
+    <loader id="t8" name="holder" xy="900,600" size="160,56" url="ui://bag00001pbtn0001"/>
     <image id="tb" name="geared" src="flag0001" xy="400,300" size="64,64" pivot="0.5,0.5"><gearSize controller="tabs" pages="0,1" values="64,64,1,1|80,80,1,1"/></image>`;
 const motion = `
   <transition name="blink">
@@ -32,7 +33,7 @@ test('h5：代码补间写 FairyGUI 的属性；按钮按下与回弹写 CSS sca
     const root = writeFixture(undefined, {landscape: panel('1920,1080'), portrait: panel('1080,1920')});
     const bag = path.join(root, 'ui/assets/Bag');
     const pkg = path.join(bag, 'package.xml');
-    fs.writeFileSync(pkg, fs.readFileSync(pkg, 'utf8').replace('</resources>', '    <component id="pbtn0001" name="PressBtn.xml" path="/"/>\n  </resources>'));
+    fs.writeFileSync(pkg, fs.readFileSync(pkg, 'utf8').replace('</resources>', '    <component id="pbtn0001" name="PressBtn.xml" path="/" exported="true"/>\n  </resources>'));
     fs.writeFileSync(path.join(bag, 'PressBtn.xml'), `<?xml version="1.0" encoding="utf-8"?>
 <component size="160,56" extention="Button">
   <controller name="button" pages="0,up,1,down" selected="0"/>
@@ -68,6 +69,7 @@ class MainView extends View<any> { static component = 'Bag/BagPanel'; static lay
     look: () => { const coin = native('coin'), price = native('price'), cool = native('cool');
       return {coin: [coin.scaleX, coin.scaleY, coin.alpha, coin.x, coin.rotation], price: [price.color, price.getProp(8)], cool: cool.fillAmount, tweens: lgui.debug.snapshot().views[0].tweens}; },
     press: () => { const n = native('claim'); return {scale: n.element.style.scale, x: n.x, scaleX: n.scaleX}; },
+    loaded: () => { const n = native('holder').component; return n ? {scale: n.element.style.scale, scaleX: n.scaleX} : null; },
     center,
     conflicts: () => [error(() => view.tween(c.child('geared'), {scale: 2}, {duration: 10})), error(() => view.tween(c.child('claim'), {scaleX: 2}, {duration: 10})),
       (c.transition('blink').play(), error(() => view.tween(c.child('coin'), {alpha: 1}, {duration: 10})))],
@@ -100,6 +102,14 @@ class MainView extends View<any> { static component = 'Bag/BagPanel'; static lay
       await page.mouse.up();
       await page.waitForFunction(() => window.press().scale === '', null, {timeout: 5000});
       assert.deepEqual(await page.evaluate(() => window.press()), {scale: '', x: 600, scaleX: 1});
+
+      // 加载器加载出来的按钮框架走不到：保持 FairyGUI 原来的一下子缩小（只改 CSS scale），松开恢复——和 Unity 上一样
+      const q = await page.evaluate(() => window.center('holder'));
+      await page.mouse.move(q.x, q.y);
+      await page.mouse.down();
+      assert.deepEqual(await page.evaluate(() => window.loaded()), {scale: '0.8', scaleX: 1});
+      await page.mouse.up();
+      assert.deepEqual(await page.evaluate(() => window.loaded()), {scale: '', scaleX: 1});
 
       // 主人：gearSize、downEffect="scale"、正在放的动效
       assert.deepEqual(await page.evaluate(() => window.conflicts()), ['LGUI-RT-282', 'LGUI-RT-282', 'LGUI-RT-282']);
