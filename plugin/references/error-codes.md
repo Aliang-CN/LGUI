@@ -155,4 +155,5 @@ LGUI 的每条报错都带错误码，并写明：哪个文件哪一行（如果
 | `LGUI-RT-175` | 本地存储里的声音设置读不出来，用默认值（外部失败，记 `warn`） | 不需要处理；玩家下次改音量时会重新存 |
 | `LGUI-RT-176` | `lgui test` 里这个测试记了 `error` 级的日志（报错里写明是哪条） | 按日志改代码或界面 |
 | `LGUI-RT-180` | 网页端启动时项目字体加载失败（报错里写明地址和原因：HTTP 状态、浏览器解不开、浏览器没有 FontFace）。启动就停下，不悄悄换成系统字体 | 重新运行生成它的命令（`lgui dev`、`verify`、`test --browser`）；部署网页时 `ui/fonts/` 要和界面包一起发布 |
-| `LGUI-RT-181` | Unity 启动时注册不了项目字体：`Resources/UI/fonts/<名字>` 没有或没被导入成字体，或者工程里的 LGUI Unity 包是旧版（没有 `LGUI.Platform.RegisterFont`） | 重新 `lgui unity export`，回到 Unity 等导入完成再点 Play；旧版包先 `lgui upgrade` |
+| `LGUI-RT-181` | Unity 启动时注册不了项目字体：`Resources/UI/fonts/<名字>` 没有、没被导入成字体，或者 TextMesh Pro 用它建不成字体；或者工程里的 LGUI Unity 包是旧版（没有 `LGUI.Platform.RegisterFont`） | 重新 `lgui unity export`，回到 Unity 等导入完成再点 Play；字体的导入设置要勾「Include Font Data」（默认勾着）；旧版包先 `lgui upgrade` |
+| `LGUI-RT-182` | Unity 上一个候选的系统字体都没找到，项目字体后面没挂上系统回退字体（报错里列出试过的字体）。只记一次 `error` 日志、不抛错，游戏照常运行；项目字体里没有的字（聊天、玩家名）显示成方框 | iOS、Android、电脑原生包上一般都找得到；微信小游戏、WebGL 读不到系统字体，要在 `ui/fonts/` 里带一个常用字字体 |

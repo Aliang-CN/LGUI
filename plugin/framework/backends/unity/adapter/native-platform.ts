@@ -44,8 +44,12 @@ export interface NativePlatformHost {
   ClipboardGet(): string;
   /** 把文字放进系统剪贴板。 */
   ClipboardSet(text: string): void;
-  /** 把 Resources 里的项目字体（lgui unity export 写的 UI/fonts/<名字>）按名字注册给 FairyGUI；没有这个资源或不是字体时返回 false。 */
+  /** 用 Resources 里的项目字体（lgui unity export 写的 UI/fonts/<名字>）建动态 TMP 字体，挂上系统回退字体，按名字注册给 FairyGUI；没有这个资源、不是字体或建不成时返回 false。 */
   RegisterFont(name: string, resourcePath: string): boolean;
+  /** 项目字体后面挂的系统回退字体的名字；候选的系统字体一个都没找到时是空字符串。 */
+  readonly FallbackFontName: string;
+  /** 按顺序试过的系统字体（逗号分隔，报 LGUI-RT-182 用）。 */
+  readonly FallbackFontCandidates: string;
 }
 
 export interface NativeStage {
