@@ -83,7 +83,7 @@ ui/
 
 - 每个组件 XML 和图片都要登记；登记的文件必须存在，存在的文件也都要登记。
 - **九宫格：** 在图片上写 `scale="9grid"` 和 `scale9grid="左,上,宽,高"`（中间可拉伸区域），区域不能超出图片。边距按图片真实的边框像素取，不要统一取边长的四分之一。
-- **图集：** 生成时按包自动打图集，一般不用管。每张图不能比所在包的图集上限大。全局上限是 `ui/settings/Publish.json` 里的 `atlasSetting.maxSize`（编辑器「发布设置」里改的就是它），没写是 4096×4096；超了生成时报 `LGUI-CLI-113`，写明是哪张图、上限是从哪来的。某个包确实要更大的图，在它的 `package.xml` 里 `</resources>` 后面写 `<publish name="包名" maxAtlasSize="8192"/>`（多数手机支持到 4096，更大先确认目标设备）。
+- **图集：** 生成时按包自动打图集，一般不用管。每张图不能比所在包的图集上限大。全局上限是 `ui/settings/Publish.json` 里的 `atlasSetting.maxSize`（编辑器「发布设置」里改的就是它），没写是 4096×4096；超了生成时报 `LGUI-CLI-113`，写明是哪张图、上限是从哪来的。某个包确实要更大的图，在它的 `package.xml` 已有的 `<publish name="包名">` 上加 `maxAtlasSize="8192"`（`lgui init`、`lgui new` 建的包都已经有一个空的 `<publish>`，再加第二个不生效；没有才在 `</resources>` 后面写 `<publish name="包名" maxAtlasSize="8192"/>`）。多数手机支持到 4096，更大先确认目标设备。
 - **声音：** mp3，登记成 `<sound>` 并导出（`exported="true"`）。代码和 View 的 `static music` 里写 `ui://<包名>/<声音名>`（`ui://Bag/coin`）；按钮的 `sound` 属性和别的资源引用一样写 `ui://<包ID><资源ID>`（`ui://bag00001coin0001`）。用法见 MVC 开发规范第 15 节。
 - `lgui art split`、`lgui art cut` 拆出来的小图会自动登记。
 
