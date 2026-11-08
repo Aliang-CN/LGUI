@@ -9,7 +9,7 @@ import {fileURLToPath} from 'node:url';
 import {writeFixture} from '../helpers/fixture.mjs';
 import {readUiModel} from '../../plugin/tools/lib/generate/model.mjs';
 import {uiProjectPath} from '../../plugin/tools/lib/generate/index.mjs';
-import {checkFonts, generateFonts, listFonts} from '../../plugin/tools/lib/generate/fonts.mjs';
+import {checkFonts, collectChars, generateFonts, listFonts, readSfnt, subsetFont} from '../../plugin/tools/lib/generate/fonts.mjs';
 import {fontRules} from '../../plugin/tools/lib/check/font-rules.mjs';
 import {validateProject} from '../../plugin/tools/lib/project.mjs';
 import {harfbuzz} from '../../plugin/tools/lib/vendor.mjs';
@@ -19,11 +19,16 @@ const sample = fileURLToPath(new URL('../fixtures/fonts/NotoSansSC-Sample.otf', 
 const project = (fields = {}) => validateProject({name: 'fonts', lguiVersion: '0.3.0', ...fields});
 const model = root => readUiModel(uiProjectPath(root));
 
-function fixture({fonts = {Noto: sample}, i18n = {}, extra = ''} = {}) {
+// titleFont：按钮组件 Bag/Btn 里的 title 文字控件写的 font
+function fixture({fonts = {Noto: sample}, i18n = {}, extra = '', titleFont = null} = {}) {
   const root = writeFixture();
   if (extra) {
     const file = path.join(root, 'ui/assets/Bag/BagPanel.xml');
     fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace('</displayList>', `${extra}\n  </displayList>`));
+  }
+  if (titleFont) {
+    const file = path.join(root, 'ui/assets/Bag/Btn.xml');
+    fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace('name="title"', `name="title" font="${titleFont}"`));
   }
   fs.mkdirSync(path.join(root, 'ui/fonts'), {recursive: true});
   for (const [file, from] of Object.entries(fonts)) {
@@ -34,6 +39,9 @@ function fixture({fonts = {Noto: sample}, i18n = {}, extra = ''} = {}) {
   for (const [lang, table] of Object.entries(i18n)) fs.writeFileSync(path.join(root, 'i18n', `${lang}.json`), JSON.stringify(table));
   return root;
 }
+
+// 只有 ASCII 和 extra 这几个字的字体（从样本里截）
+const smallFont = async (extra = '') => Buffer.from(await subsetFont(fs.readFileSync(sample), [...Array.from({length: 0x5f}, (_, i) => 0x20 + i), ...[...extra].map(ch => ch.codePointAt(0))]));
 
 async function unicodes(file) {
   const hb = await harfbuzz();
@@ -55,8 +63,12 @@ test('子集：收 ASCII、ui/ 的文字、i18n/ 的文案和 format.compact 的
   assert.equal(fs.readFileSync(path.join(web, 'Noto.woff2')).subarray(0, 4).toString('latin1'), 'wOF2');
   await generateFonts(root, p, model(root), unity, 'sfnt');
   assert.deepEqual(fs.readdirSync(unity), ['Noto.otf']);
+  // 子集的字符表（用 HarfBuzz 读回）正好等于「要的字集 ∩ 原字体有的字」
   const chars = await unicodes(path.join(unity, 'Noto.otf'));
-  for (const ch of ['A', 'z', '0', ' ', '~', '出', '售', '开', '始', '游', '戏', '一', '个', '多', '万', '亿']) assert.ok(chars.has(ch), `子集里应该有「${ch}」`);
+  const font = await unicodes(sample);
+  const wanted = [...(await collectChars(root, p, model(root))).all.keys()].filter(ch => font.has(ch)).sort();
+  assert.deepEqual([...chars].sort(), wanted);
+  for (const ch of ['A', '~', '出', '售', '开', '始', '一', '个', '多', '万', '亿']) assert.ok(wanted.includes(ch), `字集里应该有「${ch}」`);
   for (const ch of ['的', '是', '民']) assert.ok(!chars.has(ch), `没用到的「${ch}」不该在子集里`);
   assert.ok(fs.statSync(path.join(unity, 'Noto.otf')).size < fs.statSync(sample).size / 3, '子集要比原字体小得多');
 });
@@ -75,7 +87,7 @@ test('LGUI-CLI-141：默认字体没有静态文字里的字，报出是哪个�
   assert.deepEqual(errors.map(e => e.code), ['LGUI-CLI-141']);
   assert.match(errors[0].message, /字体 Noto.*2 个字/);
   assert.match(errors[0].message, /「龘」（U\+9F98，i18n\/zh-CN\.json shop\.title）/);
-  assert.match(errors[0].message, /「齉」（U\+9F49，ui\/ Bag\/BagPanel\/tip）/);
+  assert.match(errors[0].message, /「齉」（U\+9F49，ui\/assets\/Bag\/BagPanel\.xml:\d+ tip）/);
   assert.equal(errors[0].file, 'ui/fonts/Noto.otf');
   // 默认字体是 null（系统字体）：不查缺字
   await checkFonts(root, project(), model(root));
@@ -149,4 +161,51 @@ test('headless：只登记字体名（state.fonts），不读字体文件', asyn
   const plain = createHeadlessBackend([]);
   await plain.init({projectName: 'fonts', defaultFont: null, uiBase: ''});
   assert.deepEqual(plain.state.fonts, []);
+});
+
+test('LGUI-CLI-141：按钮的标题按按钮组件里 title 文字控件的 font 查，i18n 里同一个键的翻译也是', async () => {
+  // 默认字体 Noto 只有 ASCII；Title 是整个样本。按钮的 title 写 font="Title"，标题「出售」只有 Title 有：不该报 Noto
+  const root = fixture({fonts: {Noto: await smallFont(), Title: sample}, titleFont: 'Title', i18n: {'zh-CN': {'Bag/BagPanel/sellButton': '出售'}}});
+  const p = project({defaultFont: 'Noto', languages: ['zh-CN']});
+  let errors = await errorsOf(checkFonts(root, p, model(root)));
+  assert.ok(!errors.some(e => /字体 Noto.*「出」/.test(e.message)), '按钮标题不该按默认字体查');
+  // Title 没有的字：按钮实例的 title、i18n 里同键的翻译，都报在 Title 上
+  fs.writeFileSync(path.join(root, 'i18n/zh-CN.json'), JSON.stringify({'Bag/BagPanel/sellButton': '龘'}));
+  errors = await errorsOf(checkFonts(root, p, model(root)));
+  const title = errors.find(e => /字体 Title/.test(e.message));
+  assert.match(title.message, /「龘」（U\+9F98，i18n\/zh-CN\.json Bag\/BagPanel\/sellButton）/);
+  assert.ok(!errors.some(e => /字体 Noto.*龘/.test(e.message)));
+});
+
+test('LGUI-CLI-141：列表项的 title、按钮的 selectedTitle、gearText 的值也查缺字，按各自显示它的控件的字体', async () => {
+  const root = fixture({fonts: {Noto: sample, Title: await smallFont('出售开始')}, titleFont: 'Title', extra: `
+    <list id="n20" name="menu" xy="0,0" size="400,400" defaultItem="ui://bag00001btn00001"><item title="开始"/><item title="齉"/></list>
+    <component id="n21" name="toggle" src="btn00001" xy="0,0" size="160,56"><Button title="开始" selectedTitle="龘"/></component>
+    <text id="n22" name="state" xy="0,0" size="200,40" fontSize="24" autoSize="shrink" singleLine="true" text="开始"><gearText controller="tabs" pages="1" values="鬱" default="开始"/></text>`});
+  const errors = await errorsOf(checkFonts(root, project({defaultFont: 'Noto', languages: ['zh-CN']}), model(root)));
+  const byFont = name => errors.find(e => e.message.startsWith(`字体 ${name}`))?.message ?? '';
+  assert.match(byFont('Title'), /「齉」（U\+9F49，ui\/assets\/Bag\/BagPanel\.xml:\d+ menu 的列表项）/);
+  assert.match(byFont('Title'), /「龘」（U\+9F98，ui\/assets\/Bag\/BagPanel\.xml:\d+ toggle 的 selectedTitle）/);
+  assert.match(byFont('Noto'), /「鬱」（U\+9B31，ui\/assets\/Bag\/BagPanel\.xml:\d+ state 的 gearText）/);
+});
+
+test('LGUI-CLI-140：空文件、不到 4 字节的文件不抛 RangeError；字体名和 CSS 通用字体名、关键字撞名', async () => {
+  const short = fixture({fonts: {Noto: sample, 'Empty.ttf': Buffer.alloc(0), 'Tiny.otf': Buffer.from([0, 1, 0])}});
+  const errors = await errorsOf(checkFonts(short, project(), model(short)));
+  assert.deepEqual(errors.map(e => [e.code, e.file]).sort(), [['LGUI-CLI-140', 'ui/fonts/Empty.ttf'], ['LGUI-CLI-140', 'ui/fonts/Tiny.otf']]);
+  assert.match(errors.find(e => e.file === 'ui/fonts/Empty.ttf').message, /只有 0 字节/);
+  // 头对、表目录被截断
+  const cut = fixture({fonts: {Noto: sample, 'Cut.otf': fs.readFileSync(sample).subarray(0, 20)}});
+  assert.match((await errorsOf(checkFonts(cut, project(), model(cut))))[0].message, /Cut\.otf 读不出字符表：文件被截断了/);
+  const clash = fixture({fonts: {'Serif.otf': sample, 'Monospace.ttf': sample, 'Default.otf': sample, 'Emoji.otf': sample, 'Serif2.otf': sample}});
+  const listed = await errorsOf(Promise.resolve().then(() => listFonts(clash)));
+  assert.deepEqual(listed.map(e => e.file).sort(), ['ui/fonts/Default.otf', 'ui/fonts/Emoji.otf', 'ui/fonts/Monospace.ttf', 'ui/fonts/Serif.otf']);
+  assert.match(listed.find(e => e.file === 'ui/fonts/Serif.otf').message, /和 CSS 的通用字体名或关键字 serif 撞名/);
+});
+
+test('字符表自己读：和 HarfBuzz 读出来的一样', async () => {
+  const bytes = fs.readFileSync(sample);
+  const hb = [...await unicodes(sample)].map(ch => ch.codePointAt(0)).sort((a, b) => a - b);
+  assert.deepEqual([...readSfnt(bytes).unicodes].sort((a, b) => a - b), hb);
+  assert.ok(readSfnt(bytes).tables.has('CFF '));
 });
