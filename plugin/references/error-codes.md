@@ -71,6 +71,7 @@ LGUI 的每条报错都带错误码，并写明：哪个文件哪一行（如果
 | `LGUI-CLI-140` | `ui/fonts/` 里的字体文件用不了：文件名不能当字体名（要大写字母开头、只用字母和数字，不能和 CSS 的通用字体名或关键字同名，比如 `Serif`、`Default`）、两个文件同名、格式不支持（TTC、WOFF、WOFF2）、内容不是 TTF / OTF（包括空文件、被截断的文件）、读不出字符表、是可变字体，或者做子集失败。不带 `--browser` 的 `lgui test` 也会报（启动入口要列出字体名） | 换成单字重的 TTF / OTF，按报错改文件名；许可说明之类的别的文件可以放着 |
 | `LGUI-CLI-141` | 静态文字里有字体没有的字（报错里列出是哪些字、在哪个文件或文本键）：`ui/` 里的固定文字按显示它的文字控件的字体查（按钮、标签、下拉框、列表项的标题看组件里名为 `title` 的文字控件；`gearText` 的值跟着所在控件），`i18n/` 里同键的翻译跟着那个控件，其余文案和框架自己显示的字（`format.compact` 的单位，按工程 `languages`）查默认字体 | 换一个有这些字的字体；表情符号这类字体里没有的字改用图片或 ArtText；写错的字改掉 |
 | `LGUI-CLI-142` | 工程配置的 `defaultFont` 不是 `ui/fonts/` 里的字体（系统字体名也不行，各平台不一样） | 把字体文件放进 `ui/fonts/<名字>.ttf`，或者把 `defaultFont` 改成 `ui/fonts/` 里的名字，或者改成 `null`（用系统默认字体） |
+| `LGUI-CLI-143` | `lgui unity export`：工程用了项目字体（Unity 上是 TextMesh Pro 字体），Unity 工程里没有 TMP Settings，导出要从 `com.unity.ugui` 自带的 TMP Essential Resources 资源包导入，但找不到资源包（报错里列出找过的位置：工程的 `Library/PackageCache/com.unity.ugui@…/`、`Packages/com.unity.ugui/`、Unity Hub 默认安装位置里这个版本的内置包），或者资源包读不了、里面没有 TMP Settings、写入失败。什么都不写 | 用这个版本的 Unity 打开一次工程再导出；Unity 不在 Hub 默认位置时，在 Unity 里点 Window → TextMeshPro → Import TMP Essential Resources 导入一次，再导出 |
 | `LGUI-CLI-999` | 命令行内部错误（LGUI 自己的缺陷） | 把输出报告给维护者 |
 
 ## LGUI-RT-xxx
@@ -155,5 +156,5 @@ LGUI 的每条报错都带错误码，并写明：哪个文件哪一行（如果
 | `LGUI-RT-175` | 本地存储里的声音设置读不出来，用默认值（外部失败，记 `warn`） | 不需要处理；玩家下次改音量时会重新存 |
 | `LGUI-RT-176` | `lgui test` 里这个测试记了 `error` 级的日志（报错里写明是哪条） | 按日志改代码或界面 |
 | `LGUI-RT-180` | 网页端启动时项目字体加载失败（报错里写明地址和原因：HTTP 状态、浏览器解不开、浏览器没有 FontFace）。启动就停下，不悄悄换成系统字体 | 重新运行生成它的命令（`lgui dev`、`verify`、`test --browser`）；部署网页时 `ui/fonts/` 要和界面包一起发布 |
-| `LGUI-RT-181` | Unity 启动时注册不了项目字体：`Resources/UI/fonts/<名字>` 没有、没被导入成字体，或者 TextMesh Pro 用它建不成字体；或者工程里的 LGUI Unity 包是旧版（没有 `LGUI.Platform.RegisterFont`） | 重新 `lgui unity export`，回到 Unity 等导入完成再点 Play；字体的导入设置要勾「Include Font Data」（默认勾着）；旧版包先 `lgui upgrade` |
+| `LGUI-RT-181` | Unity 启动时注册不了项目字体：工程里没有 TextMesh Pro 的设置资源（TMP Settings，没导入 TMP Essential Resources；以前这里是空引用）；`Resources/UI/fonts/<名字>` 没有、没被导入成字体，或者 TextMesh Pro 用它建不成字体；或者工程里的 LGUI Unity 包是旧版（没有 `LGUI.Platform.RegisterFont` / `TmpSettingsFound`） | 重新 `lgui unity export`（缺 TMP Settings 时它会导入 TMP Essential Resources），或者在 Unity 里点 Window → TextMeshPro → Import TMP Essential Resources；回到 Unity 等导入完成再点 Play；字体的导入设置要勾「Include Font Data」（默认勾着）；旧版包先 `lgui upgrade` |
 | `LGUI-RT-182` | Unity 上一个候选的系统字体都没找到，项目字体后面没挂上系统回退字体（报错里列出试过的字体）。只记一次 `error` 日志、不抛错，游戏照常运行；项目字体里没有的字（聊天、玩家名）显示成方框 | iOS、Android、电脑原生包上一般都找得到；微信小游戏、WebGL 读不到系统字体，要在 `ui/fonts/` 里带一个常用字字体 |

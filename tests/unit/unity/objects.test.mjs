@@ -475,16 +475,22 @@ test('Unity 项目字体：启动时按名字把 Resources 里的 UI/fonts/<名�
   const calls = [];
   const logs = [];
   const {bridge, dispose} = await containerBackend({defaultFont: 'Noto', fonts: ['Noto', 'Title'], platform: {
-    RegisterFont(name, resource) { calls.push([name, resource]); return true; }, FallbackFontName: 'PingFang SC', FallbackFontCandidates: 'PingFang SC, Microsoft YaHei',
+    RegisterFont(name, resource) { calls.push([name, resource]); return true; }, TmpSettingsFound: true, FallbackFontName: 'PingFang SC', FallbackFontCandidates: 'PingFang SC, Microsoft YaHei',
     Log(level, message) { logs.push([level, message]); }
   }});
   assert.deepEqual(calls, [['Noto', 'UI/fonts/Noto'], ['Title', 'UI/fonts/Title']]);
   assert.equal(bridge.FairyGUI.UIConfig.defaultFont, 'Noto');
   assert.deepEqual(logs.filter(([, m]) => m.includes('lgui_rt_182')), [], '找到了系统回退字体就不记');
   dispose();
-  await assert.rejects(containerBackend({fonts: ['Noto'], platform: {RegisterFont: () => false}}), e => e.code === 'LGUI-RT-181' && /Resources\/UI\/fonts\/Noto/.test(e.message));
+  await assert.rejects(containerBackend({fonts: ['Noto'], platform: {RegisterFont: () => false, TmpSettingsFound: true}}), e => e.code === 'LGUI-RT-181' && /Resources\/UI\/fonts\/Noto/.test(e.message));
   dispose();
   await assert.rejects(containerBackend({fonts: ['Noto']}), e => e.code === 'LGUI-RT-181' && /RegisterFont/.test(e.message));
+  dispose();
+  // 工程里没有 TMP Settings（没导入 TMP Essential Resources）：不调 RegisterFont（TMP 会空引用），报 RT-181 写明原因和改法
+  const tried = [];
+  await assert.rejects(containerBackend({fonts: ['Noto'], platform: {RegisterFont(name) { tried.push(name); return true; }, TmpSettingsFound: false}}),
+    e => e.code === 'LGUI-RT-181' && /TMP Settings/.test(e.message) && /lgui unity export/.test(e.next) && /Window → TextMeshPro → Import TMP Essential Resources/.test(e.next));
+  assert.deepEqual(tried, []);
   dispose();
   // 没有项目字体时不调 RegisterFont（旧版 Unity 包照样能启动），也不管系统回退字体（不记 RT-182）
   const quiet = [];
@@ -496,7 +502,7 @@ test('Unity 项目字体：启动时按名字把 Resources 里的 UI/fonts/<名�
 test('Unity 项目字体：一个系统回退字体都没找到时，启动照常，只记一次 LGUI-RT-182 错误日志（写明试过哪些）', async () => {
   const logs = [];
   const {backend, dispose} = await containerBackend({fonts: ['Noto', 'Title'], platform: {
-    RegisterFont: () => true, FallbackFontName: '', FallbackFontCandidates: 'PingFang SC, Noto Sans CJK SC, Microsoft YaHei',
+    RegisterFont: () => true, TmpSettingsFound: true, FallbackFontName: '', FallbackFontCandidates: 'PingFang SC, Noto Sans CJK SC, Microsoft YaHei',
     Log(level, message) { logs.push([level, message]); }
   }});
   assert.ok(backend.root, '启动照常');

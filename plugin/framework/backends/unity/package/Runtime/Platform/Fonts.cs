@@ -71,6 +71,16 @@ namespace LGUI
             return true;
         }
 
+        /// <summary>
+        /// Whether the TextMesh Pro settings asset ("TMP Settings", imported with TMP Essential Resources) is in a Resources folder.
+        /// TMP_FontAsset.CreateFontAsset reads TMP_Settings and throws a NullReferenceException without it, so the TypeScript
+        /// backend checks this first and reports LGUI-RT-181. Loaded directly: TMP_Settings.instance opens TMP's importer window in the Editor.
+        /// </summary>
+        public static bool TmpSettingsFound
+        {
+            get { return Resources.Load<TMP_Settings>("TMP Settings") != null; }
+        }
+
         /// <summary>Family name of the system font used as the fallback for project fonts; empty when none of the candidates is installed.</summary>
         public static string FallbackFontName
         {

@@ -20,23 +20,41 @@ node tests/unity/fonts/checker.mjs <证据目录>/result.json
 
 `<Unity工程>` 用 `../runner.mjs` 准备的开发工程（装好本地 PuerTS 3.0.3 Core/V8 和这个分支的 Unity 包，见上一级 README）。
 
-## Unity 上要跑的步骤（这个 PR 在本机没跑，交给装了 Unity 6000.6 的机器）
+## Unity 上要跑的步骤（交给装了 Unity 6000.6 的 Windows 机器）
 
-1. **编译。** 用 `../runner.mjs` 准备一个新的开发工程（Unity 6000.6.6f1，这个分支的 `plugin/framework/backends/unity/package`）。打开以后 Console 里不能有编译错误。重点看：
-   - `FairyGUI` 程序集带上 `FAIRYGUI_TMPRO` 以后能编过（`Extensions/TextMeshPro/TMPFont.cs`、`TMPTextFormat.cs`）。
-   - `LGUI.Runtime` 的 `Platform/Fonts.cs` 能编过。
+**A. 全新工程，没有 TMP Settings。**
 
-   编不过就把完整报错带回来。
-2. **TMP 字体的原生验收。** 跑上面三条命令，`checker.mjs` 要输出 `ok: true`。把 `result.json`、`unity.log` 带回来；其中 `fallback` 是这台机器找到的系统字体（Windows 上应该是 `Microsoft YaHei`），`firstLayoutMs` / `secondLayoutMs` 也要记下。
-3. **导出场景看画面。**
-   - 在背包示例（`examples/inventory`）的副本里放 `ui/fonts/NotoSansSC.otf`：用整包 Noto Sans SC（`node -e "import('./scripts/fonts/noto.mjs').then(m => m.notoSansSC()).then(console.log)"` 下载到临时目录并打印路径，来源和 SHA-256 写在 `scripts/fonts/noto.mjs`）；把 `.lgui/project.json` 的 `defaultFont` 改成 `"NotoSansSC"`。
-   - 用 `../export-play.mjs` 的流程导出并进入 Play，截图。
-   - 看：文字清晰（SDF，不是糊的或方块）；`bold="true"`、描边（`strokeColor`）、投影（`shadowColor`）都在；`autoSize="shrink"` 的字能缩。
-   - 再在运行时给一个文字控件设一段带生僻字和英文的玩家名，看生僻字由系统字体显示（不是方框）。
-4. **出包（IL2CPP Windows Player）。**
-   - 用 `../player-build.mjs` 的流程出一个 Player，看文字和投影跟编辑器里一样。这一步验证 `Runtime/Resources/LGUI/` 里的两份材质：它们让出包时带上 FairyGUI 的 TMP shader 和投影的 `UNDERLAY_ON` 变体。
-   - 如果文字变成粗糙的方块或没有投影，说明 shader 或变体被剥掉了，把 Player 日志带回来。
-   - 两份材质是手写的 YAML。Unity 打开后如果改写了它们（`git diff` 能看出），把改写后的文件带回来。
-5. **手机（有条件再做）。** Android、iOS 真机上看：
-   - 系统回退字体找得到：日志里没有 `LGUI-RT-182`，生僻字不是方框。
-   - 一次显示几百个新字的界面，第一次打开的耗时（`firstLayoutMs` 这类数字，或者帧耗时）。
+1. 用 Unity 6000.6.6f1 新建一个空工程，按 `../README.md` 放好 PuerTS 3.0.3 Core/V8 本地包。**不要**点 Window → TextMeshPro 的导入。确认 `Assets/` 下没有 `TMP Settings.asset`。
+2. **导出。**
+   - 背包示例（`examples/inventory`）的副本里放整包 Noto Sans SC 为 `ui/fonts/NotoSansSC.otf`。下载命令：`node -e "import('./scripts/fonts/noto.mjs').then(m => m.notoSansSC()).then(console.log)"`，它从 Google 官方仓库下载到临时目录并打印路径，来源和 SHA-256 写在 `scripts/fonts/noto.mjs`。
+   - `.lgui/project.json` 的 `defaultFont` 改成 `"NotoSansSC"`，然后 `lgui unity export --to <这个工程>`。
+   - 要看到：
+     - 输出里有一行「已从 com.unity.ugui 自带的资源包导入 TMP Essential Resources（N 个文件，没联网……）：<资源包路径>」。**把这个路径带回来**：它说明 ugui 2.0 的资源包实际在哪（工程的 `Library/PackageCache/` 还是 Unity 安装目录的 `BuiltInPackages/`）。
+     - `Assets/TextMesh Pro/Resources/TMP Settings.asset` 存在。
+   - 如果报 `LGUI-CLI-143`，把完整报错（找过的路径）带回来，再在 Unity 安装目录里找 `TMP Essential Resources.unitypackage`，把它的实际路径带回来。
+3. **打开 Unity。** Console 没有导入错误。顺便看 `Assets/TextMesh Pro/` 的文件和用菜单 Window → TextMeshPro → Import TMP Essential Resources 导入的是不是一样（GUID 一样就行）。
+4. **原生验收。** 用 `../runner.mjs` 准备的开发工程跑上面的三条命令。`prepare.mjs` 发现没有 TMP Settings 时，会和导出一样导入，输出里的 `tmpEssentials` 写着从哪里导入的。`checker.mjs` 要输出 `ok: true`；把它打印的 `fallback`（Windows 上应该是 `Microsoft YaHei`）、`firstLayoutMs`、`secondLayoutMs` 带回来，连同 `result.json`、`unity.log`。
+5. **编辑器 Play**（第 2 步导出的工程，打开 `Assets/LGUI/LGUIBoot.unity`，截图）。看：
+   - 文字清晰（SDF，不糊、不是方块）；
+   - `bold="true"` 的粗体、描边（`strokeColor`）、投影（`shadowColor`）都在；
+   - `autoSize="shrink"` 的字能缩；
+   - 运行时给一个文字控件设一段带生僻字和英文的玩家名，生僻字由系统字体显示（不是方框）；
+   - Console 没有空引用，没有 `LGUI-RT-160` / `LGUI-RT-181` / `LGUI-RT-182`。
+6. **IL2CPP Windows Player**（照 `../player-build.mjs`）。看两点：
+   - 画面和编辑器一样（不再是空白），文字和投影都在。
+   - Player 日志里没有空引用。如果有 `TextMeshPro/Mobile/Distance Field` 这类 shader 找不到的报错，说明 TMP 自己的 shader 在出包时被剥了，把日志带回来。
+
+**B. 已经有 TMP Settings 的工程。**
+
+7. 在第 2 步的工程里随便改一下 `Assets/TextMesh Pro/Resources/TMP Settings.asset`（或者换一个用菜单导入过 TMP 的工程），记下 `git status` / 文件哈希，再 `lgui unity export` 一次。看到：
+   - 输出里**没有**「导入 TMP Essential Resources」那一行；
+   - `Assets/TextMesh Pro/` 下一个文件都没变。
+
+**C. 运行时那条错误。**
+
+8. 临时把 `TMP Settings.asset` 挪出 `Resources` 再 Play：报 `LGUI-RT-181`，信息里有「TMP Settings」、「lgui unity export」、「Window → TextMeshPro → Import TMP Essential Resources」，不再是空引用 / RT-160。看完挪回去。
+
+**D. 手机（有条件再做）。** Android、iOS 真机上看三件事：
+- 系统回退字体找得到（没有 RT-182，生僻字不是方框）；
+- 一次显示几百个新字的界面，第一次打开的耗时；
+- 图集张数（`Atlas` 读数的第三项）。
