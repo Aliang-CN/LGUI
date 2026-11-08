@@ -46,6 +46,8 @@ export interface NativePlatformHost {
   ClipboardSet(text: string): void;
   /** 用 Resources 里的项目字体（lgui unity export 写的 UI/fonts/<名字>）建动态 TMP 字体，挂上系统回退字体，按名字注册给 FairyGUI；没有这个资源、不是字体或建不成时返回 false。 */
   RegisterFont(name: string, resourcePath: string): boolean;
+  /** 工程里有没有 TextMesh Pro 的设置资源（TMP Settings，随 TMP Essential Resources 导入）；没有时 TMP 建字体会空引用。 */
+  readonly TmpSettingsFound: boolean;
   /** 项目字体后面挂的系统回退字体的名字；候选的系统字体一个都没找到时是空字符串。 */
   readonly FallbackFontName: string;
   /** 按顺序试过的系统字体（逗号分隔，报 LGUI-RT-182 用）。 */

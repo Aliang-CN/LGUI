@@ -59,9 +59,12 @@ export function createUnityBackend(bridge?: NativeBridge): Backend {
       // 项目字体在创建任何界面之前注册成 TMP 字体（FontManager 找不到字体时会静默换成系统字体或 Arial，所以注册不上就报错）。
       // 每个项目字体后面挂同一个系统回退字体，显示子集外的字（聊天、玩家名）；一个系统字体都没找到时只记一次 LGUI-RT-182，不抛错。
       const host = found.LGUI.Platform;
+      if ((options.fonts ?? []).length) {
+        if (typeof host.RegisterFont !== 'function' || typeof host.TmpSettingsFound !== 'boolean') throw new LgRuntimeError('LGUI-RT-181', `Unity 工程里的 LGUI 包是旧版（没有 LGUI.Platform.RegisterFont / TmpSettingsFound），注册不了项目字体 ${options.fonts?.join('、')}。`, '运行 lgui upgrade 把新版 Unity 包复制进工程，再 lgui unity export。');
+        if (!host.TmpSettingsFound) throw new LgRuntimeError('LGUI-RT-181', `注册不了项目字体 ${options.fonts?.join('、')}：Unity 工程里没有 TextMesh Pro 的设置资源（TMP Settings），项目字体在 Unity 上是 TMP 字体，TMP 建字体要用它。`, '重新运行 lgui unity export（它会从 com.unity.ugui 自带的资源包导入 TMP Essential Resources）；或者在 Unity 里点 Window → TextMeshPro → Import TMP Essential Resources。');
+      }
       for (const name of options.fonts ?? []) {
         const resource = `${options.uiBase}/fonts/${name}`;
-        if (typeof host.RegisterFont !== 'function') throw new LgRuntimeError('LGUI-RT-181', `Unity 工程里的 LGUI 包没有 LGUI.Platform.RegisterFont，注册不了项目字体 ${name}。`, '运行 lgui upgrade 把新版 Unity 包复制进工程，再 lgui unity export。');
         if (!host.RegisterFont(name, resource)) throw new LgRuntimeError('LGUI-RT-181', `项目字体 ${name} 在 Unity 的 Resources 里找不到（Resources/${resource}.ttf 或 .otf），没有导入成字体，或者 TMP 建不成字体。`, '重新运行 lgui unity export（它把 ui/fonts/ 的子集写到 Assets/LGUI/Resources/UI/fonts/），回到 Unity 等导入完成再点 Play；字体的导入设置要勾「Include Font Data」（默认就勾着）。');
       }
       const noFallback = (options.fonts ?? []).length > 0 && host.FallbackFontName === '';
