@@ -471,18 +471,40 @@ test('Unity container teardown disposes a registered parent tree and remaining l
   } finally { dispose(); }
 });
 
-test('Unity 项目字体：启动时按名字注册 Resources 里的 UI/fonts/<名字>；找不到、旧版 Unity 包都报 LGUI-RT-181', async () => {
+test('Unity 项目字体：启动时按名字把 Resources 里的 UI/fonts/<名字> 注册成 TMP 字体；找不到、旧版 Unity 包都报 LGUI-RT-181', async () => {
   const calls = [];
-  const {bridge, dispose} = await containerBackend({defaultFont: 'Noto', fonts: ['Noto', 'Title'], platform: {RegisterFont(name, resource) { calls.push([name, resource]); return true; }}});
+  const logs = [];
+  const {bridge, dispose} = await containerBackend({defaultFont: 'Noto', fonts: ['Noto', 'Title'], platform: {
+    RegisterFont(name, resource) { calls.push([name, resource]); return true; }, FallbackFontName: 'PingFang SC', FallbackFontCandidates: 'PingFang SC, Microsoft YaHei',
+    Log(level, message) { logs.push([level, message]); }
+  }});
   assert.deepEqual(calls, [['Noto', 'UI/fonts/Noto'], ['Title', 'UI/fonts/Title']]);
   assert.equal(bridge.FairyGUI.UIConfig.defaultFont, 'Noto');
+  assert.deepEqual(logs.filter(([, m]) => m.includes('lgui_rt_182')), [], '找到了系统回退字体就不记');
   dispose();
   await assert.rejects(containerBackend({fonts: ['Noto'], platform: {RegisterFont: () => false}}), e => e.code === 'LGUI-RT-181' && /Resources\/UI\/fonts\/Noto/.test(e.message));
   dispose();
   await assert.rejects(containerBackend({fonts: ['Noto']}), e => e.code === 'LGUI-RT-181' && /RegisterFont/.test(e.message));
   dispose();
-  // 没有项目字体时不调 RegisterFont（旧版 Unity 包照样能启动）
-  await containerBackend();
+  // 没有项目字体时不调 RegisterFont（旧版 Unity 包照样能启动），也不管系统回退字体（不记 RT-182）
+  const quiet = [];
+  await containerBackend({platform: {FallbackFontName: '', FallbackFontCandidates: 'x', Log(level, message) { quiet.push(message); }}});
+  assert.deepEqual(quiet.filter(m => m.includes('lgui_rt_182')), []);
+  dispose();
+});
+
+test('Unity 项目字体：一个系统回退字体都没找到时，启动照常，只记一次 LGUI-RT-182 错误日志（写明试过哪些）', async () => {
+  const logs = [];
+  const {backend, dispose} = await containerBackend({fonts: ['Noto', 'Title'], platform: {
+    RegisterFont: () => true, FallbackFontName: '', FallbackFontCandidates: 'PingFang SC, Noto Sans CJK SC, Microsoft YaHei',
+    Log(level, message) { logs.push([level, message]); }
+  }});
+  assert.ok(backend.root, '启动照常');
+  const rt182 = logs.filter(([, m]) => m.includes('lgui_rt_182'));
+  assert.equal(rt182.length, 1, '两个项目字体也只记一次');
+  assert.equal(rt182[0][0], 'error');
+  assert.match(rt182[0][1], /LGUI-RT-182/);
+  assert.match(rt182[0][1], /PingFang SC, Noto Sans CJK SC, Microsoft YaHei/);
   dispose();
 });
 
