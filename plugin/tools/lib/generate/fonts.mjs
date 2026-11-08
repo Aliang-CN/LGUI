@@ -3,23 +3,29 @@
 //
 // 字集（每个字体一样）：ASCII 可见字符 + ui/ 的 XML 里写的全部文字 + i18n/ 里全部语言的文案 + 框架自己显示的固定文字
 // （framework/mvc/fixed-text.ts，按工程 languages）。字体里本来就没有的字不收。
-// 缺字（LGUI-CLI-141）：ui/ 里写了 font 的文字要这个字体都有；其余的静态文字（ui/ 没写 font 的、i18n/ 的、框架的固定文字）
-// 要默认字体都有。运行时才知道的文字（玩家名、服务器数据）不查，缺的字由浏览器 / Unity 按字回退到系统字体。
-// 工具：harfbuzzjs（HarfBuzz 的 WASM 版）读字符表、做子集；wawoff2（Google woff2 的 WASM 版）压 WOFF2。
+// 缺字（LGUI-CLI-141）：ui/ 里的每段固定文字按显示它的那个文字控件的字体查（文字控件自己写的 font；按钮、标签、下拉框、
+// 列表项的标题看它组件里名为 title 的文字控件写的 font；没写就是默认字体）。i18n/ 里和 ui/ 文字同键的翻译跟着那个控件的字体，
+// 其余文案和框架的固定文字查默认字体。运行时才知道的文字（玩家名、服务器数据）不查，缺的字由浏览器 / Unity 按字回退到系统字体。
+// 工具：字符表和表目录自己读（不经 WASM，用完就没有残留）；harfbuzz-subset.wasm（HarfBuzz）做子集，用完逐个释放；
+// wawoff2（Google woff2 的 WASM 版）压 WOFF2。
 import fs from 'node:fs';
 import path from 'node:path';
 import {pathToFileURL} from 'node:url';
 import {LgCliError, LgCliErrors} from '../errors.mjs';
 import {frameworkDir} from '../paths.mjs';
-import {harfbuzz, harfbuzzSubsetWasm, woff2} from '../vendor.mjs';
-import {extractTexts, readTable} from './i18n.mjs';
+import {harfbuzzSubsetWasm, woff2} from '../vendor.mjs';
+import {readTable} from './i18n.mjs';
 
 const FONT_NAME = /^[A-Z][A-Za-z0-9]*$/;
 const FONT_EXT = /\.(ttf|otf)$/i;
 const UNSUPPORTED = /\.(ttc|otc|woff2?|eot|fnt)$/i;
+// FairyGUI 网页端把字体名不加引号写进 CSS 的 font-family（vendor/fairygui.module.js 的 applyFormat、舞台样式），
+// Shrink 补丁量宽时也一样：名字是 CSS 的通用字体名或关键字时，浏览器按系统字体画，不报错。这些名字不能用（不分大小写）。
+const CSS_RESERVED = ['serif', 'monospace', 'cursive', 'fantasy', 'math', 'emoji', 'fangsong', 'inherit', 'initial', 'unset', 'default', 'revert'];
 const HB_SUBSET_FLAGS_NO_HINTING = 1;
 const HB_MEMORY_MODE_WRITABLE = 2;
 const MAX_LISTED = 20;
+const TEXT_TAGS = ['text', 'richtext', 'inputtext'];
 
 export const fontsDir = root => path.join(root, 'ui', 'fonts');
 const rel = (root, file) => path.relative(root, file).split(path.sep).join('/');
@@ -41,6 +47,10 @@ export function listFonts(root) {
     const name = entry.name.replace(FONT_EXT, '');
     if (!FONT_NAME.test(name)) {
       errors.push(new LgCliError('LGUI-CLI-140', `ui/fonts/${entry.name} 的文件名不能当字体名：要以大写字母开头，只用字母和数字。`, {file: rel(root, file), fix: `改名，比如 ${name.replace(/[^A-Za-z0-9]/g, '').replace(/^[^A-Za-z]*/, '').replace(/^./, c => c.toUpperCase()) || 'MyFont'}${path.extname(entry.name).toLowerCase()}；文件名（去掉扩展名）就是在 defaultFont 和 XML 的 font 里写的名字。`}));
+      continue;
+    }
+    if (CSS_RESERVED.includes(name.toLowerCase())) {
+      errors.push(new LgCliError('LGUI-CLI-140', `ui/fonts/${entry.name} 的字体名 ${name} 和 CSS 的通用字体名或关键字 ${name.toLowerCase()} 撞名：网页上会按系统字体画。`, {file: rel(root, file), fix: `改一个名字，比如 ${name}Font${path.extname(entry.name).toLowerCase()}。不能用的名字：${CSS_RESERVED.join('、')}（不分大小写）。`}));
       continue;
     }
     if (fonts.some(f => f.name === name)) {
@@ -65,19 +75,109 @@ export function defaultFontProblem(project, names) {
 // 一个字：用 for…of 按码点拆，跳过控制字符。
 const glyphChars = text => [...text].filter(ch => ch.codePointAt(0) >= 0x20 && ch.codePointAt(0) !== 0x7f);
 
+/**
+ * 读 TTF / OTF 的表目录和字符表（cmap）：{ tables: Set<表名>, unicodes: Set<码点> }。和 HarfBuzz 一样挑一个 Unicode 子表，
+ * 认格式 4、12（格式 13 是给「每个字都画同一个框」这类兜底字体用的，不收）；码点映射到 0 号字形（.notdef）的不算。读不了时抛 Error（说明原因）。tests/unit/fonts.test.mjs 拿它和 HarfBuzz 对过。
+ */
+export function readSfnt(bytes) {
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const need = (offset, size) => { if (offset < 0 || offset + size > bytes.length) throw new Error('文件被截断了，或者表的位置不对'); };
+  need(0, 12);
+  const count = view.getUint16(4);
+  need(12, count * 16);
+  const tables = new Map();
+  for (let i = 0; i < count; i++) {
+    const at = 12 + i * 16;
+    tables.set(String.fromCharCode(...bytes.subarray(at, at + 4)), {offset: view.getUint32(at + 8), length: view.getUint32(at + 12)});
+  }
+  const cmap = tables.get('cmap');
+  if (!cmap) throw new Error('没有字符表（cmap）');
+  need(cmap.offset, 4);
+  const unicodes = new Set();
+  const subtables = view.getUint16(cmap.offset + 2);
+  need(cmap.offset + 4, subtables * 8);
+  // 和 HarfBuzz 一样只用一个子表，按这个顺序挑第一个有的：32 位的 (3,10) (0,6) (0,4)，16 位的 (3,1) (0,3) (0,2) (0,1) (0,0)
+  const records = Array.from({length: subtables}, (_, i) => {
+    const at = cmap.offset + 4 + i * 8;
+    return {key: `${view.getUint16(at)},${view.getUint16(at + 2)}`, offset: cmap.offset + view.getUint32(at + 4)};
+  });
+  const best = ['3,10', '0,6', '0,4', '3,1', '0,3', '0,2', '0,1', '0,0'].map(key => records.find(r => r.key === key)).find(Boolean);
+  if (!best) throw new Error('没有 Unicode 字符表');
+  const sub = best.offset;
+  need(sub, 2);
+  const format = view.getUint16(sub);
+  if (format === 4) {
+    need(sub, 14);
+    const segments = view.getUint16(sub + 6) / 2;
+    const ends = sub + 14, starts = ends + segments * 2 + 2, deltas = starts + segments * 2, ranges = deltas + segments * 2;
+    need(ends, segments * 8 + 2);
+    for (let s = 0; s < segments; s++) {
+      const end = view.getUint16(ends + s * 2), start = view.getUint16(starts + s * 2), delta = view.getUint16(deltas + s * 2), range = view.getUint16(ranges + s * 2);
+      for (let c = start; c <= end && c !== 0xffff; c++) {
+        let glyph;
+        if (range === 0) glyph = (c + delta) & 0xffff;
+        else {
+          const g = ranges + s * 2 + range + (c - start) * 2;
+          need(g, 2);
+          glyph = view.getUint16(g);
+          if (glyph) glyph = (glyph + delta) & 0xffff;
+        }
+        if (glyph) unicodes.add(c);
+      }
+    }
+  } else if (format === 12) {
+    need(sub, 16);
+    const groups = view.getUint32(sub + 12);
+    need(sub + 16, groups * 12);
+    for (let g = 0; g < groups; g++) {
+      const at = sub + 16 + g * 12;
+      const start = view.getUint32(at), end = view.getUint32(at + 4), first = view.getUint32(at + 8);
+      if (end > 0x10ffff || end < start) throw new Error('字符表里的码点范围不对');
+      for (let c = start; c <= end; c++) if (first + (c - start)) unicodes.add(c);
+    }
+  } else {
+    throw new Error(`字符表是格式 ${format}，不认识`);
+  }
+  return {tables: new Set(tables.keys()), unicodes};
+}
+
 // 读字体文件：格式、是不是可变字体、有哪些字。
-async function inspect(root, font) {
+function inspect(root, font) {
   const bytes = fs.readFileSync(font.file);
   const where = {file: rel(root, font.file)};
-  const tag = bytes.subarray(0, 4).toString('latin1');
-  if (tag === 'ttcf') throw new LgCliError('LGUI-CLI-140', `ui/fonts/${path.basename(font.file)} 是字体集（TTC），不是单个字体。`, {...where, fix: '换成单个字体的 TTF 或 OTF 文件。'});
-  if (!(tag === 'OTTO' || tag === 'true' || bytes.readUInt32BE(0) === 0x00010000)) throw new LgCliError('LGUI-CLI-140', `ui/fonts/${path.basename(font.file)} 不是 TTF / OTF 字体文件（内容开头不对）。`, {...where, fix: '换成能用的 TTF 或 OTF 字体文件。'});
-  const hb = await harfbuzz();
-  const face = new hb.Face(new hb.Blob(bytes), 0);
-  if (Object.keys(face.getAxisInfos()).length) throw new LgCliError('LGUI-CLI-140', `ui/fonts/${path.basename(font.file)} 是可变字体，项目字体只收单字重的字体。`, {...where, fix: '换成单字重的文件（下载的字体包里一般在 static/ 目录下，比如 NotoSansSC-Regular.ttf）；要粗体就再放一个粗体文件当另一个字体用。'});
-  const unicodes = new Set(face.collectUnicodes());
-  if (!unicodes.size) throw new LgCliError('LGUI-CLI-140', `ui/fonts/${path.basename(font.file)} 读不出字符表，用不了。`, {...where, fix: '换成能用的 TTF 或 OTF 字体文件。'});
-  return {bytes, unicodes};
+  const name = `ui/fonts/${path.basename(font.file)}`;
+  const tag = bytes.length >= 4 ? bytes.subarray(0, 4).toString('latin1') : '';
+  if (tag === 'ttcf') throw new LgCliError('LGUI-CLI-140', `${name} 是字体集（TTC），不是单个字体。`, {...where, fix: '换成单个字体的 TTF 或 OTF 文件。'});
+  if (!(tag === 'OTTO' || tag === 'true' || tag === '\0\x01\0\0')) throw new LgCliError('LGUI-CLI-140', `${name} 不是 TTF / OTF 字体文件（${bytes.length < 4 ? `只有 ${bytes.length} 字节` : '内容开头不对'}）。`, {...where, fix: '换成能用的 TTF 或 OTF 字体文件。'});
+  let sfnt;
+  try { sfnt = readSfnt(bytes); } catch (error) { throw new LgCliError('LGUI-CLI-140', `${name} 读不出字符表：${error.message}。`, {...where, fix: '换成能用的 TTF 或 OTF 字体文件。'}); }
+  if (sfnt.tables.has('fvar')) throw new LgCliError('LGUI-CLI-140', `${name} 是可变字体，项目字体只收单字重的字体。`, {...where, fix: '换成单字重的文件（下载的字体包里一般在 static/ 目录下，比如 NotoSansSC-Regular.ttf）；要粗体就再放一个粗体文件当另一个字体用。'});
+  if (!sfnt.unicodes.size) throw new LgCliError('LGUI-CLI-140', `${name} 的字符表是空的，用不了。`, {...where, fix: '换成能用的 TTF 或 OTF 字体文件。'});
+  return {bytes, unicodes: sfnt.unicodes};
+}
+
+/**
+ * 一个控件显示的文字用哪个字体：文字控件看自己的 font；组件实例（按钮、标签、下拉框）和列表项看那个组件里名为 title 的文字控件的 font。
+ * 返回字体名，null 是默认字体。
+ */
+function fontOf(node, ref) {
+  if (TEXT_TAGS.includes(node.tag)) return node.attrs.font || null;
+  const title = ref?.children.find(child => child.name === 'title' && TEXT_TAGS.includes(child.tag));
+  return title?.attrs.font || null;
+}
+
+/** 一个控件在 ui/ 里写的、会显示出来的固定文字：[文字, 说明]。 */
+function shownTexts(child) {
+  const out = [];
+  const push = (text, what) => { if (text) out.push([String(text), what]); };
+  if (TEXT_TAGS.includes(child.tag)) { push(child.attrs.text, ''); push(child.attrs.prompt, ' 的 prompt'); }
+  for (const node of child.children ?? []) {
+    if (['Button', 'Label'].includes(node.tag)) { push(node.attrs.title, ' 的 title'); push(node.attrs.selectedTitle, ' 的 selectedTitle'); }
+    if (node.tag === 'ComboBox') { push(node.attrs.title, ' 的 title'); node.children.filter(n => n.tag === 'item').forEach((item, j) => push(item.attrs.title, ` 的第 ${j + 1} 项`)); }
+    if (node.tag === 'item') push(node.attrs.title, ' 的列表项');
+    if (node.tag === 'gearText') { for (const value of String(node.attrs.values ?? '').split('|')) push(value, ' 的 gearText'); push(node.attrs.default, ' 的 gearText'); }
+  }
+  return out;
 }
 
 /** 字集：字 → 第一次出现的位置（给缺字报错用）。required：字体名（null 表示默认字体）→ 这个字体必须有的字。 */
@@ -93,8 +193,8 @@ export async function collectChars(root, project, model) {
     }
   };
   for (let cp = 0x20; cp < 0x7f; cp++) add(String.fromCodePoint(cp), 'ASCII');
-  // ui/ 的 XML：全部属性值里的字都收（列表项、齿轮里的文字也在属性里）；写了 font 的文字控件，它的文字要这个字体有。
-  const keyFont = new Map(); // ui/ 文字的键（和 i18n/ 的键一样）→ 写了的 font
+  // ui/ 的 XML：全部属性值里的字都收进字集；会显示出来的固定文字按显示它的控件的字体查。
+  const keyFont = new Map(); // ui/ 文字的键（和 i18n/ 的键一样：<包>/<组件>/<控件名>）→ 字体（null 是默认字体）
   for (const pkg of model.packages) {
     for (const component of pkg.components) {
       const file = rel(root, component.file);
@@ -104,24 +204,18 @@ export async function collectChars(root, project, model) {
       };
       for (const child of component.children) {
         visit(child);
-        if (!['text', 'richtext', 'inputtext'].includes(child.tag) || !child.attrs.font) continue;
-        keyFont.set(`${pkg.name}/${component.name.replace(/@portrait$/, '')}/${child.name}`, child.attrs.font);
-        const where = `${file}${child.line ? `:${child.line}` : ''} ${child.name}`;
-        add(child.attrs.text, where, child.attrs.font);
-        add(child.attrs.prompt, where, child.attrs.font);
+        const font = fontOf(child, child.ref);
+        if (child.name) keyFont.set(`${pkg.name}/${component.name.replace(/@portrait$/, '')}/${child.name}`, font);
+        const at = `${file}${child.line ? `:${child.line}` : ''} ${child.name ?? child.id}`;
+        for (const [text, what] of shownTexts(child)) add(text, at + what, font);
       }
     }
   }
-  for (const entry of extractTexts(model)) {
-    if (keyFont.has(entry.key.replace(/@prompt$/, ''))) continue;
-    add(entry.text, `ui/ ${entry.key}`, null);
-    add(entry.portrait?.text, `ui/ ${entry.key}`, null); // 竖版的字和横版不一样时
-  }
-  // i18n/：全部语言的全部文案（按数量分开写的每一种也算）。ui/ 文字的翻译跟着那个控件的字体，其余要默认字体有。
+  // i18n/：全部语言的全部文案（按数量分开写的每一种也算）。ui/ 文字的翻译（<包>/<组件>/<控件名>，带 @prompt、@item<j> 的也算）跟着那个控件的字体，其余要默认字体有。
   for (const language of project.languages) {
     const table = readTable(root, language);
     for (const [key, value] of Object.entries(table)) {
-      const font = keyFont.get(key.replace(/@prompt$/, '')) ?? null;
+      const font = keyFont.get(key.replace(/@(prompt|item\d+)$/, '')) ?? null;
       for (const text of typeof value === 'string' ? [value] : Object.values(value ?? {})) add(String(text), `i18n/${language}.json ${key}`, font);
     }
   }
@@ -139,7 +233,7 @@ export async function checkFonts(root, project, model) {
   if (problem) errors.push(problem);
   const loaded = [];
   for (const font of fonts) {
-    try { loaded.push({...font, ...await inspect(root, font)}); } catch (error) { errors.push(error); }
+    try { loaded.push({...font, ...inspect(root, font)}); } catch (error) { errors.push(error); }
   }
   const {all, required} = await collectChars(root, project, model);
   for (const [fontName, chars] of required) {
@@ -151,7 +245,7 @@ export async function checkFonts(root, project, model) {
     const listed = missing.slice(0, MAX_LISTED).map(([ch, where]) => `「${ch}」（U+${ch.codePointAt(0).toString(16).toUpperCase().padStart(4, '0')}，${where}）`).join('、');
     errors.push(new LgCliError('LGUI-CLI-141', `字体 ${name}（ui/fonts/${path.basename(font.file)}）没有这 ${missing.length} 个字：${listed}${missing.length > MAX_LISTED ? ' ……' : ''}。这些字会换成系统字体显示。`, {
       file: rel(root, font.file),
-      fix: '换一个有这些字的字体；表情符号这类字体里没有的字改用图片或 ArtText；写错的字改掉。'
+      fix: '换一个有这些字的字体（多语言工程的默认字体要覆盖所有语言）；表情符号这类字体里没有的字改用图片或 ArtText；写错的字改掉。'
     }));
   }
   if (errors.length) throw new LgCliErrors(errors);
