@@ -1,5 +1,27 @@
 # 更新记录
 
+## 0.4.1（2026-11-08）
+
+**Unity**
+
+- `lgui unity export` 自动导入 TextMesh Pro 的必需资源：工程用了项目字体、Unity 工程 `Assets/` 下又没有 `TMP Settings.asset` 时，从 Unity 自带的 `com.unity.ugui` 包里的 TMP Essential Resources 资源包导入。不联网，不启动 Unity，batchmode 和 Agent 都不用点菜单；只写工程里还没有的文件，已有 TMP Settings 的工程不动。输出和 `--json` 的 `data.tmpEssentials` 写明导入了几个文件、从哪个资源包。
+- 找不到或读不了这个资源包、包里没有 TMP Settings、写入失败，报 `LGUI-CLI-143`，列出找过的位置，什么都不写。
+- 运行时缺 TMP Settings 报 `LGUI-RT-181`，写明原因和补法（重新 `lgui unity export`，或 Window → TextMeshPro → Import TMP Essential Resources），不再在创建字体时空引用。0.4.0 里，没导入 TMP 必需资源的 Unity 工程用项目字体会启动失败，这一版修好。
+
+**编辑器和模板**
+
+- `lgui init` 的模板和 `lgui new view` 生成的 XML 改成编辑器保存时的写法，模板带上 `ui/settings/` 下三份设置文件（`{}`）。新工程第一次在编辑器里保存时，只有改动过的地方变化，不再重写 11 个 XML、新增 3 份设置。已有工程和背包示例第一次保存时仍会被编辑器整理一次（显示效果不变），以后只改动过的地方。
+- `lgui new` 新建包的 `package.xml` 带一个空的 `<publish name="包名">`。`LGUI-CLI-113` 的说明改成在已有的 `<publish>` 上加 `maxAtlasSize`，没有才写一个（写第二个 `<publish>` 不生效）。
+
+**新错误码**
+
+- `LGUI-CLI-143`：要导入 TMP 必需资源时，找不到或用不了 Unity 自带的资源包。
+
+**已知限制**
+
+- TMP 必需资源包在 Unity 安装里的位置按 TMP 原来的包推断，还没在 Windows 上核对；找不到时报 `LGUI-CLI-143`，在 Unity 里用菜单导入一次即可。
+- Unity 端 TMP 字体还没在 Unity 上跑通验收。
+
 ## 0.4.0（2026-11-08）
 
 **和 0.3.0 不兼容的地方**
