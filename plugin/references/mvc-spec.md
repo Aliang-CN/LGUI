@@ -293,6 +293,8 @@ export class FakeBagService implements BagService {
 - 被压住：`onDeactivate`
 - 关闭：`onDeactivate`（如果当时是激活的）→ `onClose` → 解绑和清理 → 销毁或缓存 → 释放资源
 
+钩子出错时，关闭和重新算激活照样做完（清理、释放、通知打开者、放出排队的 modal），最后再抛出这个错误；界面不会卡在半关的状态。
+
 屏幕旋转、切换语言时，View 实例保留，只重建组件，不调用 `onOpen` 和 `onClose`。所以钩子里不写控件属性，只写绑定表（`lgui check` 警告 `LGUI-MVC-020`）。
 
 - 绑定表在新组件上重新绑一遍，显示的内容按当前数据和语言重新取。
@@ -390,6 +392,8 @@ lgui.emit(rewardClaimed, { id });
 this.on(rewardClaimed, e => …);
 this.on(lgui.events.viewClosed, e => { if (e.view === ShopView) bagController.reload(); });
 ```
+
+一个收听函数出错，其余收听者照样收到，全部调完再抛出这个错误。Model 的订阅者（绑定）也一样。
 
 框架自己的事件在 `lgui.events` 下：`viewOpened`、`viewClosed`、`viewCovered`、`viewRevealed`、`orientationChange`、`languageChange`、`inputTypeChange`、`inputModeChange`。
 

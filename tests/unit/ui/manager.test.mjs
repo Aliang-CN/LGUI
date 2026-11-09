@@ -501,3 +501,60 @@ test('对已经打开（或正在打开）的界面再 open：参数相同返回
   assert.throws(() => lgui.ui.open(DetailView, undefined, {onClose: () => {}}), e => e.code === 'LGUI-RT-084');
   assert.equal(lgui.ui.open(MainView), lgui.ui.open(MainView));
 });
+
+test('onClose 抛错：界面照样关干净（清理、释放包、回调、放出排队的 modal、重新激活），最后再抛出这个错误', async () => {
+  const {fw, ui, log, views: {MainView, Reward2}} = await setup();
+  const {lgui, View} = fw;
+  class BadClose extends View { static component = 'Common/CurrencyBar'; static layer = 'modal'; onClose() { throw new Error('onClose 坏了'); } }
+  await lgui.ui.open(MainView);
+  let returned = 'not called';
+  const bad = await lgui.ui.open(BadClose, undefined, {onClose: r => { returned = r; }});
+  let timerRuns = 0;
+  bad.__timers.every(100, () => timerRuns++);
+  const queued = lgui.ui.open(Reward2);
+  await tick();
+  assert.equal(lgui.ui.isOpen(Reward2), false, '排队');
+  log.length = 0;
+  assert.throws(() => lgui.ui.close(BadClose, 'done'), /onClose 坏了/);
+  assert.equal(lgui.ui.isOpen(BadClose), false);
+  assert.equal(bad.__timers.size, 0, '定时器清掉了');
+  assert.equal(returned, 'done', '打开者的回调照常调用');
+  const reward = await queued;
+  assert.equal(lgui.ui.top(), reward, '排队的 modal 弹出来了');
+  assert.ok(log.includes('Reward2.onActivate'));
+  lgui.ui.close(Reward2);
+  assert.ok(log.includes('Main.onActivate'), '下面的界面重新激活');
+  assert.deepEqual(ui.packageRefs().map(p => `${p.name}:${p.refs}`).sort(), ['Bag:1', 'Common:1']);
+});
+
+test('viewClosed 的收听函数抛错：其余收听者照常收到，界面照样关干净，最后再抛出这个错误', async () => {
+  const {fw, log, views: {MainView, DetailView}} = await setup();
+  const {lgui} = fw;
+  const seen = [];
+  let broken = true;
+  const bad = e => { seen.push(`bad:${e.view.name}`); if (broken) { broken = false; throw new Error('收听坏了'); } };
+  const good = e => seen.push(`good:${e.view.name}`);
+  class Listener extends fw.View { static component = 'Bag/ItemSlot'; static layer = 'hud'; onOpen() { this.on(lgui.events.viewClosed, bad); this.on(lgui.events.viewClosed, good); } }
+  await lgui.ui.open(Listener);
+  await lgui.ui.open(MainView);
+  await lgui.ui.open(DetailView);
+  log.length = 0;
+  assert.throws(() => lgui.ui.close(DetailView), /收听坏了/);
+  assert.deepEqual(seen, ['bad:DetailView', 'good:DetailView']);
+  assert.equal(lgui.ui.isOpen(DetailView), false);
+  assert.ok(log.includes('Main.onActivate'), '下面的界面重新激活');
+  lgui.ui.close(Listener);
+});
+
+test('closeAll 时有一个界面的 onClose 抛错：其余界面照样全部关掉，最后再抛出这个错误', async () => {
+  const {fw, ui, views: {MainView, DetailView}} = await setup();
+  const {lgui, View} = fw;
+  class BadPopup extends View { static component = 'Bag/ItemSlot'; static layer = 'popup'; onClose() { throw new Error('onClose 坏了'); } }
+  await lgui.ui.open(MainView);
+  await lgui.ui.open(DetailView);
+  await lgui.ui.open(BadPopup);
+  assert.throws(() => lgui.ui.closeAll('popup'), /onClose 坏了/);
+  assert.deepEqual([lgui.ui.isOpen(BadPopup), lgui.ui.isOpen(DetailView)], [false, false]);
+  assert.equal(lgui.ui.top()?.constructor, MainView);
+  assert.deepEqual(ui.packageRefs().map(p => `${p.name}:${p.refs}`).sort(), ['Bag:1', 'Common:1']);
+});

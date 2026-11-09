@@ -2,6 +2,7 @@
 import type {EventDef, ViewEvent} from './lgui';
 import type {InputMode, InputType, Orientation} from './types';
 import {LgRuntimeError} from '../core/index';
+import {ErrorList} from './errors';
 
 const names = new Set<string>();
 
@@ -26,13 +27,15 @@ export class EventBus {
     return () => { set?.delete(handler as Handler); };
   }
 
-  /** 广播。收听函数出错不影响其他收听者，错误交给 onError。 */
-  emit<P>(event: EventDef<P>, payload: P, onError: (error: unknown) => void = error => { throw error; }): void {
+  /** 广播。收听函数出错不影响其他收听者：错误交给 onError；不传 onError 时全部收听者调完再抛出第一个错误。 */
+  emit<P>(event: EventDef<P>, payload: P, onError?: (error: unknown) => void): void {
     const set = this.handlers.get(event as EventDef<unknown>);
     if (!set) return;
+    const errors = new ErrorList();
     for (const handler of [...set]) {
-      try { (handler as (payload: P) => void)(payload); } catch (error) { onError(error); }
+      try { (handler as (payload: P) => void)(payload); } catch (error) { (onError ?? errors.add)(error); }
     }
+    errors.throwFirst();
   }
 
   /** 某个事件当前有几个收听者（给测试和调试用）。 */

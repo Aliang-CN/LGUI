@@ -78,3 +78,14 @@ test('pick 也能读任何有 get 和 subscribe 的东西', async () => {
   for (const l of listeners) l();
   assert.deepEqual([fired, pending.get()], [1, true]);
 });
+
+test('一个订阅者出错：其余订阅者照常收到更新，全部通知完再抛出这个错误', async () => {
+  const {lgui} = await load();
+  const bag = lgui.Model({gold: 0});
+  const got = [];
+  bag.subscribe(() => { got.push('a'); throw new Error('a 坏了'); });
+  bag.subscribe(() => got.push(`b:${bag.get().gold}`));
+  assert.throws(() => bag.set({gold: 5}), /a 坏了/);
+  assert.deepEqual(got, ['a', 'b:5']);
+  assert.equal(bag.get().gold, 5);
+});

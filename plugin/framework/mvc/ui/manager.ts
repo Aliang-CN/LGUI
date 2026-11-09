@@ -11,6 +11,7 @@ import type {KeyInput} from '../../core/index';
 import {validateViewClass} from '../view';
 import {asActor, currentActor} from '../actor';
 import {bus, builtinEvents} from '../events';
+import {ErrorList} from '../errors';
 import {fault, notice} from '../log';
 import {languageSettled, languageSwitches, languageSwitching, later, updatesHeld} from '../language-switch';
 
@@ -413,26 +414,29 @@ export class UIManager {
     ordered.forEach((e, i) => { if (e.fullScreen) coveredBelow = i; });
     const deactivated: Entry[] = [];
     const activated: Entry[] = [];
+    // 钩子和收听函数出错不打断这一轮：全部状态算完、钩子都调完，最后再抛出第一个错误。
+    const errors = new ErrorList();
     ordered.forEach((e, i) => {
       const covered = i < coveredBelow;
       if (covered !== e.covered) {
         e.covered = covered;
         if (e.component) e.component.visible = !covered;
-        if (covered) { e.view.__pause(); this.hook(e, 'onCovered'); bus.emit(builtinEvents.viewCovered, {view: e.cls}); }
-        else { e.view.__resume(); this.hook(e, 'onRevealed'); bus.emit(builtinEvents.viewRevealed, {view: e.cls}); }
+        if (covered) { e.view.__pause(); errors.run(() => this.hook(e, 'onCovered')); bus.emit(builtinEvents.viewCovered, {view: e.cls}, errors.add); }
+        else { e.view.__resume(); errors.run(() => this.hook(e, 'onRevealed')); bus.emit(builtinEvents.viewRevealed, {view: e.cls}, errors.add); }
       }
       const isActive = e === active;
       if (e.component) e.component.touchable = isActive;
       if (isActive !== e.active) { e.active = isActive; (isActive ? activated : deactivated).push(e); }
     });
-    for (const e of deactivated) this.hook(e, 'onDeactivate');
-    for (const e of activated) this.hook(e, 'onActivate');
+    for (const e of deactivated) errors.run(() => this.hook(e, 'onDeactivate'));
+    for (const e of activated) errors.run(() => this.hook(e, 'onActivate'));
     this.updateHints();
     if (activated.length) {
       const mode: InputMode = active?.cls.inputMode ?? (active?.layer === 'hud' ? 'game' : 'ui');
       this.backend.platform.input.setInputMode(mode);
-      bus.emit(builtinEvents.inputModeChange, {inputMode: mode});
+      bus.emit(builtinEvents.inputModeChange, {inputMode: mode}, errors.add);
     }
+    errors.throwFirst();
   }
 
   // ---------- 打开 ----------
@@ -605,8 +609,11 @@ export class UIManager {
     this.closeEntry(entry, result);
   }
 
-  /** 关闭一个界面。batch：一次关好几个（popTo、closeAll），由调用方在最后统一放出排队的 modal、重新算激活。 */
-  private closeEntry(entry: Entry, result?: unknown, batch = false): void {
+  /**
+   * 关闭一个界面。batch：一次关好几个（popTo、closeAll），错误记进 batch，由调用方在最后统一放出排队的 modal、重新算激活、抛出错误。
+   * 钩子、收听函数、onClose 回调出错不打断关闭：清理、释放、通知、放出排队的 modal、重新算激活全部做完，最后再抛出第一个错误。
+   */
+  private closeEntry(entry: Entry, result?: unknown, batch?: ErrorList): void {
     if (entry.state === 'closed') return; // 已经关过了（比如在别的界面的 onClose 里关掉的）
     const wasOpen = entry.state === 'open';
     const wasQueued = entry.state === 'queued';
@@ -619,19 +626,21 @@ export class UIManager {
       if (!batch) this.nextModal();
       return;
     }
-    if (entry.active) { entry.active = false; this.hook(entry, 'onDeactivate'); }
-    this.hook(entry, 'onClose');
-    entry.view.__dispose();
+    const errors = batch ?? new ErrorList();
+    if (entry.active) { entry.active = false; errors.run(() => this.hook(entry, 'onDeactivate')); }
+    errors.run(() => this.hook(entry, 'onClose'));
+    errors.run(() => entry.view.__dispose());
     this.discard(entry);
     // 打开者已经关了的界面不再通知；它打开的界面的回调全部取消。
     for (const other of this.all()) if (other.opener === entry) { other.opener = null; other.onClose = null; }
     const notify = entry.onClose;
     entry.onClose = null;
-    bus.emit(builtinEvents.viewClosed, {view: entry.cls});
-    if (notify) notify(result);
+    bus.emit(builtinEvents.viewClosed, {view: entry.cls}, errors.add);
+    if (notify) errors.run(() => notify(result));
     if (batch) return;
     this.nextModal(); // modal 排队：前一个关掉，下一个弹出来
-    this.refresh();
+    errors.run(() => this.refresh());
+    errors.throwFirst();
   }
 
   /** 用新界面替换某一层的栈顶。 */
@@ -657,16 +666,20 @@ export class UIManager {
     if (!target) throw new LgRuntimeError('LGUI-RT-083', `${cls.name} 没有打开，不能 popTo。`, '先确认它已经打开（lgui.ui.isOpen）。');
     const ordered = (['hud', 'page', 'popup', 'modal'] as const).flatMap(layer => this.stacks[layer]);
     const index = ordered.indexOf(target);
-    for (const e of ordered.slice(index + 1).reverse()) if (e.layer !== 'hud' || target.layer === 'hud') this.closeEntry(e, undefined, true);
+    const errors = new ErrorList();
+    for (const e of ordered.slice(index + 1).reverse()) if (e.layer !== 'hud' || target.layer === 'hud') this.closeEntry(e, undefined, errors);
     this.nextModal();
-    this.refresh();
+    errors.run(() => this.refresh());
+    errors.throwFirst();
   }
 
   /** 关闭某一层的全部界面。全部关完才重新算一次激活。 */
   closeAll(layer: Layer): void {
-    for (const e of [...this.stacks[layer]].reverse()) this.closeEntry(e, undefined, true);
+    const errors = new ErrorList();
+    for (const e of [...this.stacks[layer]].reverse()) this.closeEntry(e, undefined, errors);
     this.nextModal();
-    this.refresh();
+    errors.run(() => this.refresh());
+    errors.throwFirst();
   }
 
   /** 控件在设计尺寸下的位置和大小：路径写成「包/组件.控件路径」。找不到返回 null。 */

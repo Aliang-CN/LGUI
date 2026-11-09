@@ -62,3 +62,14 @@ lgui.emit(lgui.events.languageChange, { lang: 'en' });
   assert.match(errors[0], /use\.ts:4/);
   assert.match(errors[1], /use\.ts:5/);
 });
+
+test('一个收听函数出错：其余收听者照常收到，全部调完再抛出这个错误', async () => {
+  const {lgui, bus} = await load();
+  const ping = lgui.defineEvent('pingAfterError');
+  const got = [];
+  const offA = bus.on(ping, () => { got.push('a'); throw new Error('a 坏了'); });
+  const offB = bus.on(ping, () => got.push('b'));
+  assert.throws(() => lgui.emit(ping, {}), /a 坏了/);
+  assert.deepEqual(got, ['a', 'b']);
+  offA(); offB();
+});

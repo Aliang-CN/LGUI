@@ -1,6 +1,7 @@
 // lgui.Model：数据加规则。内部用 zustand vanilla；游戏代码看不到 zustand。
 import {createStore} from './vendor/zustand-vanilla';
 import type {Readable} from './types';
+import {ErrorList} from './errors';
 
 /** Model：数据加规则。 */
 export type Model<State extends object, Rules extends object> = Readable<State> & Rules & {
@@ -20,7 +21,12 @@ export function createModel<State extends object, Rules extends object>(initial:
   const listeners = new Set<() => void>();
   const set = (partial: Partial<State>): void => store.setState(partial);
   const get = (): State => store.getState();
-  store.subscribe(() => { for (const listener of [...listeners]) listener(); });
+  // 一个订阅者（比如某个界面的绑定）出错不影响其他订阅者，全部通知完再抛出第一个错误。
+  store.subscribe(() => {
+    const errors = new ErrorList();
+    for (const listener of [...listeners]) errors.run(listener);
+    errors.throwFirst();
+  });
   const base = {
     get,
     set,
