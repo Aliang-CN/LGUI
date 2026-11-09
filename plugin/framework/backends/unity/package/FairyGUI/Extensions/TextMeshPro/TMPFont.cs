@@ -128,7 +128,7 @@ namespace FairyGUI
 
             for (int i = 0; i < _fallbackFonts.Count; i++)
             {
-                _fallbackFonts[i]._format = _format;
+                _fallbackFonts[i]._format = GetFallbackFormat(_fallbackFonts[i].fontAsset, _format);
                 if (_fallbackFonts[i].CreateSubGraphics(graphics, false))
                     changed = true;
             }
@@ -147,6 +147,12 @@ namespace FairyGUI
             }
 
             return changed;
+        }
+
+        // The caller can express effects for each fallback atlas before its padding and shader ratios are computed.
+        protected virtual TextFormat GetFallbackFormat(TMP_FontAsset asset, TextFormat format)
+        {
+            return format;
         }
 
         bool CreateSubGraphics(NGraphics graphics, bool paddingsUpdated)

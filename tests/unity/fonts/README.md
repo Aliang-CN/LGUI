@@ -71,6 +71,20 @@ node tests/unity/fonts/checker.mjs <证据目录>/result.json
    - 缩小的那段：Console 有一条 `LGUI-RT-183`（只一条），写明字体、缩后的字号、描边 4。
 11. **量完怎么改：** u 和 h 差不到 0.5 像素就不用改。否则把 `Fonts.cs` 里的 `SdfOutlineUnit` 改成 `2 × u / h`。改小了（小于 2）描边能画的范围跟着变小：上限比例 = 6 × (1 − 0.75 / 4) × min(1, SdfOutlineUnit / 2) / 64，往下取到 0.5%，改 `plugin/tools/lib/check/text-style-rules.mjs` 的 `EFFECT_RATIO`、UI 开发规范第 8 节和第 13 节的 7.5%、`Fonts.cs` 报错里的 7.5%，以及 `tests/check/rules.test.mjs` 里按 7.5% 写的例子。改完再量一次。
 
+### 图集与偏移的运行时回归（辅助 E）
+
+[atlas 回归工具](atlas/README.md)读取真实 Play 后的主/回退 MeshRenderer、材质和属性块，分别检查图集尺寸、4,4 设计像素投影的实际 shader 输入。使用已经正常导出的独立 Unity 6000.6.6f1 工程和 Node24.22.1；E9 样本里的 `shadow` 由正常运行时绑定显示 `Il齉`、`runtimeName` 显示 `齉Player`。从仓库根目录运行，证据目录必须是新的，所有参数为绝对路径：
+
+```text
+node tests/unity/fonts/atlas/run.mjs --editor <Unity.exe绝对路径> --project <独立导出工程绝对路径> --evidence <全新证据目录绝对路径>
+node tests/unity/fonts/atlas/checker.mjs <证据目录>/result.json --check-dimensions
+node tests/unity/fonts/atlas/checker.mjs <证据目录>/result.json --check-shadow
+```
+
+尺寸检查要求主纹理与回退子网格使用各自 native atlas 的实际宽高；不能使用动态图集创建时缓存的 1×1。偏移检查独立按实际 FontAsset 采样比例还原设计像素，主字与系统回退字都应为 4,4；尺寸正确而回退字偏移 6,6 仍然失败。检查器按属性是否存在解析属性块覆盖，未设置属性读到的零不能代替共享材质里的值。保留两条判定及原始 `result.json`、driver 日志、Unity 日志，不把“尺寸绿”写成“全部绿”。
+
+采样器不会改文字、预热glyph、改材质/MPB或强制渲染；batchmode 不一定能写出 Game PNG，`pngPresent:false` 要如实保留，不能补造图像。采样完成或参数断言通过都不能替代 E10 的真实无损像素测量与 Editor/Release IL2CPP 验收。E9–11 的样式参数和描边常数校准步骤仍按上文执行；像素比较前先用实际分辨率与纯色标尺核 1:1，不按截图名称推定。
+
 **D. 手机（有条件再做）。** Android、iOS 真机上看三件事：
 - 系统回退字体找得到（没有 RT-182，生僻字不是方框）；
 - 一次显示几百个新字的界面，第一次打开的耗时；

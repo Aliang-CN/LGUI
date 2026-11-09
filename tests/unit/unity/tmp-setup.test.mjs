@@ -46,7 +46,7 @@ test('C#：项目字体建动态多图集的 TMP 字体、包成 TMPFont 按名�
   for (const family of ['PingFang SC', 'Noto Sans CJK SC', 'Microsoft YaHei']) assert.ok(cs.includes(`"${family}"`), family);
 });
 
-test('C#：项目字体只向 TMP 查 Regular 字重（普通字用 TMPFont.fontWeight，粗体重设 SetFormat 选的字重、保留 FontStyles.Bold 伪粗体），不改 FairyGUI 文件', () => {
+test('C#：项目字体只向 TMP 查 Regular 字重（普通字用 TMPFont.fontWeight，粗体重设 SetFormat 选的字重、保留 FontStyles.Bold 伪粗体）', () => {
   const cs = read('Runtime/Platform/Fonts.cs');
   assert.match(cs, /var tmp = new ProjectTMPFont\(\);/);
   assert.match(cs, /sealed class ProjectTMPFont : TMPFont/);
@@ -54,26 +54,27 @@ test('C#：项目字体只向 TMP 查 Regular 字重（普通字用 TMPFont.font
   assert.match(cs, /base\.SetFormat\(format, fontSizeScale\);\s+if \(format\.bold\) QueryWeight\.SetValue\(this, FontWeight\.Regular\);/);
   assert.match(cs, /typeof\(TMPFont\)\.GetField\("_fontWeight", BindingFlags\.NonPublic \| BindingFlags\.Instance\)/);
   assert.match(cs, /throw new MissingFieldException/, '字段没了要在注册时报错，不能静默画不出字');
-  // 依赖的上游写法（FairyGUI 文件不改；改了这里要红）：默认 Medium、粗体时把查询字重定成 Bold、查字用 _fontWeight、伪粗体看 _style 和 format.bold
+  // 依赖的上游字重查询：默认 Medium、粗体时把查询字重定成 Bold、查字用 _fontWeight、伪粗体看 _style 和 format.bold
   const tmp = read('FairyGUI/Extensions/TextMeshPro/TMPFont.cs');
   for (const line of ['FontWeight _fontWeight;', '_defaultFontWeight = FontWeight.Medium;', 'set { _defaultFontWeight = value; }',
     '_style |= FontStyles.Bold;\n                _fontWeight = FontWeight.Bold;', 'GetCharacterFromFontAsset(ch, _style, _fontWeight)', 'override public void SetFormat(TextFormat format, float fontSizeScale)',
     'if (_format.bold)\n                xScale *= -1;']) assert.ok(tmp.includes(line), line);
 });
 
-test('C#：描边、投影按 shrink 后的字号从设计像素换成 TMP SDF 单位，超出能画的范围记 LGUI-RT-183，不改 FairyGUI 文件', () => {
+test('C#：描边、投影按 shrink 后的字号和实际字体图集换算，超出能画的范围记 LGUI-RT-183', () => {
   const cs = read('Runtime/Platform/Fonts.cs');
   assert.match(cs, /_sizeScale = fontSizeScale;/);
   assert.match(cs, /public override void StartDraw\(NGraphics graphics\)/);
   assert.match(cs, /graphics\.meshFactory as TextField/);
-  assert.match(cs, /ConvertEffects\(field\.textFormat, _sizeScale\)/);
-  assert.match(cs, /if \(sub\.texture != null\) sub\.texture\.lastActive = 1;\s+base\.Prepare\(_effects\);\s+base\.BuildGraphics\(graphics\);\s+base\.SetFormat\(field\.textFormat, _sizeScale\);/);
+  assert.match(cs, /ConvertEffects\(field\.textFormat, _sizeScale, fontAsset, _effects\)/);
+  assert.match(cs, /if \(sub\.texture != null\) sub\.texture\.lastActive = 1;/);
+  assert.match(cs, /try\s*\{\s*base\.Prepare\(_effects\);\s+base\.BuildGraphics\(graphics\);\s*\}\s*finally\s*\{\s*_designFormat = null;\s+base\.SetFormat\(field\.textFormat, _sizeScale\);/);
   assert.match(cs, /const float SdfOutlineUnit = 2f;/);
-  assert.match(cs, /float k = fontAsset\.faceInfo\.pointSize \/ \(size \* fontAsset\.faceInfo\.scale\);/);
+  assert.match(cs, /float k = asset\.faceInfo\.pointSize \/ \(size \* asset\.faceInfo\.scale\);/);
   assert.match(cs, /float dilate = stroke \? format\.outline \* k \/ \(SdfOutlineUnit \* p\) : 0;/);
   assert.match(cs, /format\.shadowOffset \* \(k \/ \(p \* room\)\)/);
-  assert.match(cs, /_effects\.outline = dilate;/);
-  assert.match(cs, /_effects\.faceDilate = format\.faceDilate \+ dilate;/);
+  assert.match(cs, /effects\.outline = dilate;/);
+  assert.match(cs, /effects\.faceDilate = format\.faceDilate \+ dilate;/);
   assert.match(cs, /Debug\.LogError\("LGUI-RT-183 /);
   assert.match(cs, /ReportedEffects\.Add\(key\)/, '同一组值只记一次');
   // 依赖的上游写法（改了这里要红）：OnPopulateMesh 先 SetFormat（shrink 后的比例）再 StartDraw；UpdateGraphics 把 outline、shadowOffset
@@ -82,6 +83,10 @@ test('C#：描边、投影按 shrink 后的字号从设计像素换成 TMP SDF �
   assert.ok(field.includes('_font.SetFormat(format, _fontSizeScale);\n            _font.StartDraw(graphics);'));
   assert.ok(field.includes('public TextFormat textFormat'));
   const tmp = read('FairyGUI/Extensions/TextMeshPro/TMPFont.cs');
+  // U2 is an identity hook for upstream users; LGUI supplies each fallback's own converted format before padding/ratios.
+  assert.match(tmp, /protected virtual TextFormat GetFallbackFormat\(TMP_FontAsset asset, TextFormat format\)\s*\{\s*return format;\s*\}/);
+  assert.match(tmp, /_fallbackFonts\[i\]\._format = GetFallbackFormat\(_fallbackFonts\[i\]\.fontAsset, _format\);/);
+  assert.match(cs, /ConvertEffects\(_designFormat, _sizeScale, asset, effects\)/);
   for (const line of ['_gradientScale = fontAsset.atlasPadding + 1;', 'public override void Prepare(TextFormat format)', 'public override bool BuildGraphics(NGraphics graphics)',
     'override public void StartDraw(NGraphics graphics)', 'if (texture == null || texture.lastActive == 0)', 'block.SetFloat(ShaderUtilities.ID_FaceDilate, _format.faceDilate);',
     'block.SetFloat(ShaderUtilities.ID_OutlineWidth, _format.outline);', 'block.SetFloat(ShaderUtilities.ID_UnderlayOffsetX, _format.shadowOffset.x);',
