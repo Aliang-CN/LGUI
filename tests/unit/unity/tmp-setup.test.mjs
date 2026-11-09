@@ -61,6 +61,51 @@ test('C#：项目字体只向 TMP 查 Regular 字重（普通字用 TMPFont.font
     'if (_format.bold)\n                xScale *= -1;']) assert.ok(tmp.includes(line), line);
 });
 
+test('C#：描边、投影按 shrink 后的字号从设计像素换成 TMP SDF 单位，超出能画的范围记 LGUI-RT-183，不改 FairyGUI 文件', () => {
+  const cs = read('Runtime/Platform/Fonts.cs');
+  assert.match(cs, /_sizeScale = fontSizeScale;/);
+  assert.match(cs, /public override void StartDraw\(NGraphics graphics\)/);
+  assert.match(cs, /graphics\.meshFactory as TextField/);
+  assert.match(cs, /ConvertEffects\(field\.textFormat, _sizeScale\)/);
+  assert.match(cs, /if \(sub\.texture != null\) sub\.texture\.lastActive = 1;\s+base\.Prepare\(_effects\);\s+base\.BuildGraphics\(graphics\);\s+base\.SetFormat\(field\.textFormat, _sizeScale\);/);
+  assert.match(cs, /const float SdfOutlineUnit = 2f;/);
+  assert.match(cs, /float k = fontAsset\.faceInfo\.pointSize \/ \(size \* fontAsset\.faceInfo\.scale\);/);
+  assert.match(cs, /float dilate = stroke \? format\.outline \* k \/ \(SdfOutlineUnit \* p\) : 0;/);
+  assert.match(cs, /format\.shadowOffset \* \(k \/ \(p \* room\)\)/);
+  assert.match(cs, /_effects\.outline = dilate;/);
+  assert.match(cs, /_effects\.faceDilate = format\.faceDilate \+ dilate;/);
+  assert.match(cs, /Debug\.LogError\("LGUI-RT-183 /);
+  assert.match(cs, /ReportedEffects\.Add\(key\)/, '同一组值只记一次');
+  // 依赖的上游写法（改了这里要红）：OnPopulateMesh 先 SetFormat（shrink 后的比例）再 StartDraw；UpdateGraphics 把 outline、shadowOffset
+  // 原样写进 shader；ratioA、ratioC 的算法（换算按它反推）；CreateSubGraphics 只看 lastActive 的图集
+  const field = read('FairyGUI/Core/Text/TextField.cs').replace(/\r\n/g, '\n'); // 上游这个文件是 CRLF
+  assert.ok(field.includes('_font.SetFormat(format, _fontSizeScale);\n            _font.StartDraw(graphics);'));
+  assert.ok(field.includes('public TextFormat textFormat'));
+  const tmp = read('FairyGUI/Extensions/TextMeshPro/TMPFont.cs');
+  for (const line of ['_gradientScale = fontAsset.atlasPadding + 1;', 'public override void Prepare(TextFormat format)', 'public override bool BuildGraphics(NGraphics graphics)',
+    'override public void StartDraw(NGraphics graphics)', 'if (texture == null || texture.lastActive == 0)', 'block.SetFloat(ShaderUtilities.ID_FaceDilate, _format.faceDilate);',
+    'block.SetFloat(ShaderUtilities.ID_OutlineWidth, _format.outline);', 'block.SetFloat(ShaderUtilities.ID_UnderlayOffsetX, _format.shadowOffset.x);',
+    'block.SetFloat(ShaderUtilities.ID_UnderlayOffsetY, -_format.shadowOffset.y);', 'float weight = Mathf.Max(fontAsset.normalStyle, fontAsset.boldStyle) / 4.0f;',
+    'float range = (weight + _format.faceDilate) * (_gradientScale - clamp);', 'float t = Mathf.Max(1, weight + _format.faceDilate + _format.outline + outlineSoftness);',
+    '_ratioA = (_gradientScale - clamp) / (_gradientScale * t);', '_ratioC = Mathf.Max(0, _gradientScale - clamp - range) / (_gradientScale * t);']) assert.ok(tmp.includes(line), line);
+});
+
+test('lgui check 的上限（字号 7.5%）以内，Unity 的换算都画得出来（照 Fonts.cs 的算法：64pt、留边 6、粗体权重 0.75）；超过约 7.6% 就画不出', async () => {
+  const {EFFECT_RATIO} = await import('../../../plugin/tools/lib/check/text-style-rules.mjs');
+  const fits = (fontSize, stroke, shadow) => {
+    const k = 64 / fontSize, p = 6, w = 0.75 / 4;
+    const dilate = stroke * k / (2 * p), room = 1 - w - dilate;
+    const offset = shadow * k / (p * room);
+    return w + 2 * dilate <= 1 + 1e-9 && room > 0 && offset + dilate <= 1 + 1e-9;
+  };
+  for (let size = 20; size <= 160; size += 2) {
+    const limit = size * EFFECT_RATIO;
+    for (let part = 0; part <= 10; part++) assert.ok(fits(size, limit * part / 10, limit * (10 - part) / 10), `${size} 号字，描边 ${limit * part / 10}`);
+    assert.ok(!fits(size, size * 0.077, 0), `${size} 号字，描边超过 7.6% 应该画不出`);
+    assert.ok(!fits(size, 0, size * 0.077), `${size} 号字，投影超过 7.6% 应该画不出`);
+  }
+});
+
 const draw = (text, bold, fonts) => ({text, bold, width: 10 * [...text].length, vertices: 4 * [...text].length, ms: 1.5, fonts});
 const good = {missing: {rejected: true, code: 'LGUI-RT-181', message: '项目字体 Missing 在 Unity 的 Resources 里找不到（Resources/UI/fonts/Missing.ttf 或 .otf）'},
   registered: 'ProjectTMPFont:Noto', atlas: 'Dynamic,True,1', drawnWith: 'ProjectTMPFont:Noto', fallbackName: 'Microsoft YaHei', fallbackCandidates: 'PingFang SC, Microsoft YaHei',

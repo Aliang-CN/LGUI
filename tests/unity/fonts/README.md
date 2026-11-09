@@ -38,7 +38,7 @@ node tests/unity/fonts/checker.mjs <证据目录>/result.json
 4. **原生验收。** 用 `../runner.mjs` 准备的开发工程跑上面的三条命令。`prepare.mjs` 发现没有 TMP Settings 时，会和导出一样导入，输出里的 `tmpEssentials` 写着从哪里导入的。`checker.mjs` 要输出 `ok: true`；把它打印的 `fallback`（Windows 上应该是 `Microsoft YaHei`）、`firstLayoutMs`、`secondLayoutMs`、每段的字宽和顶点数（`draws`）带回来，连同 `result.json`、`unity.log`。没过时它说哪一段（普通 / 粗体、哪几个字）字宽是 0 或顶点不够。
 5. **编辑器 Play**（第 2 步导出的工程，打开 `Assets/LGUI/LGUIBoot.unity`，截图）。看：
    - 文字清晰（SDF，不糊、不是方块）；
-   - 普通字和 `bold="true"` 的粗体都显示，粗体比普通字粗（伪粗体：同一个字体文件由 shader 加粗）；描边（`strokeColor`）、投影（`shadowColor`）都在；
+   - 普通字和 `bold="true"` 的粗体都显示，粗体比普通字粗（伪粗体：同一个字体文件由 shader 加粗）；描边（`strokeColor`）、投影（`shadowColor`）都在（宽度、偏移和网页一样，见 E）；
    - `autoSize="shrink"` 的字能缩；
    - 运行时给一个文字控件设一段带生僻字和英文的玩家名，生僻字由系统字体显示（不是方框）；
    - Console 没有空引用，没有 `LGUI-RT-160` / `LGUI-RT-181` / `LGUI-RT-182`。
@@ -55,6 +55,21 @@ node tests/unity/fonts/checker.mjs <证据目录>/result.json
 **C. 运行时那条错误。**
 
 8. 临时把 `TMP Settings.asset` 挪出 `Resources` 再 Play：报 `LGUI-RT-181`，信息里有「TMP Settings」、「lgui unity export」、「Window → TextMeshPro → Import TMP Essential Resources」，不再是空引用 / RT-160。看完挪回去。
+
+**E. 描边和投影（量 `SdfOutlineUnit`）。** Unity 上把描边、投影的设计像素换成 TMP SDF 单位（`package/Runtime/Platform/Fonts.cs` 的 `ProjectTMPFont`）。投影的单位从 shader 公式就能定；描边的单位 `SdfOutlineUnit`（现在是 2：TMP 算 padding 时把 1 个描边单位当成字形外 gradientScale 个图集像素）没有 TMP 源码可对，在这里量一次。
+
+9. 在第 2 步的背包副本里随便找个界面加四个文字控件（都是 `fontSize="64"`，上限 64 × 7.5% = 4.8，`lgui check` 要过），文字用 `Il齉`（竖笔好量，`齉` 走系统回退字体）：
+   - `strokeColor="#00ffff" strokeSize="4"`；
+   - `shadowColor="#ff00ff" shadowOffset="4,4"`；
+   - `bold="true" strokeColor="#00ffff" strokeSize="2" shadowColor="#ff00ff" shadowOffset="0,2"`；
+   - 一个 `autoSize="shrink" singleLine="true"`、框只有 120 宽、`strokeColor="#00ffff" strokeSize="4"` 的长文字（会缩到 64 号以下，用来看 `LGUI-RT-183`）。
+10. 网页（`lgui dev`）和 Unity 编辑器 Play 用同样的分辨率截图（Game 视图设成 1920×1080，1 个设计像素 = 1 个屏幕像素）。在 `I` 的竖笔上量：
+   - 描边露在字外的宽度：网页 h、Unity u（像素）；填充（字本身的竖笔宽）两边要一样，Unity 上不能被描边吃细；
+   - 投影相对字的偏移：两边都应是 4,4，投影完整（不是只剩一块），硬边；
+   - `齉`（回退字体）的描边宽度和 `I` 的一样（回退字体的图集留边如果和项目字体不同，这里会不一样，带回来）；
+   - 粗体那段：描边、投影都完整，没有被字的四边形裁掉；
+   - 缩小的那段：Console 有一条 `LGUI-RT-183`（只一条），写明字体、缩后的字号、描边 4。
+11. **量完怎么改：** u 和 h 差不到 0.5 像素就不用改。否则把 `Fonts.cs` 里的 `SdfOutlineUnit` 改成 `2 × u / h`。改小了（小于 2）描边能画的范围跟着变小：上限比例 = 6 × (1 − 0.75 / 4) × min(1, SdfOutlineUnit / 2) / 64，往下取到 0.5%，改 `plugin/tools/lib/check/text-style-rules.mjs` 的 `EFFECT_RATIO`、UI 开发规范第 8 节和第 13 节的 7.5%、`Fonts.cs` 报错里的 7.5%，以及 `tests/check/rules.test.mjs` 里按 7.5% 写的例子。改完再量一次。
 
 **D. 手机（有条件再做）。** Android、iOS 真机上看三件事：
 - 系统回退字体找得到（没有 RT-182，生僻字不是方框）；

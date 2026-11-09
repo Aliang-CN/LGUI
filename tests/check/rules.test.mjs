@@ -70,6 +70,15 @@ const cases = {
     fail: r => edit(r, MAIN_XML, '</displayList>', MOVE_GROUP('')),
     pass: r => edit(r, MAIN_XML, '</displayList>', MOVE_GROUP(' advanced="true"'))
   },
+  // 标题是 64 号字：描边 + 投影偏移上限 64 × 7.5% = 4.8
+  'LGUI-UI-081': {
+    fail: r => edit(r, MAIN_XML, 'fontSize="64" color="#ffffff"', 'fontSize="64" color="#ffffff" strokeColor="#000000" strokeSize="4" shadowColor="#80000000" shadowOffset="0,2"'),
+    pass: r => edit(r, MAIN_XML, 'fontSize="64" color="#ffffff"', 'fontSize="64" color="#ffffff" strokeColor="#000000" strokeSize="3" shadowColor="#80000000" shadowOffset="1,-1"')
+  },
+  'LGUI-UI-082': {
+    fail: r => edit(r, MAIN_XML, 'fontSize="64" color="#ffffff"', 'fontSize="64" color="#ffffff" italic="true"'),
+    pass: r => edit(r, MAIN_XML, 'fontSize="64" color="#ffffff"', 'fontSize="64" color="#ffffff" bold="true"')
+  },
   'LGUI-UI-030': {fail: r => edit(r, 'i18n/en.json', /\s*"main\.hint": "[^"]*",/, '')},
   'LGUI-UI-031': {fail: r => edit(r, 'i18n/en.json', '{', '{\n  "nope.unused": "x",'), warning: true},
   'LGUI-UI-032': {fail: r => edit(r, 'i18n/en.json', 'Clicked {count} times', 'Clicked {n} times')},
@@ -122,6 +131,38 @@ for (const [code, c] of Object.entries(cases)) {
     }
   });
 }
+
+test('LGUI-UI-081：不写 strokeSize 按 1、不写 shadowOffset 按 1,1 算，没写颜色的不算；正好等于上限不报', async () => {
+  const {textEffects, EFFECT_RATIO} = await import('../../plugin/tools/lib/check/text-style-rules.mjs');
+  assert.equal(EFFECT_RATIO, 0.075);
+  assert.deepEqual(textEffects({strokeColor: '#000'}), {stroke: 1, shadow: 0, fontSize: 12});
+  assert.deepEqual(textEffects({shadowColor: '#000', fontSize: '30'}), {stroke: 0, shadow: 1, fontSize: 30});
+  assert.deepEqual(textEffects({strokeSize: '9', shadowOffset: '9,9', fontSize: '20'}), {stroke: 0, shadow: 0, fontSize: 20});
+  assert.deepEqual(textEffects({strokeColor: '#000', strokeSize: '2', shadowColor: '#000', shadowOffset: '-3,1'}), {stroke: 2, shadow: 3, fontSize: 12});
+  const root = await fresh();
+  // 40 号字的上限正好是 3：描边 2 + 投影 1 不报，描边 2 + 投影 2 报
+  edit(root, MAIN_XML, 'fontSize="64" color="#ffffff"', 'fontSize="40" color="#ffffff" strokeColor="#000000" strokeSize="2" shadowColor="#80000000"');
+  assert.ok(!(await codes(root)).includes('LGUI-UI-081'));
+  edit(root, MAIN_XML, 'shadowColor="#80000000"', 'shadowColor="#80000000" shadowOffset="2,0"');
+  const json = JSON.parse((await run(['check', '--json'], root)).stdout);
+  const f = json.data.findings.find(x => x.code === 'LGUI-UI-081');
+  assert.match(f.message, /描边 2 \+ 投影偏移 2 = 4 像素，超过了 40 号字的上限 3（字号的 7\.5%）/);
+  assert.match(f.fix, /字号加大到 54 以上/);
+  assert.equal(f.file, MAIN_XML);
+});
+
+test('LGUI-UI-082：文字里、文本表里写了 [i] 也报', async () => {
+  const root = await fresh();
+  edit(root, MAIN_XML, 'text="你好，LGUI"', 'text="你好，[i]LGUI[/i]" ubb="true"');
+  assert.ok((await codes(root)).includes('LGUI-UI-082'));
+  const other = await fresh();
+  edit(other, 'i18n/en.json', 'Clicked {count} times', 'Clicked [i]{count}[/i] times');
+  const json = JSON.parse((await run(['check', '--json'], other)).stdout);
+  const f = json.data.findings.find(x => x.code === 'LGUI-UI-082');
+  assert.ok(f, '文本表里的 [i] 要报');
+  assert.equal(f.file, 'i18n/en.json');
+  assert.match(f.message, /main\.clicked/);
+});
 
 test('LGUI-UI-017：带字图片放在图片控件里（不会随语言换）报错', async () => {
   const root = await fresh();

@@ -4,6 +4,7 @@ import {mvcRules, redDotBindings, wordBindings, usedTextKeys, fullScreenViews} f
 import {uiRules} from './ui-rules.mjs';
 import {i18nRules} from './i18n-rules.mjs';
 import {fontRules} from './font-rules.mjs';
+import {textStyleRules} from './text-style-rules.mjs';
 import {readUiProject} from '../generate/read.mjs';
 import {readUiModel} from '../generate/model.mjs';
 import {generateProjectTypes, uiProjectPath} from '../generate/index.mjs';
@@ -34,6 +35,7 @@ export async function runCheck(root, project) {
     const tables = Object.fromEntries(project.languages.map(l => [l, readTable(root, l)]));
     out.push(...i18nRules({root, model, tables, defaultLanguage: project.defaultLanguage, usedKeys: usedTextKeys({ts, root, files})}));
     out.push(...await fontRules({root, project, model, tables}));
+    out.push(...textStyleRules({root, model, tables}));
   }
   return out;
 }
