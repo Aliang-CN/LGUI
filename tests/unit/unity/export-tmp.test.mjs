@@ -102,20 +102,32 @@ test('资源包的候选位置：工程包缓存里的 com.unity.ugui、工程�
   fs.mkdirSync(path.join(project, 'Library/PackageCache/com.unity.ugui@abc123'), {recursive: true});
   fs.mkdirSync(path.join(project, 'Library/PackageCache/com.unity.textmeshpro@1'), {recursive: true});
   const list = essentialsCandidates(project, '6000.6.6f1', 'win32');
-  assert.equal(list.length, 3);
+  assert.equal(list.length, 4);
   assert.equal(list[0], path.win32.join(project, 'Library/PackageCache/com.unity.ugui@abc123', 'Package Resources', 'TMP Essential Resources.unitypackage'));
   assert.equal(list[2], 'C:\\Program Files\\Unity\\Hub\\Editor\\6000.6.6f1\\Editor\\Data\\Resources\\PackageManager\\BuiltInPackages\\com.unity.ugui\\Package Resources\\TMP Essential Resources.unitypackage');
   assert.equal(essentialsCandidates(project, '6000.6.6f1', 'darwin')[2], '/Applications/Unity/Hub/Editor/6000.6.6f1/Unity.app/Contents/Resources/PackageManager/BuiltInPackages/com.unity.ugui/Package Resources/TMP Essential Resources.unitypackage');
 });
 
+test('Windows 用户安装：没有工程包缓存时也查用户目录，路径保留空格；LOCALAPPDATA 可重定向', () => {
+  const project = fs.mkdtempSync(path.join(os.tmpdir(), 'lgui-user-unity-'));
+  const home = 'C:\\Users\\Unity Tester';
+  const suffix = ['Programs', 'Unity', '6000.6.6f1', 'Editor', 'Data', 'Resources', 'PackageManager', 'BuiltInPackages', 'com.unity.ugui', 'Package Resources', 'TMP Essential Resources.unitypackage'];
+  const fallback = essentialsCandidates(project, '6000.6.6f1', 'win32', home, '');
+  assert.equal(fallback.at(-1), path.win32.join(home, 'AppData', 'Local', ...suffix));
+  const redirected = essentialsCandidates(project, '6000.6.6f1', 'win32', home, 'D:\\User App Data\\Local');
+  assert.equal(redirected.at(-1), path.win32.join('D:\\User App Data\\Local', ...suffix));
+  assert.deepEqual(redirected.slice(0, -1), fallback.slice(0, -1), '现有工程和 Hub 候选优先级不变');
+  assert.equal(essentialsCandidates(project, '', 'win32', home, '').length, 1, '没有版本时不猜其他 Unity 版本');
+});
+
 // ---- 整条 lgui unity export ----
-async function context({fonts = true, packageResources = essentials} = {}) {
+async function context({fonts = true, packageResources = essentials, version = '6000.6.6f1'} = {}) {
   const parent = fs.mkdtempSync(path.join(os.tmpdir(), 'lgui-export-tmp-'));
   const init = await run(['init', 'game'], parent);
   assert.equal(init.code, 0, init.stderr);
   const root = path.join(parent, 'game');
   if (fonts) { fs.mkdirSync(path.join(root, 'ui/fonts'), {recursive: true}); fs.copyFileSync(sample, path.join(root, 'ui/fonts/Noto.otf')); }
-  const unity = createUnityProject(path.join(parent, 'Unity Project'));
+  const unity = createUnityProject(path.join(parent, 'Unity Project'), {version});
   if (packageResources) {
     const file = path.join(unity, 'Library/PackageCache/com.unity.ugui@2.0.0/Package Resources/TMP Essential Resources.unitypackage');
     fs.mkdirSync(path.dirname(file), {recursive: true});
@@ -163,7 +175,8 @@ test('Unity export：工程里别的位置已有 TMP Settings.asset，或者没�
 });
 
 test('Unity export：找不到资源包、包里没有 TMP Settings 时报 LGUI-CLI-143，写明找过哪里，什么都不写', async () => {
-  const missing = await context({packageResources: null});
+  // 用不会真实安装的测试版本，避免宿主机器上的官方资源包改变“缺资源包”用例。
+  const missing = await context({packageResources: null, version: '6000.6.0missing'});
   const r1 = await exportTo(missing);
   assert.equal(r1.code, 1);
   const e1 = r1.json.errors[0];
