@@ -1,4 +1,6 @@
+using System;
 using System.Collections.Generic;
+using System.Reflection;
 using FairyGUI;
 using TMPro;
 using UnityEngine;
@@ -49,7 +51,8 @@ namespace LGUI
         }
 
         /// <summary>
-        /// Registers a project font with FairyGUI under its name, as a FairyGUI <see cref="TMPFont"/>. The source is the
+        /// Registers a project font with FairyGUI under its name, as a FairyGUI <see cref="TMPFont"/> that asks TMP for Regular
+        /// glyphs only (<see cref="ProjectTMPFont"/>). The source is the
         /// subset that lgui unity export wrote to Assets/LGUI/Resources/UI/fonts/&lt;name&gt;.ttf|.otf (imported by Unity as a
         /// Font with its font data). The system fallback font (if any) is attached to it. Returns false when the resource is
         /// missing, is not a Font, or TMP cannot build a font asset from it; the TypeScript backend turns that into LGUI-RT-181.
@@ -64,11 +67,38 @@ namespace LGUI
             asset.name = name;
             FindFallback();
             if (_fallback != null) asset.fallbackFontAssetTable = new List<TMP_FontAsset> { _fallback };
-            TMPFont tmp = new TMPFont();
+            var tmp = new ProjectTMPFont();
             tmp.name = name;
             tmp.fontAsset = asset;
             FontManager.RegisterFont(tmp, name);
             return true;
+        }
+
+        // FairyGUI's TMPFont asks TMP for glyphs of weight Medium by default (TMPFont.cs:51) and Bold for bold text
+        // (TMPFont.cs:316). The font assets built above have no typefaces in their font weight table, and for a weight other
+        // than Regular TMP looks only for an alternative typeface and does not add the glyph from the font file: the glyph is
+        // missing, the text has zero width and nothing is drawn (tested on Unity 6000.6.6f1, com.unity.ugui 2.6.0). Project fonts are
+        // single-weight files (ui-spec: a real bold weight is another font), so every glyph is asked for as Regular: plain text
+        // through TMPFont.fontWeight, bold text by resetting the weight TMPFont.SetFormat chose. Bold keeps FontStyles.Bold, so
+        // FairyGUI still draws it bold with the shader (faux bold, wider spacing and padding). The FairyGUI files are not changed.
+        sealed class ProjectTMPFont : TMPFont
+        {
+            // TMPFont has no setter for the bold weight. The field is part of the FairyGUI copy in this package
+            // (tests/unit/unity/tmp-setup.test.mjs checks it); if it is missing, registering a font throws instead of drawing nothing.
+            static readonly FieldInfo QueryWeight = typeof(TMPFont).GetField("_fontWeight", BindingFlags.NonPublic | BindingFlags.Instance);
+
+            public ProjectTMPFont()
+            {
+                if (QueryWeight == null || QueryWeight.FieldType != typeof(FontWeight))
+                    throw new MissingFieldException("FairyGUI.TMPFont._fontWeight (FontWeight) not found: the FairyGUI copy in the LGUI package was changed, project fonts cannot ask TMP for Regular glyphs.");
+                fontWeight = FontWeight.Regular;
+            }
+
+            public override void SetFormat(TextFormat format, float fontSizeScale)
+            {
+                base.SetFormat(format, fontSizeScale);
+                if (format.bold) QueryWeight.SetValue(this, FontWeight.Regular);
+            }
         }
 
         /// <summary>
