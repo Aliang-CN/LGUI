@@ -74,15 +74,18 @@ function hasTmpSettings(target) {
   return fs.existsSync(assets) && walk(assets);
 }
 
-/** com.unity.ugui 自带资源包可能在的位置，按顺序：工程的包缓存、工程里的本地包、Unity Hub 默认安装位置里这个版本的内置包。 */
-export function essentialsCandidates(target, editorVersion, platform = process.platform, home = os.homedir()) {
+/** 按顺序查工程包缓存、本地包、Hub 默认安装和 Windows 用户安装中对应版本的内置包。 */
+export function essentialsCandidates(target, editorVersion, platform = process.platform, home = os.homedir(), localAppData = process.env.LOCALAPPDATA) {
   const dirs = [];
   const cache = path.join(target, 'Library', 'PackageCache');
   if (fs.existsSync(cache)) for (const name of fs.readdirSync(cache).sort()) if (name === 'com.unity.ugui' || name.startsWith('com.unity.ugui@')) dirs.push(path.join(cache, name));
   dirs.push(path.join(target, 'Packages', 'com.unity.ugui'));
   const builtIn = ['Resources', 'PackageManager', 'BuiltInPackages', 'com.unity.ugui'];
   if (editorVersion) {
-    if (platform === 'win32') dirs.push(path.win32.join('C:\\Program Files\\Unity\\Hub\\Editor', editorVersion, 'Editor', 'Data', ...builtIn));
+    if (platform === 'win32') {
+      dirs.push(path.win32.join('C:\\Program Files\\Unity\\Hub\\Editor', editorVersion, 'Editor', 'Data', ...builtIn));
+      dirs.push(path.win32.join(localAppData || path.win32.join(home, 'AppData', 'Local'), 'Programs', 'Unity', editorVersion, 'Editor', 'Data', ...builtIn));
+    }
     else if (platform === 'darwin') dirs.push(path.posix.join('/Applications/Unity/Hub/Editor', editorVersion, 'Unity.app', 'Contents', ...builtIn));
     else dirs.push(path.join(home, 'Unity', 'Hub', 'Editor', editorVersion, 'Editor', 'Data', ...builtIn));
   }

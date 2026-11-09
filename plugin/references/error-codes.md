@@ -71,7 +71,7 @@ LGUI 的每条报错都带错误码，并写明：哪个文件哪一行（如果
 | `LGUI-CLI-140` | `ui/fonts/` 里的字体文件用不了：文件名不能当字体名（要大写字母开头、只用字母和数字，不能和 CSS 的通用字体名或关键字同名，比如 `Serif`、`Default`）、两个文件同名、格式不支持（TTC、WOFF、WOFF2）、内容不是 TTF / OTF（包括空文件、被截断的文件）、读不出字符表、是可变字体，或者做子集失败。不带 `--browser` 的 `lgui test` 也会报（启动入口要列出字体名） | 换成单字重的 TTF / OTF，按报错改文件名；许可说明之类的别的文件可以放着 |
 | `LGUI-CLI-141` | 静态文字里有字体没有的字（报错里列出是哪些字、在哪个文件或文本键）：`ui/` 里的固定文字按显示它的文字控件的字体查（按钮、标签、下拉框、列表项的标题看组件里名为 `title` 的文字控件；`gearText` 的值跟着所在控件），`i18n/` 里同键的翻译跟着那个控件，其余文案和框架自己显示的字（`format.compact` 的单位，按工程 `languages`）查默认字体 | 换一个有这些字的字体；表情符号这类字体里没有的字改用图片或 ArtText；写错的字改掉 |
 | `LGUI-CLI-142` | 工程配置的 `defaultFont` 不是 `ui/fonts/` 里的字体（系统字体名也不行，各平台不一样） | 把字体文件放进 `ui/fonts/<名字>.ttf`，或者把 `defaultFont` 改成 `ui/fonts/` 里的名字，或者改成 `null`（用系统默认字体） |
-| `LGUI-CLI-143` | `lgui unity export`：工程用了项目字体（Unity 上是 TextMesh Pro 字体），Unity 工程里没有 TMP Settings，导出要从 `com.unity.ugui` 自带的 TMP Essential Resources 资源包导入，但找不到资源包（报错里列出找过的位置：工程的 `Library/PackageCache/com.unity.ugui@…/`、`Packages/com.unity.ugui/`、Unity Hub 默认安装位置里这个版本的内置包），或者资源包读不了、里面没有 TMP Settings、写入失败。什么都不写 | 用这个版本的 Unity 打开一次工程再导出；Unity 不在 Hub 默认位置时，在 Unity 里点 Window → TextMeshPro → Import TMP Essential Resources 导入一次，再导出 |
+| `LGUI-CLI-143` | `lgui unity export`：工程用了项目字体（Unity 上是 TextMesh Pro 字体），Unity 工程里没有 TMP Settings，导出要从 `com.unity.ugui` 自带的 TMP Essential Resources 资源包导入，但找不到资源包（报错里列出找过的位置：工程的 `Library/PackageCache/com.unity.ugui@…/`、`Packages/com.unity.ugui/`、Unity Hub 默认安装位置或 Windows `%LOCALAPPDATA%\Programs\Unity\<版本>` 用户安装位置里这个版本的内置包），或者资源包读不了、里面没有 TMP Settings、写入失败。什么都不写 | 用这个版本的 Unity 打开一次工程再导出；Unity 装在这些候选位置之外时，在 Unity 里点 Window → TextMeshPro → Import TMP Essential Resources 导入一次，再导出 |
 | `LGUI-CLI-999` | 命令行内部错误（LGUI 自己的缺陷） | 把输出报告给维护者 |
 
 ## LGUI-RT-xxx
