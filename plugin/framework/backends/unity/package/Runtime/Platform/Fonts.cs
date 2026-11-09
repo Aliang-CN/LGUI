@@ -98,6 +98,87 @@ namespace LGUI
             {
                 base.SetFormat(format, fontSizeScale);
                 if (format.bold) QueryWeight.SetValue(this, FontWeight.Regular);
+                _sizeScale = fontSizeScale;
+            }
+
+            // Stroke and shadow. LGUI XML writes strokeSize and shadowOffset in design pixels, and FairyGUI keeps them as they are
+            // in TextFormat.outline / shadowOffset. Its TMPFont hands those numbers straight to the TMP SDF shader
+            // (_OutlineWidth, _UnderlayOffsetX/Y), where they are fractions of the SDF range, not pixels: strokeSize 3 covered the
+            // whole glyph, shadowOffset 7,7 was cut off by the glyph quad. Before a text mesh is built (TextField.OnPopulateMesh
+            // calls SetFormat with the size after autoSize shrink, then StartDraw), the pixels are converted into SDF units for the
+            // size the text is drawn at, so the stroke and shadow keep their pixel size like on the web, and TMPFont computes its
+            // shader ratios and glyph padding again from those values. The FairyGUI files are not changed.
+            //
+            // Units (k = atlas texels per design pixel at this size, P = atlas padding, w = the largest style weight / 4):
+            //  - stroke s px: TMP draws the outline across the glyph edge, half inside. To keep the fill and show s px outside (as
+            //    on the web, H5 patch 7), outline width and face dilate are both s*k / (SdfOutlineUnit * P): the outline is s px
+            //    wide and the dilate moves it out by half its width. Valid while w + dilate + outline <= 1.
+            //  - shadow o px: the shader moves the underlay by offset * ratioC * gradientScale texels, and TMPFont's ratioC is
+            //    P * (1 - w - dilate) / gradientScale, so the offset is o*k / (P * (1 - w - dilate)). Valid while offset + dilate <= 1.
+            // Beyond those limits the SDF has no data that far from the glyph: LGUI-RT-183 is logged (lgui check reports
+            // LGUI-UI-081 before that, at 7.5% of fontSize) and the shader draws what it can; nothing is clamped silently.
+            //
+            // SdfOutlineUnit: SDF distance units per gradientScale texels (TMP's GetPadding treats an outline of 1 as reaching
+            // gradientScale texels outside the glyph, i.e. 2). It is measured on Windows: see tests/unity/fonts/README.md.
+            const float SdfOutlineUnit = 2f;
+            static readonly HashSet<string> ReportedEffects = new HashSet<string>();
+            readonly TextFormat _effects = new TextFormat();
+            float _sizeScale = 1;
+
+            public override void StartDraw(NGraphics graphics)
+            {
+                var field = graphics.meshFactory as TextField;
+                if (field != null && ConvertEffects(field.textFormat, _sizeScale))
+                {
+                    // TMPFont.BuildGraphics computes ratios, padding and the shader values of the text and of each atlas
+                    // sub-mesh in use; it only visits atlases marked active since the last call, so mark the ones in use again.
+                    if (graphics.subInstances != null)
+                        foreach (NGraphics sub in graphics.subInstances)
+                            if (sub.texture != null) sub.texture.lastActive = 1;
+                    base.Prepare(_effects);
+                    base.BuildGraphics(graphics);
+                    base.SetFormat(field.textFormat, _sizeScale);
+                    if (field.textFormat.bold) QueryWeight.SetValue(this, FontWeight.Regular);
+                }
+                base.StartDraw(graphics);
+            }
+
+            /// <summary>Fills _effects with format, stroke and shadow in SDF units. False when the text has neither.</summary>
+            bool ConvertEffects(TextFormat format, float sizeScale)
+            {
+                bool stroke = format.outline > 0;
+                bool shadow = format.shadowOffset.x != 0 || format.shadowOffset.y != 0;
+                if (!stroke && !shadow) return false;
+                float size = format.size * sizeScale;
+                if (size <= 0) return false;
+                float k = fontAsset.faceInfo.pointSize / (size * fontAsset.faceInfo.scale);
+                float p = fontAsset.atlasPadding;
+                float w = Mathf.Max(fontAsset.normalStyle, fontAsset.boldStyle) / 4f;
+                float dilate = stroke ? format.outline * k / (SdfOutlineUnit * p) : 0;
+                float room = 1 - w - format.faceDilate - dilate; // TMPFont's ratioC: P * (1 - weight - faceDilate) / gradientScale
+                Vector2 offset = shadow && room > 0 ? format.shadowOffset * (k / (p * room)) : Vector2.zero;
+
+                _effects.CopyFrom(format);
+                _effects.outlineColor = format.outlineColor;
+                _effects.outline = dilate;
+                _effects.outlineSoftness = format.outlineSoftness;
+                _effects.faceDilate = format.faceDilate + dilate;
+                _effects.shadowColor = format.shadowColor;
+                _effects.shadowOffset = offset;
+                _effects.underlaySoftness = format.underlaySoftness;
+
+                bool fits = w + format.faceDilate + 2 * dilate <= 1 && (!shadow || (room > 0 && Mathf.Max(Mathf.Abs(offset.x), Mathf.Abs(offset.y)) + format.faceDilate + dilate <= 1));
+                if (!fits)
+                {
+                    float limit = p * (1 - w) / k;
+                    string key = name + "|" + size + "|" + format.outline + "|" + format.shadowOffset;
+                    if (ReportedEffects.Add(key))
+                        Debug.LogError("LGUI-RT-183 Fonts.cs: text stroke and shadow are larger than font " + name + " can draw at size " + size.ToString("0.#") +
+                            (sizeScale < 1 ? " (fontSize " + format.size + " after autoSize shrink)" : "") + ": strokeSize " + (stroke ? format.outline : 0) +
+                            " + shadowOffset " + (shadow ? format.shadowOffset.x + "," + format.shadowOffset.y : "0,0") + ", at most about " + limit.ToString("0.#") +
+                            " design px together. Use a smaller strokeSize / shadowOffset or a larger fontSize (lgui check allows 7.5% of fontSize, LGUI-UI-081); the stroke and shadow are drawn smaller than written.");
+                }
+                return true;
             }
         }
 

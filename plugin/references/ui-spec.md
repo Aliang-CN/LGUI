@@ -194,7 +194,7 @@ ui/
 <group id="n9" name="footer" xy="0,980" size="1920,100"/>
 ```
 
-**文字的粗体、描边、投影**（`text`、`richtext`、`inputtext` 都能写）：
+**文字的粗体、描边、投影**（`text`、`richtext`、`inputtext` 都能写；描边粗细加投影偏移不超过字号的 7.5%，不支持斜体，见第 8 节）：
 
 | 属性 | 写法 | 说明 |
 |---|---|---|
@@ -205,7 +205,7 @@ ui/
 | `shadowOffset` | `shadowOffset="2,2"` | 投影偏移 `x,y`，不写是 `1,1` |
 
 ```xml
-<text id="n1" name="gold" xy="20,20" size="200,48" fontSize="32" color="#ffd84a" bold="true" strokeColor="#3a1f00" strokeSize="2" shadowColor="#80000000" shadowOffset="0,2" align="center" vAlign="middle" autoSize="shrink" singleLine="true" text="1436"/>
+<text id="n1" name="gold" xy="20,20" size="200,48" fontSize="32" color="#ffd84a" bold="true" strokeColor="#3a1f00" strokeSize="1" shadowColor="#80000000" shadowOffset="0,1" align="center" vAlign="middle" autoSize="shrink" singleLine="true" text="1436"/>
 ```
 
 **按钮组件**（`extention="Button"`，标题和图标控件名固定为 `title`、`icon`：实例上的 `<Button title>`、绑定表的 `text` 只写进名为 `title` 的子控件，按钮组件里有文字却没有 `title` 时网页上显示不出来，`lgui check` 报 `LGUI-UI-066`；标签、下拉框也一样）：
@@ -410,8 +410,12 @@ ui/
   - **运行时才知道的文字**（玩家名、服务器下发的数据、输入框里打的字）不在子集里的字，按字换成系统字体显示，不报错。网页上由浏览器换；Unity 上每个项目字体后面挂一个系统字体做的 TMP 回退字体（iOS、macOS 用苹方，Android 用系统自带的 Noto Sans CJK 等，Windows 用微软雅黑）。这只对 iOS、Android、电脑的原生包有效：Unity 出微信小游戏或 WebGL 时读不到系统字体，子集外的字会显示成方框，到时要在 `ui/fonts/` 里带一个常用字字体。设备上一个候选的系统字体都没找到时，Unity 只记一次 `LGUI-RT-182` 错误日志，游戏照常运行，缺的字显示方框。
   - **Unity 上用 TextMesh Pro**：TMP 建字体要用 Unity 工程里的 TMP 必需资源（TMP Essential Resources，里面有 TMP Settings）。`lgui unity export` 发现工程里没有 TMP Settings 时，会从 Unity 自带的 `com.unity.ugui` 资源包里导入它们（不联网，只写工程里还没有的文件；已有 TMP Settings 的工程不动），不用手动点菜单。项目字体在 Unity 上是动态 TMP 字体，字第一次出现时才画进图集（不在编辑器里提前烘），图集满了自动开新的一张。字第一次出现时要现画，一次出很多新字的界面要在真机上看耗时，卡了再改成提前烘。
   - **表情符号不支持**（网页、Unity 都是）：字体里没有的表情由系统按字回退，各平台显示不一样，Unity 上可能是方框。以后要支持，在 Unity 上用 TMP 的 Sprite Asset 做。
-  - 粗体照旧写 `bold="true"`（由浏览器、Unity 加粗）；要真正的粗体字重，再放一个粗体文件当另一个字体用。可变字体、字体集（TTC）、WOFF 不收（`LGUI-CLI-140`），用单字重的 TTF / OTF。
+  - 粗体照旧写 `bold="true"`（由浏览器、Unity 加粗）；要真正的粗体字重，再放一个粗体文件当另一个字体用。
+  - **不支持斜体**（网页、Unity 都是）：`italic="true"`、富文本的 `[i]…[/i]`（也查 `i18n/` 的文案）报 `LGUI-UI-082`。Unity 上 FairyGUI 带着斜体样式向 TextMesh Pro 要字，单字重的项目字体给不出，斜体的字显示成空白。要强调就换颜色或加粗；确实要斜体，放一个斜体的字体文件当另一个字体用。可变字体、字体集（TTC）、WOFF 不收（`LGUI-CLI-140`），用单字重的 TTF / OTF。
   - **字体许可由项目自己负责**。生成子集算修改了字体（OFL FAQ 2.6）。LGUI 不改字体内部的名字（字体文件里的 name 表照原样留着），只是网页上按文件名引用。OFL 字体如果声明了保留字体名（Reserved Font Name，写在许可里版权声明的后面），修改版不能用这个名字，包括字体内部用来选字体的名字（OFL FAQ 5.3），只改文件名可能不够。这种字体要项目自己处理（比如取得作者许可，或者先自己改好字体内部的名字再放进 `ui/fonts/`），或者换一个没有保留字体名的字体。具体要求请对照字体自带的许可。
+- **描边粗细加投影偏移不超过字号的 7.5%**：`strokeSize` + `shadowOffset` 里 x、y 绝对值大的那个 ≤ `fontSize` × 0.075（都是设计像素；写了 `strokeColor` 才算描边，不写 `strokeSize` 按 1；写了 `shadowColor` 才算投影，不写 `shadowOffset` 按 `1,1`），超了 `lgui check` 报 `LGUI-UI-081`，网页和 Unity 都不让过。比如 32 号字最多 2.4：描边 1 加投影 `0,1` 可以，描边 2 加投影 `0,2` 不行；40 号字最多 3。
+  - 为什么：Unity 上项目字体是 TextMesh Pro 的 SDF 字体，描边和投影由 shader 在字形外画，只能画到图集里字形周围留出的距离数据那么远。LGUI 按 64pt 采样、留边 6 个图集像素；TMP 还要给粗体加粗留出一份（粗体权重 0.75，占四分之一），剩 6 × (1 − 0.75 / 4) ≈ 4.9 个图集像素。1 个设计像素是 64 / 字号 个图集像素，折回来是字号的 4.9 / 64 ≈ 7.6%，取 7.5%。
+  - `autoSize="shrink"` 缩小字号时描边和投影的像素不变（和网页一样），字缩得太小会超出上限：Unity 上记一次 `LGUI-RT-183` 错误日志，描边和投影画得比写的细、近。会缩很多的文字少用描边和投影，或者把框放大。
 - **最小字号 20**（按设计尺寸）。小于 20 时 `lgui check` 报 `LGUI-UI-011`；没写 `fontSize` 的按 FairyGUI 默认的 12 号算，也报。
 - **每个文字控件都要声明文字超长时怎么处理**，就是 `autoSize` 的取值：
 
@@ -536,5 +540,7 @@ ui/
 | `LGUI-UI-068` | `shrink`、`ellipsis` 的文字，框只放得下一行时写 `singleLine="true"` | `size="300,40" fontSize="28" autoSize="shrink" singleLine="true"` | `size="300,40" fontSize="28" autoSize="shrink"` |
 | `LGUI-UI-069` | 动效的目标不是普通组（普通组只在编辑时有，生成界面包时会被去掉，动效动不了它） | 要动整组就用高级组 `<group … advanced="true"/>`，或者让动效直接动组里的控件 | `<group id="n8" …/>` + `<item type="XY" target="n8" …/>` |
 | `LGUI-UI-080` | XML 的 `font`、富文本的 `[font=…]`（也查 `i18n/` 的文案）只写 `ui/fonts/` 里的字体名 | `font="NotoSansSC"` | `font="Microsoft YaHei"`、`font="ui://bag00001font0001"` |
+| `LGUI-UI-081` | 描边粗细加投影偏移不超过字号的 7.5%（`strokeSize` + 投影 x、y 绝对值大的那个 ≤ `fontSize` × 0.075；没写 `strokeSize` 按 1，没写 `shadowOffset` 按 `1,1`） | `fontSize="32" strokeColor="#000000" strokeSize="1" shadowColor="#80000000" shadowOffset="0,1"` | `fontSize="32" strokeSize="2" shadowOffset="0,2"`（共 4，上限 2.4） |
+| `LGUI-UI-082` | 不写斜体：`italic="true"`、富文本 `[i]`（也查 `i18n/` 的文案） | 换颜色、`bold="true"`，或者另放一个斜体字体文件 | `italic="true"`、`[i]重要[/i]` |
 
 靠人看、机器查不出的：图里不放文字；同一个工程的图风格一致；文字在各尺寸下没有被截断（看 `lgui verify` 的截图）。

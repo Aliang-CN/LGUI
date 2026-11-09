@@ -1,5 +1,24 @@
 # 更新记录
 
+## 未发布
+
+**和 0.4.2 不兼容的地方**
+
+- `lgui check` 新增两条报错，0.4.2 能过的界面可能过不了：
+  - `LGUI-UI-081`：文字的描边粗细加投影偏移超过字号的 7.5%（`strokeSize` + 投影 x、y 里绝对值大的那个 > `fontSize` × 0.075；不写 `strokeSize` 按 1，不写 `shadowOffset` 按 `1,1`）。比如 32 号字最多 2.4。网页和 Unity 拒绝同样的写法。改小描边、投影，或者加大字号。
+  - `LGUI-UI-082`：斜体（`italic="true"`、富文本 `[i]`，也查 `i18n/`）。不再支持斜体：Unity 上斜体的字显示不出来。
+  - LGUI 自带的模板和背包示例都没有超限的描边、投影，也没有斜体，不用改；UI 开发规范里的描边投影例子从「描边 2 + 投影 0,2」改成「描边 1 + 投影 0,1」。
+
+**Unity**
+
+- 修好 Unity 上描边、投影不对：`strokeSize`、`shadowOffset` 是设计像素，FairyGUI 的 TMP 文字却把这两个数原样当成 SDF shader 的比例用，粗一点的描边把字吃空（strokeSize 3），远一点的投影只剩一块（shadowOffset 7,7）。现在按 `autoSize="shrink"` 缩完的字号把像素换成 SDF 单位：描边露在字外、不吃填充，投影的偏移和网页一样，缩小时描边和投影的像素不变。缩得太小、超出 SDF 能画的范围时记一次 `LGUI-RT-183` 错误日志（不悄悄缩小）。FairyGUI 的文件没改。描边单位的常数还要在 Windows 上量一次（`tests/unity/fonts/README.md` E）。
+- `lgui unity export` 找 TMP 必需资源包时，Windows 上加找装在用户目录的 Unity（`%LOCALAPPDATA%\Programs\Unity\<版本>\`，`LOCALAPPDATA` 没设时用当前用户的 `AppData\Local`）。0.4.2 只找工程的包和 Unity Hub 默认位置，Unity 装在用户目录时报 `LGUI-CLI-143`。
+
+**已知限制**
+
+- 这次的 C# 改动还没在 Unity 上编译和运行，要等 Windows 重测。
+- 富文本里同一段文字混用不同字号（`[size=…]`）时，Unity 上描边、投影按整段的字号换算，字号不同的那几个字描边粗细会跟着字号变。
+
 ## 0.4.2（2026-11-09）
 
 **Unity**
