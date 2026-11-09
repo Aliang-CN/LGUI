@@ -14,6 +14,7 @@ license: MIT
 2. 运行 `lgui check`、`lgui test`，再执行 `lgui unity export --to "<Unity 工程路径>"`。导出会核对固定补丁摘要；未知文件报错时按原因修复，不绕过校验。版本不一致时先确认 `.lgui/project.json` 的 `unityProject` 指向要升级的目标，必要时按 unity.md 调整，再运行 `lgui upgrade` 并导出；升级命令不读取导出的 `--to`。
    工程用了项目字体且缺 TMP Settings 时，导出会自动导入 TMP Essential Resources：先查工程的 UGUI 包缓存、本地包，再查对应版本的 Unity Hub 默认安装和 Windows `%LOCALAPPDATA%\Programs\Unity\<版本>` 用户安装；找不到报 LGUI-CLI-143 并列出候选路径。已有 TMP Settings 时不改写资源。
 3. 等 Unity 导入和 C# 编译结束，打开 `Assets/LGUI/LGUIBoot.unity` 点 Play，检查真实画面和操作。已有场景不覆盖；脚本资源是 `Game/game.js`。保留 `Assets/LGUI/link.xml`，包内的模板不能代替它。
+   项目字体与系统回退字都要验收：普通/粗体中英文、描边、投影及 shrink。`shadowOffset="4,4"` 是右、下各 4 个设计像素，生僻字回退不应因字体图集不同变成另一偏移。与网页比像素时，先核实际视口、Game/Player 屏幕尺寸及缩放，用已知尺寸纯色标尺验证 1:1，再保存未缩放的无损截图；等运行时目标文字已显示，不凭截图文件名、文件尺寸或采样工具退出成功认定通过。Editor 与 Release IL2CPP 分别看真实画面；超限 shrink 的预期 `LGUI-RT-183` 与额外错误分开记录。
 4. 打 Windows Player 前，按 unity.md 配置 IL2CPP、Release、非 Development，运行 PuerTS 的 **Generate il2cpp/Reflection Mode**（`GenV2WithoutWrapper()`），完成导入后再构建。反射模式仍需要委托和值类型原生桥；不要用类型静态 wrapper 生成代替。普通交付保持 `LGUIBoot.debugPort = -1`。
 5. 检查自动换版前确认工程配置 `orientation = "both"`，以及预期组件的 `@portrait` 版本；锁定方向或共用同一版时按实际配置验收。在实际 Player 检查功能、文字、平台服务、格式化，以及窗口横竖切换、语言切换后的选中项和滚动位置。按用户需要保留网页和 Player 的横竖截图，并打开可操作的页面或客户端供验收。竖窗口可以检查手机比例布局，不能代替物理设备输入验证。
 

@@ -107,7 +107,8 @@ namespace LGUI
             // whole glyph, shadowOffset 7,7 was cut off by the glyph quad. Before a text mesh is built (TextField.OnPopulateMesh
             // calls SetFormat with the size after autoSize shrink, then StartDraw), the pixels are converted into SDF units for the
             // size the text is drawn at, so the stroke and shadow keep their pixel size like on the web, and TMPFont computes its
-            // shader ratios and glyph padding again from those values. The FairyGUI files are not changed.
+            // shader ratios and glyph padding again from those values. GetFallbackFormat supplies the same conversion
+            // for each fallback's own atlas padding and face metrics (the small FairyGUI hook is recorded in PATCHES.md).
             //
             // Units (k = atlas texels per design pixel at this size, P = atlas padding, w = the largest style weight / 4):
             //  - stroke s px: TMP draws the outline across the glyph edge, half inside. To keep the fill and show s px outside (as
@@ -123,49 +124,89 @@ namespace LGUI
             const float SdfOutlineUnit = 2f;
             static readonly HashSet<string> ReportedEffects = new HashSet<string>();
             readonly TextFormat _effects = new TextFormat();
+            readonly Dictionary<TMP_FontAsset, TextFormat> _fallbackEffects = new Dictionary<TMP_FontAsset, TextFormat>();
+            TextFormat _designFormat;
             float _sizeScale = 1;
 
             public override void StartDraw(NGraphics graphics)
             {
                 var field = graphics.meshFactory as TextField;
-                if (field != null && ConvertEffects(field.textFormat, _sizeScale))
+                if (field != null && ConvertEffects(field.textFormat, _sizeScale, fontAsset, _effects))
                 {
                     // TMPFont.BuildGraphics computes ratios, padding and the shader values of the text and of each atlas
                     // sub-mesh in use; it only visits atlases marked active since the last call, so mark the ones in use again.
                     if (graphics.subInstances != null)
                         foreach (NGraphics sub in graphics.subInstances)
                             if (sub.texture != null) sub.texture.lastActive = 1;
-                    base.Prepare(_effects);
-                    base.BuildGraphics(graphics);
-                    base.SetFormat(field.textFormat, _sizeScale);
-                    if (field.textFormat.bold) QueryWeight.SetValue(this, FontWeight.Regular);
+                    _designFormat = field.textFormat;
+                    try
+                    {
+                        base.Prepare(_effects);
+                        base.BuildGraphics(graphics);
+                    }
+                    finally
+                    {
+                        _designFormat = null;
+                        base.SetFormat(field.textFormat, _sizeScale);
+                        if (field.textFormat.bold) QueryWeight.SetValue(this, FontWeight.Regular);
+                    }
                 }
                 base.StartDraw(graphics);
+                SetAtlasDimensions(graphics);
+                if (graphics.subInstances != null)
+                    foreach (NGraphics sub in graphics.subInstances)
+                        SetAtlasDimensions(sub);
+            }
+
+            // TMP grows its first atlas from 1x1 in place. FairyGUI's NTexture can still cache that initial size,
+            // so its material uses 1 as the underlay UV divisor: a 4px shadow repeats four entire atlas periods.
+            // Use each mesh's actual texture, including fallback and later atlases, without changing shared materials.
+            static void SetAtlasDimensions(NGraphics graphics)
+            {
+                Texture texture = graphics.texture == null ? null : graphics.texture.nativeTexture;
+                if (texture == null) return;
+                MaterialPropertyBlock block = graphics.materialPropertyBlock;
+                block.SetFloat(ShaderUtilities.ID_TextureWidth, texture.width);
+                block.SetFloat(ShaderUtilities.ID_TextureHeight, texture.height);
+            }
+
+            protected override TextFormat GetFallbackFormat(TMP_FontAsset asset, TextFormat format)
+            {
+                // The initial layout pass still uses the unmodified format. Only the StartDraw rebuild converts effects;
+                // use the original design pixels, never the values already converted for the project's atlas.
+                if (_designFormat == null) return format;
+                TextFormat effects;
+                if (!_fallbackEffects.TryGetValue(asset, out effects))
+                {
+                    effects = new TextFormat();
+                    _fallbackEffects.Add(asset, effects);
+                }
+                return ConvertEffects(_designFormat, _sizeScale, asset, effects) ? effects : format;
             }
 
             /// <summary>Fills _effects with format, stroke and shadow in SDF units. False when the text has neither.</summary>
-            bool ConvertEffects(TextFormat format, float sizeScale)
+            bool ConvertEffects(TextFormat format, float sizeScale, TMP_FontAsset asset, TextFormat effects)
             {
                 bool stroke = format.outline > 0;
                 bool shadow = format.shadowOffset.x != 0 || format.shadowOffset.y != 0;
                 if (!stroke && !shadow) return false;
                 float size = format.size * sizeScale;
                 if (size <= 0) return false;
-                float k = fontAsset.faceInfo.pointSize / (size * fontAsset.faceInfo.scale);
-                float p = fontAsset.atlasPadding;
-                float w = Mathf.Max(fontAsset.normalStyle, fontAsset.boldStyle) / 4f;
+                float k = asset.faceInfo.pointSize / (size * asset.faceInfo.scale);
+                float p = asset.atlasPadding;
+                float w = Mathf.Max(asset.normalStyle, asset.boldStyle) / 4f;
                 float dilate = stroke ? format.outline * k / (SdfOutlineUnit * p) : 0;
                 float room = 1 - w - format.faceDilate - dilate; // TMPFont's ratioC: P * (1 - weight - faceDilate) / gradientScale
                 Vector2 offset = shadow && room > 0 ? format.shadowOffset * (k / (p * room)) : Vector2.zero;
 
-                _effects.CopyFrom(format);
-                _effects.outlineColor = format.outlineColor;
-                _effects.outline = dilate;
-                _effects.outlineSoftness = format.outlineSoftness;
-                _effects.faceDilate = format.faceDilate + dilate;
-                _effects.shadowColor = format.shadowColor;
-                _effects.shadowOffset = offset;
-                _effects.underlaySoftness = format.underlaySoftness;
+                effects.CopyFrom(format);
+                effects.outlineColor = format.outlineColor;
+                effects.outline = dilate;
+                effects.outlineSoftness = format.outlineSoftness;
+                effects.faceDilate = format.faceDilate + dilate;
+                effects.shadowColor = format.shadowColor;
+                effects.shadowOffset = offset;
+                effects.underlaySoftness = format.underlaySoftness;
 
                 bool fits = w + format.faceDilate + 2 * dilate <= 1 && (!shadow || (room > 0 && Mathf.Max(Mathf.Abs(offset.x), Mathf.Abs(offset.y)) + format.faceDilate + dilate <= 1));
                 if (!fits)
