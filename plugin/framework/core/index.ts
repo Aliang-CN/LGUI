@@ -16,3 +16,4 @@ export {
   missingIconError, unityIconError, iconSvgDataUrl, setIconFaultReporter, reportIconFault
 } from './icons';
 export type {ShapesIcon, DrawIcon, RegisteredIcon} from './icons';
+export {isSynthUrl, isValidSynthUrl, invalidSynthUrlError, defaultAudioSynthError} from './audio';

@@ -408,3 +408,30 @@ test('无图工程检查：手动删掉 placeholder.png 却没改 project.json �
   edit(root, '.lgui/project.json', '"placeholder": "ui://Common/placeholder"', '"placeholder": null');
   assert.deepEqual(await findings(root), []);
 });
+
+test('代码合成声音 synth://：没配自定义 platform.audio 时报 LGUI-UI-065 / LGUI-MVC-004；配好后按钮、sounds.click、static music 和 lgui.sound.play 全过；非法名字报错', async () => {
+  const root = await fresh();
+  edit(root, MAIN_XML, '<Button title="点我"/>', '<Button title="点我" sound="synth://laser"/>');
+  edit(root, '.lgui/project.json', '"click": null', '"click": "synth://click"');
+  edit(root, VIEW, '  static fullScreen = true;', "  static fullScreen = true;\n  static music = 'synth://bgm/menu';");
+  edit(root, CTRL, "import { Controller } from 'lgui';", "import { Controller, lgui } from 'lgui';");
+  edit(root, CTRL, 'click() { mainModel.addClick(); }', "click() { mainModel.addClick(); lgui.sound.play('synth://hit'); }");
+
+  const withoutAudio = await findings(root);
+  assert.ok(withoutAudio.some(f => f.code === 'LGUI-UI-065' && f.file === MAIN_XML && /platform.*audio/.test(f.message)), JSON.stringify(withoutAudio));
+  assert.ok(withoutAudio.some(f => f.code === 'LGUI-UI-065' && f.file === '.lgui/project.json' && /platform.*audio/.test(f.message)), JSON.stringify(withoutAudio));
+  assert.ok(withoutAudio.some(f => f.code === 'LGUI-MVC-004' && f.file === VIEW && /platform.*audio/.test(f.message)), JSON.stringify(withoutAudio));
+  assert.ok(withoutAudio.some(f => f.code === 'LGUI-UI-065' && f.file === CTRL && /platform.*audio/.test(f.message)), JSON.stringify(withoutAudio));
+
+  // 在 src/main.ts 里提供自定义 platform.audio（变量简写写法也认）
+  edit(root, 'src/main.ts', "import { lgui } from 'lgui';", "import { lgui, type AudioService } from 'lgui';\nconst audio: AudioService = { play() {}, music() {}, setPaused() {} };");
+  edit(root, 'src/main.ts', "backend: 'h5',", "backend: 'h5',\n  platform: { audio },");
+  assert.deepEqual(await findings(root), []);
+
+  // 非法 synth:// 名字报 LGUI-UI-065 / LGUI-MVC-004
+  edit(root, CTRL, "lgui.sound.play('synth://hit')", "lgui.sound.play('synth://')");
+  edit(root, VIEW, "static music = 'synth://bgm/menu';", "static music = 'synth://bad space';");
+  const bad = await findings(root);
+  assert.ok(bad.some(f => f.code === 'LGUI-UI-065' && f.file === CTRL), JSON.stringify(bad));
+  assert.ok(bad.some(f => f.code === 'LGUI-MVC-004' && f.file === VIEW), JSON.stringify(bad));
+});

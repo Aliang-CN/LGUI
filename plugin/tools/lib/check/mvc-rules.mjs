@@ -32,7 +32,7 @@ function fromThisUi(ts, expr) {
   return false;
 }
 
-export function mvcRules({ts, checker, root, files, model}) {
+export function mvcRules({ts, checker, root, files, model, customAudio = false}) {
   const out = [];
   const add = (code, node, message, fix, level) => out.push(finding(code, message, fix, {...where(root, node), level}));
   // 标识符指向工程自己（src/、tests/）里的声明就不是平台全局对象：同名的变量、参数、import 都不算。
@@ -101,6 +101,20 @@ export function mvcRules({ts, checker, root, files, model}) {
         if (first && ts.isObjectLiteralExpression(first)) for (const p of first.properties) if (ts.isPropertyAssignment(p) && ['title', 'message', 'ok', 'cancel'].includes(p.name.getText(sf)) && ts.isStringLiteral(p.initializer)) literals.push(p.initializer);
         for (const lit of literals) if (!TEXT_KEY.test(lit.text)) add('LGUI-MVC-014', lit, `写死了用户能看到的文字「${lit.text}」。这里要写文本键。`, '在 i18n/<语言>.json 里加一个键（比如 bag.sold），这里写这个键。');
       }
+      // UI-065 lgui.sound.play 里的 synth:// 合成声音地址
+      if (ts.isCallExpression(node) && node.expression.getText(sf) === 'lgui.sound.play') {
+        const first = node.arguments[0];
+        if (first && (ts.isStringLiteral(first) || ts.isNoSubstitutionTemplateLiteral(first)) && first.text.startsWith('synth://')) {
+          const problem = soundProblem(model, first.text, {customAudio});
+          if (problem) add('LGUI-UI-065', first, `lgui.sound.play 的音效不对：${problem}。`, "写成 'synth://<名字>'，并在 src/main.ts 的 lgui.app({ platform: { audio } }) 里提供自定义的声音出口。");
+        } else if (first && ts.isTemplateExpression(first) && first.head.text.startsWith('synth://')) {
+          if (first.head.text !== 'synth://' && !/^synth:\/\/[A-Za-z0-9][A-Za-z0-9._/-]*$/.test(first.head.text)) {
+            add('LGUI-UI-065', first, `合成声音地址模板「${first.getText(sf)}」前缀不合规范。`, '写成 `synth://${...}` 或 `synth://前缀/${...}`。');
+          } else if (!customAudio) {
+            add('LGUI-UI-065', first, `lgui.sound.play 用了代码合成声音 ${first.getText(sf)}，但没有在 lgui.app({ platform: { audio } }) 里提供自定义的声音出口。`, '在 src/main.ts 的 lgui.app({ platform: { audio } }) 里提供自定义的声音出口。');
+          }
+        }
+      }
       // MVC-015 代码里写坐标和尺寸
       if ((ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.EqualsToken && ts.isPropertyAccessExpression(node.left) && LAYOUT_PROPS.includes(node.left.name.text))
         || (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression) && ['setXY', 'setSize', 'setPosition'].includes(node.expression.name.text))) {
@@ -133,8 +147,8 @@ export function mvcRules({ts, checker, root, files, model}) {
       if (isView && view.statics.has('inputMode') && !['ui', 'game', 'all'].includes(literalValue(ts, view.statics.get('inputMode').initializer))) add('LGUI-MVC-004', view.statics.get('inputMode'), `${view.name} 的 static inputMode 只能是 ui、game、all。`, '改成其中一个，或者不写。');
       if (isView && view.statics.has('music')) {
         const music = literalValue(ts, view.statics.get('music').initializer);
-        const problem = typeof music === 'string' ? soundProblem(model, music) : '要写成字符串 ui://包名/音效名';
-        if (problem) add('LGUI-MVC-004', view.statics.get('music'), `${view.name} 的 static music 不对：${problem}。`, "写成 static music = 'ui://<包>/<音效名>';，音效是 mp3，登记在那个包的 package.xml 里。");
+        const problem = typeof music === 'string' ? soundProblem(model, music, {customAudio}) : '要写成字符串 ui://包名/音效名 或 synth://名字';
+        if (problem) add('LGUI-MVC-004', view.statics.get('music'), `${view.name} 的 static music 不对：${problem}。`, "写成 static music = 'ui://<包>/<音效名>';（包里登记的 mp3），或者 static music = 'synth://<名字>';（并在 lgui.app({ platform: { audio } }) 提供自定义声音出口）。");
       }
       const component = typeof componentName === 'string' ? findComponent(model, componentName) : null;
       if (typeof componentName === 'string' && (!component || !component.exported)) {
@@ -377,4 +391,88 @@ export function codeIcons({ts, checker, root, files}) {
     visit(sf);
   }
   return {names, dynamic, urls, findings};
+}
+
+/** src/ 里的 lgui.app(...) 是否传入了自定义的 platform.audio（给 synth:// 检查用）。 */
+export function hasCustomAudio({ts, checker, root, files}) {
+  const resolveInit = (expr, seen = new Set()) => {
+    const u = unwrapExpr(ts, expr);
+    if (!u || seen.has(u)) return null;
+    seen.add(u);
+    if (ts.isIdentifier(u)) {
+      const sym = checker.getSymbolAtLocation(u);
+      const target = sym && (sym.flags & ts.SymbolFlags.Alias) ? checker.getAliasedSymbol(sym) : sym;
+      const decl = target?.valueDeclaration;
+      if (decl && ts.isVariableDeclaration(decl) && decl.initializer) return resolveInit(decl.initializer, seen);
+    }
+    return u;
+  };
+
+  const hasAudioProp = (expr, seen = new Set()) => {
+    const u = resolveInit(expr, seen);
+    if (!u) return false;
+    if (ts.isObjectLiteralExpression(u)) {
+      for (const p of u.properties) {
+        if (ts.isSpreadAssignment(p) && hasAudioProp(p.expression, new Set(seen))) return true;
+        if (ts.isShorthandPropertyAssignment(p) && p.name.text === 'audio') {
+          const sym = checker.getShorthandAssignmentValueSymbol(p);
+          if (sym?.name === 'undefined') continue;
+          return true;
+        }
+        if ((ts.isPropertyAssignment(p) || ts.isMethodDeclaration(p) || ts.isGetAccessorDeclaration(p)) && p.name && (ts.isIdentifier(p.name) || ts.isStringLiteral(p.name) || ts.isNoSubstitutionTemplateLiteral(p.name)) && p.name.text === 'audio') {
+          if (ts.isPropertyAssignment(p) && ts.isIdentifier(p.initializer) && p.initializer.text === 'undefined') continue;
+          return true;
+        }
+      }
+      return false;
+    }
+    const type = checker.getNonNullableType(checker.getTypeAtLocation(u));
+    const audioSym = type.getProperty('audio');
+    return Boolean(audioSym && !(audioSym.flags & ts.SymbolFlags.Optional));
+  };
+
+  const appHasAudio = expr => {
+    const u = resolveInit(expr);
+    if (!u) return false;
+    if (ts.isObjectLiteralExpression(u)) {
+      for (const p of u.properties) {
+        if (ts.isSpreadAssignment(p) && appHasAudio(p.expression)) return true;
+        if (ts.isShorthandPropertyAssignment(p) && p.name.text === 'platform') {
+          const sym = checker.getShorthandAssignmentValueSymbol(p);
+          const target = sym && (sym.flags & ts.SymbolFlags.Alias) ? checker.getAliasedSymbol(sym) : sym;
+          const decl = target?.valueDeclaration;
+          if (decl && ts.isVariableDeclaration(decl) && decl.initializer && hasAudioProp(decl.initializer)) return true;
+          const pType = sym ? checker.getNonNullableType(checker.getTypeOfSymbolAtLocation(sym, p)) : null;
+          const audioSym = pType?.getProperty('audio');
+          if (audioSym && !(audioSym.flags & ts.SymbolFlags.Optional)) return true;
+        }
+        if (ts.isPropertyAssignment(p) && p.name && (ts.isIdentifier(p.name) || ts.isStringLiteral(p.name) || ts.isNoSubstitutionTemplateLiteral(p.name)) && p.name.text === 'platform') {
+          if (hasAudioProp(p.initializer)) return true;
+        }
+      }
+      return false;
+    }
+    const type = checker.getNonNullableType(checker.getTypeAtLocation(u));
+    const platformSym = type.getProperty('platform');
+    if (!platformSym || (platformSym.flags & ts.SymbolFlags.Optional)) return false;
+    const pType = checker.getNonNullableType(checker.getTypeOfSymbolAtLocation(platformSym, u));
+    const audioSym = pType.getProperty('audio');
+    return Boolean(audioSym && !(audioSym.flags & ts.SymbolFlags.Optional));
+  };
+
+  for (const sf of files) {
+    const rel = path.relative(root, sf.fileName).split(path.sep).join('/');
+    if (!rel.startsWith('src/')) continue;
+    let found = false;
+    const visit = node => {
+      if (found) return;
+      if (ts.isCallExpression(node) && node.expression.getText(sf) === 'lgui.app' && node.arguments[0]) {
+        if (appHasAudio(node.arguments[0])) { found = true; return; }
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(sf);
+    if (found) return true;
+  }
+  return false;
 }

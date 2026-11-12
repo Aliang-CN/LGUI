@@ -272,3 +272,27 @@ test('Unity export：lgui init --code-only 无图工程（未用代码图标）�
   assert.ok(uiFiles.includes('Main_fui.bytes'), uiFiles.join(', '));
   assert.equal(uiFiles.some(name => name.endsWith('.png')), false, uiFiles.join(', '));
 });
+
+test('Unity export：使用 synth:// 合成声音并配置自定义 platform.audio 的工程正常导出，并把按钮的 synth:// 地址打进脚本', async () => {
+  const parent = fs.mkdtempSync(path.join(os.tmpdir(), 'lgui-export-synth-'));
+  const init = await run(['init', 'game', '--code-only'], parent);
+  assert.equal(init.code, 0, init.stderr);
+  const root = path.join(parent, 'game');
+  for (const rel of ['ui/assets/Main/MainView.xml', 'ui/assets/Main/MainView@portrait.xml']) {
+    const file = path.join(root, rel);
+    fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace('<Button title="点我"/>', '<Button title="点我" sound="synth://laser"/>'));
+  }
+  const main = path.join(root, 'src/main.ts');
+  fs.writeFileSync(main, fs.readFileSync(main, 'utf8').replace(
+    "backend: 'h5',",
+    "backend: 'h5',\n  platform: { audio: { play() {}, music() {}, setPaused() {} } },"
+  ));
+  const check = await run(['check'], root);
+  assert.equal(check.code, 0, check.stdout + check.stderr);
+  const c = {parent, root, unity: createUnityProject(path.join(parent, 'UnityProject'))};
+  const result = await exportTo(c);
+  assert.equal(result.code, 0, result.stdout);
+  const bundle = fs.readFileSync(path.join(c.unity, 'Assets/LGUI/Resources/Game/game.js.txt'), 'utf8');
+  assert.match(bundle, /Main\/MainView#button/);
+  assert.match(bundle, /synth:\/\/laser/);
+});

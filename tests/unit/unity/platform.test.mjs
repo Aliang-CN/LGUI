@@ -276,7 +276,11 @@ test('Unity 平台：音效、背景音乐、暂停交给原生服务；没登�
   assert.equal(e.calls.length, before, '没登记的音效不交给原生服务');
   p.audio.music('ui://Common/missing', 1, 300, error => errors.push(error));
   assert.deepEqual(e.calls.at(-1), ['music', '', 1, 300]);
-  assert.deepEqual(errors.map(error => error.code), ['LGUI-RT-170', 'LGUI-RT-170']);
+  p.audio.play('synth://laser', 1, error => errors.push(error));
+  p.audio.music('synth://bgm', 0.6, 300, error => errors.push(error));
+  assert.deepEqual(e.calls.at(-1), ['music', '', 0.6, 300], 'synth:// 落到默认 Unity 出口时停掉当前音乐并报 LGUI-RT-170');
+  assert.deepEqual(errors.map(error => error.code), ['LGUI-RT-170', 'LGUI-RT-170', 'LGUI-RT-170', 'LGUI-RT-170']);
+  assert.match(errors[2].message, /synth:\/\/laser/);
   e.host.PlayAudio = () => { throw new Error('LGUI-RT-161  界面音效不存在'); };
   p.audio.play('ui://Common/click', 1, error => errors.push(error));
   assert.match(String(errors.at(-1)), /LGUI-RT-161/);

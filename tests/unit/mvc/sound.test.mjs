@@ -143,15 +143,57 @@ test('背景音乐：音乐声道的音量和静音只调音量，不重来；�
   assert.equal(backend.state.music, null);
 });
 
-test('View 的 static music：只能写 ui://包名/声音名；ItemView、PartView 不能写', async () => {
+test('View 的 static music：只能写 ui://包名/声音名 或 synth://名字；ItemView、PartView 不能写', async () => {
   const {fw} = await started();
   const {View, ItemView, validateViewClass} = fw;
   class Good extends View { static component = 'Bag/BagPanel'; static layer = 'page'; static music = 'ui://Common/bgm'; }
   validateViewClass(Good);
+  class GoodSynth extends View { static component = 'Bag/BagPanel'; static layer = 'page'; static music = 'synth://bgm/menu'; }
+  validateViewClass(GoodSynth);
   class Bad extends View { static component = 'Bag/BagPanel'; static layer = 'page'; static music = 'bgm.mp3'; }
   assert.throws(() => validateViewClass(Bad), e => e.code === 'LGUI-RT-060' && /music/.test(e.message));
+  class BadSynth extends View { static component = 'Bag/BagPanel'; static layer = 'page'; static music = 'synth://'; }
+  assert.throws(() => validateViewClass(BadSynth), e => e.code === 'LGUI-RT-060' && /music/.test(e.message));
   class Item extends ItemView { static component = 'Bag/ItemSlot'; static music = 'ui://Common/bgm'; }
   assert.throws(() => validateViewClass(Item), e => e.code === 'LGUI-RT-061');
+});
+
+test('代码合成声音 synth://：自定义 platform.audio 收到按钮音、sounds.click、static music 和 lgui.sound.play；headless 原样记下合法地址，非法地址报 LGUI-RT-170', async () => {
+  const extra = '<component id="n5" name="buyButton" src="btn00001" xy="0,800" size="160,56"><Button title="买"/></component>';
+  const panel = size => bagPanel({size, extra}).replace('<Button title="出售"/>', '<Button title="出售" sound="synth://laser" volume="50"/>');
+  const root = writeFixture(undefined, {sounds: false, landscape: panel('1920,1080'), portrait: panel('1080,1920')});
+  const audio = spyAudio();
+  const {fw, backend, sim} = await started({root, config: {sounds: {click: 'synth://click'}}, app: {platform: {audio}}});
+  const {lgui, View, MUSIC_FADE_MS} = fw;
+  class HudView extends View {
+    static component = 'Bag/BagPanel'; static layer = 'page'; static fullScreen = true; static music = 'synth://bgm/space';
+    bind = {sellButton: {click: () => {}}, buyButton: {click: () => {}}};
+  }
+  const view = await lgui.ui.open(HudView);
+  await sim.click(backend, view.__component.child('sellButton'));
+  await sim.click(backend, view.__component.child('buyButton'));
+  lgui.sound.setVolume('sfx', 0.4);
+  lgui.sound.play('synth://explosion', {volume: 0.5});
+  assert.deepEqual(audio.calls, [
+    ['music', 'synth://bgm/space', 1, MUSIC_FADE_MS],
+    ['play', 'synth://laser', 0.5],
+    ['play', 'synth://click', 1],
+    ['play', 'synth://explosion', 0.2]
+  ]);
+
+  // headless（lgui test 默认不换 platform）：记入 state.sounds / state.music；非法 synth:// 报 LGUI-RT-170
+  const headlessRun = await started({root, config: {sounds: {click: 'synth://click'}}});
+  class HeadlessHud extends headlessRun.fw.View {
+    static component = 'Bag/BagPanel'; static layer = 'page'; static fullScreen = true; static music = 'synth://bgm/space';
+    bind = {sellButton: {click: () => {}}, buyButton: {click: () => {}}};
+  }
+  const hv = await headlessRun.fw.lgui.ui.open(HeadlessHud);
+  await headlessRun.sim.click(headlessRun.backend, hv.__component.child('sellButton'));
+  await headlessRun.sim.click(headlessRun.backend, hv.__component.child('buyButton'));
+  assert.deepEqual(headlessRun.backend.state.music, {url: 'synth://bgm/space', volume: 1});
+  assert.deepEqual(headlessRun.backend.state.sounds, [{url: 'synth://laser', volume: 0.5}, {url: 'synth://click', volume: 1}]);
+  assert.throws(() => headlessRun.fw.lgui.sound.play('synth://'), e => e.code === 'LGUI-RT-170');
+  assert.throws(() => headlessRun.fw.lgui.sound.play('synth://bad name'), e => e.code === 'LGUI-RT-170');
 });
 
 test('背景音乐：正在打开的界面也算（replace 不断）；它打开失败离开界面栈后重新选曲', async () => {

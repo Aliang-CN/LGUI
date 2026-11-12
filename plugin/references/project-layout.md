@@ -45,7 +45,7 @@ MyGame/
 | `requestErrorToast` | 布尔值 | `true` | `lgui.request` 失败时，统一弹出提示 |
 | `requestTimeoutMs` | 正整数（毫秒） | `10000` | `lgui.request` 的超时时间 |
 | `placeholder` | `ui://` 或 `icon://` 开头的图片地址 \| `null` | `"ui://Common/placeholder"` | 默认占位图；`null` 表示不显示占位图（`lgui init --code-only` 默认为 `null`） |
-| `sounds` | `{ click: 音效地址 \| null }` | `{ click: null }` | 按钮的默认点击音效（`ui://<包>/<声音名>`）：`ui/` 里按钮没写音效时用；`null` 表示不放 |
+| `sounds` | `{ click: 音效地址 \| null }` | `{ click: null }` | 按钮的默认点击音效（`ui://<包>/<声音名>` 或代码合成声音 `synth://<名字>`）：`ui/` 里按钮没写音效时用；`null` 表示不放 |
 | `defaultFont` | 字体名 \| `null` | `null` | 默认字体：写 `ui/fonts/` 里某个字体的名字（文件名去掉扩展名）；`null` 表示用系统默认字体。写了 `ui/fonts/` 里没有的名字（包括系统字体名）报 `LGUI-CLI-142` |
 | `devPort` | 端口号 1–65535 | `4173` | `lgui dev` 的端口 |
 | `devWatch` | 路径数组 | `[]` | `lgui dev` 除了 `ui/`、`src/`、`i18n/` 以外还要监视的目录或文件，相对工程根目录（比如宿主代码、仓库根的 `["../Config"]`），改了就重新打包、刷新页面（不监视 `.lgui/build/`，写成工程根目录也不会自己触发自己）。路径不存在时报 `LGUI-CLI-116` |

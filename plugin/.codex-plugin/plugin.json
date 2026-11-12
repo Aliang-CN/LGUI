@@ -1,6 +1,6 @@
 {
   "name": "lgui",
-  "version": "0.4.5",
+  "version": "0.4.6",
   "description": "Agent-authored, browser-first FairyGUI UI workflows with shared TypeScript and Unity/PuerTS migration.",
   "author": {
     "name": "LumioGames",

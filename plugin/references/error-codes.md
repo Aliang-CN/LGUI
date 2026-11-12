@@ -150,7 +150,7 @@ LGUI 的每条报错都带错误码，并写明：哪个文件哪一行（如果
 | `LGUI-RT-027` | 后端还没启动就开始用 | 先调用 `backend.init(config)`（框架启动时会自动调用） |
 | `LGUI-RT-160` | Unity 启动脚本或 Resources 文本缺失、PuerTS 启动失败、每帧回调或宿主驱动、退出清理失败 | 每帧回调出错时按堆栈修正该回调，其他回调和后续帧继续运行；宿主启动失败时核对导出文件、PuerTS 3.0.3 本地包后重新启动场景 |
 | `LGUI-RT-161` | Unity 平台存储、HTTP、音频等服务失败 | 按日志检查存储权限、请求参数、资源地址或本地 PuerTS 环境 |
-| `LGUI-RT-170` | 声音地址 `ui://…` 没有登记在 `ui/` 的包里 | 把 mp3 放进包目录，在 `package.xml` 里登记成 `<sound … exported="true"/>`，地址写成 `ui://包名/声音名` |
+| `LGUI-RT-170` | 声音地址 `ui://…` 没有登记在 `ui/` 的包里；或者 `synth://…` 写法不对、落到了未替换的默认声音出口 | `ui://` 声音把 mp3 放进包目录并在 `package.xml` 里登记导出；`synth://<名字>` 代码合成声音在 `lgui.app({ platform: { audio } })` 里提供自定义的 `AudioService` |
 | `LGUI-RT-171` | ArtText 用的字体所在的包没有加载 | 把 ArtText 放在字体所在包的组件里，或者让界面用到那个包的组件 |
 | `LGUI-RT-172` | 没有 Common 包或 `Common/ActionHintBar`，建不了操作提示栏（开发和测试里启动就报；正式构建里不显示提示栏） | 用 `lgui init` 自带的 Common 包，不要删掉 `ActionHintBar` |
 | `LGUI-RT-173` | 网页端没配 `i18nBase` 就切换语言 | `backend.init` 时传 `i18nBase`（`lgui dev` 生成的启动入口传的是 `./i18n`） |

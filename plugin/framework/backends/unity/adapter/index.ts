@@ -70,6 +70,7 @@ export function createUnityBackend(bridge?: NativeBridge): Backend {
       const noFallback = (options.fonts ?? []).length > 0 && host.FallbackFontName === '';
       // FairyGUI-unity 的按钮、动效会自己放声音（网页版的 FairyGUI 不放）。LGUI 的声音都由框架经 platform.audio 放，所以关掉 FairyGUI 自己的。
       fgui.Stage.inst.soundVolume = 0;
+      const buttonSounds = options.buttonSounds ?? {};
       objects = createObjectAdapter(fgui, () => host.Now, (x, y) => ({x: x / scale.value, y: y / scale.value}),
         (x, y, width, height) => new found.UnityEngine.Rect(x, y, width, height), {
           wheelDeltaX: () => host.WheelDeltaX,
@@ -80,6 +81,7 @@ export function createUnityBackend(bridge?: NativeBridge): Backend {
             return display?.gOwner ?? null;
           },
           buttonSound: button => host.ButtonSoundUrl(button),
+          fallbackButtonSound: (button, parentComp, selfComp) => (parentComp ? buttonSounds[`${parentComp}#${button.name}`] : undefined) ?? (selfComp ? buttonSounds[selfComp] : undefined) ?? '',
           transitionSettings: transition => ({autoPlay: host.TransitionAutoPlay(transition), times: host.TransitionAutoPlayTimes(transition), delay: Math.round(host.TransitionAutoPlayDelay(transition) * 1000)}),
           gearController: (object, index) => host.GearController(object, index),
           downEffect: button => ({type: host.ButtonDownEffect(button), value: host.ButtonDownEffectValue(button)}),

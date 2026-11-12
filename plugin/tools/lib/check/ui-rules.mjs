@@ -108,10 +108,17 @@ export function resourceByUrl(model, url) {
 // 图片有 @<语言> 版本（带字图片）
 const hasLanguages = (pkg, image) => image.type === 'image' && pkg.resources.some(r => r.type === 'image' && r.name.startsWith(image.name + '@'));
 
-/** 音效地址的问题：不存在、没登记、不是 mp3；没问题返回 null。 */
-export function soundProblem(model, url) {
+const SYNTH_URL_RE = /^synth:\/\/([A-Za-z0-9][A-Za-z0-9._/-]*)$/;
+
+/** 音效地址的问题：不存在、没登记、不是 mp3，或者 synth:// 写法不对、没配自定义 audio 出口；没问题返回 null。 */
+export function soundProblem(model, url, {customAudio = false} = {}) {
+  if (typeof url === 'string' && url.startsWith('synth://')) {
+    if (!SYNTH_URL_RE.test(url)) return `合成声音地址「${url}」写法不对（要写成 synth://<名字>，名字以字母或数字开头，只能用字母、数字和 . _ / -）`;
+    if (!customAudio) return `用了代码合成声音 ${url}，但没有在 lgui.app({ platform: { audio } }) 里提供自定义的声音出口`;
+    return null;
+  }
   const found = resourceByUrl(model, url);
-  if (!found) return `${url} 没有登记在 ui/ 的包里（地址写成 ui://包名/音效名）`;
+  if (!found) return `${url} 没有登记在 ui/ 的包里（地址写成 ui://包名/音效名，或者代码合成声音写成 synth://名字）`;
   const {res} = found;
   if (res.type !== 'sound') return `${url} 不是音效（package.xml 里登记的是 ${res.type}）`;
   if (!/\.mp3$/i.test(res.fileName)) return `${url} 是 ${res.fileName}，音效只用 mp3`;
@@ -123,11 +130,11 @@ export function soundProblem(model, url) {
   return null;
 }
 
-export function uiRules({root, model, languages, redDots = [], texts = [], items = [], iconBindings = [], fullScreens = [], sounds = null, placeholder = null, codeIcons = null}) {
+export function uiRules({root, model, languages, redDots = [], texts = [], items = [], iconBindings = [], fullScreens = [], sounds = null, placeholder = null, codeIcons = null, customAudio = false}) {
   const out = [];
   const rel = file => path.relative(root, file).split(path.sep).join('/');
   const add = (code, message, fix, file, line) => out.push(finding(code, message, fix, {file: file ? rel(file) : undefined, line, col: 1}));
-  const soundFix = '音效用 mp3，放进包目录并登记进 package.xml（<sound id="…" name="click.mp3" path="/" exported="true"/>），地址写 ui://包名/音效名；不要声音就写 sound=""。';
+  const soundFix = '音效用 mp3 放进包目录并登记进 package.xml（<sound id="…" name="click.mp3" path="/" exported="true"/>），地址写 ui://包名/音效名；或者用代码合成声音写 synth://<名字>（并在 lgui.app({ platform: { audio } }) 提供自定义声音出口）；不要声音就写 sound=""。';
 
   // UI-001 包 ID
   const pkgIds = new Map();
@@ -178,7 +185,7 @@ export function uiRules({root, model, languages, redDots = [], texts = [], items
     for (const component of pkg.components) {
       // UI-065 按钮组件自己写的音效
       const ownSound = component.root?.children.find(n => n.tag === 'Button')?.attrs.sound;
-      if (ownSound) { const problem = soundProblem(model, ownSound); if (problem) add('LGUI-UI-065', `按钮组件 ${component.fullName} 的音效不对：${problem}。`, soundFix, component.file, 1); }
+      if (ownSound) { const problem = soundProblem(model, ownSound, {customAudio}); if (problem) add('LGUI-UI-065', `按钮组件 ${component.fullName} 的音效不对：${problem}。`, soundFix, component.file, 1); }
       // UI-003 元素 ID、UI-004 控件名
       const ids = new Set();
       for (const child of component.children) {
@@ -209,7 +216,7 @@ export function uiRules({root, model, languages, redDots = [], texts = [], items
         // UI-061 按钮直接绑控制器（点了就切页）：绕过了 Model，lgui test 里也不切
         if (button?.tag === 'Button' && button.attrs.controller) add('LGUI-UI-061', `组件 ${component.fullName} 的按钮 ${child.name} 直接绑了控制器 ${button.attrs.controller}（点了就切页）。这样切页不经过 Model，lgui test 里也不会切。`, '删掉 <Button> 上的 controller 和 page；在绑定表里写 click: () => xxxController.方法()，由 Controller 改 Model，控制器写 page: pick(…)。', component.file, child.line);
         // UI-065 按钮实例上写的音效；写空表示不出声
-        if (button?.tag === 'Button' && button.attrs.sound) { const problem = soundProblem(model, button.attrs.sound); if (problem) add('LGUI-UI-065', `组件 ${component.fullName} 的按钮 ${child.name} 的音效不对：${problem}。`, soundFix, component.file, child.line); }
+        if (button?.tag === 'Button' && button.attrs.sound) { const problem = soundProblem(model, button.attrs.sound, {customAudio}); if (problem) add('LGUI-UI-065', `组件 ${component.fullName} 的按钮 ${child.name} 的音效不对：${problem}。`, soundFix, component.file, child.line); }
         // UI-017 装载器的 url、按钮的 icon 写死了带字图片：不会随语言换
         for (const url of [child.tag === 'loader' ? child.attrs.url : null, button?.attrs.icon]) {
           const found = url ? resourceByUrl(model, url) : null;
@@ -299,7 +306,7 @@ export function uiRules({root, model, languages, redDots = [], texts = [], items
   }
 
   // UI-065 工程配置里的默认点击音效
-  if (sounds?.click) { const problem = soundProblem(model, sounds.click); if (problem) out.push(finding('LGUI-UI-065', `工程配置 sounds.click 的音效不对：${problem}。`, '改成登记过的 mp3 音效地址（ui://包名/音效名），或者写 null（不播）。', {file: '.lgui/project.json', line: 1, col: 1})); }
+  if (sounds?.click) { const problem = soundProblem(model, sounds.click, {customAudio}); if (problem) out.push(finding('LGUI-UI-065', `工程配置 sounds.click 的音效不对：${problem}。`, '改成登记过的 mp3 音效地址（ui://包名/音效名），或者代码合成声音（synth://名字，并在 lgui.app({ platform: { audio } }) 提供自定义声音出口），或者写 null（不播）。', {file: '.lgui/project.json', line: 1, col: 1})); }
 
   // UI-012 绑定了 redDot 的控件里有 redDot 子控件
   for (const b of redDots) {

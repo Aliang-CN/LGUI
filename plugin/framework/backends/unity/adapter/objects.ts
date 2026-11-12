@@ -30,6 +30,8 @@ export interface ObjectServices {
   hitTest(x: number, y: number): NativeObject | null;
   /** 按钮在 ui/ 里设的点击音效地址，没设是空字符串。 */
   buttonSound(button: NativeButton): string;
+  /** 按钮在 ui/ 里设的非 ui:// 声音地址（比如 synth://；FairyGUI-unity 只保留 NAudioClip）。 */
+  fallbackButtonSound?(button: NativeButton, parentComponentName: string, selfComponentName: string): string;
   /** 动效在 ui/ 里写的设置（delay 是毫秒）。 */
   transitionSettings(transition: NativeTransition): UITransition['settings'];
   /** 第 index 个齿轮跟的控制器名，没有这个齿轮是空字符串。 */
@@ -291,7 +293,14 @@ export function createObjectAdapter(fgui: NativeFairyGUI, now: () => number, toP
     get selected(): boolean { return this.native.selected; }
     set selected(value: boolean) { this.native.selected = value; }
     get mode(): string { return buttonModeName(this.native.mode); }
-    get sound(): string { return services.buttonSound(this.native); }
+    get sound(): string {
+      const fromNative = services.buttonSound(this.native);
+      if (fromNative) return fromNative;
+      const p = this.native.parent;
+      const parentItem = p?.packageItem;
+      const parentComp = p ? (names.get(p) ?? (parentItem ? `${parentItem.owner.name}/${parentItem.name}` : '')) : '';
+      return services.fallbackButtonSound?.(this.native, parentComp, this.componentName) ?? '';
+    }
     get soundVolume(): number { return this.native.soundVolumeScale; }
     private effect: UIButton['downEffect'] | null = null;
     // 第一次读时：downEffect="scale" 的关掉 FairyGUI 自己的一下子缩小（框架接管，带缓动），记下倍数；dark 还是 FairyGUI 的。

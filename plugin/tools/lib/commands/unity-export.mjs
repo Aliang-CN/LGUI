@@ -163,9 +163,25 @@ function bootScene(guid) {
     '--- !u!1660057539 &9223372036854775807\nSceneRoots:\n  m_ObjectHideFlags: 0\n  m_Roots:\n  - {fileID: 100001}\n';
 }
 
-function writeBootstrap(root, stage, project, deps, texts) {
+function collectButtonSounds(model) {
+  const out = {};
+  for (const pkg of model.packages) {
+    for (const component of pkg.components) {
+      const ownSound = component.root?.children.find(n => n.tag === 'Button')?.attrs.sound;
+      if (ownSound && !ownSound.startsWith('ui://')) out[component.fullName] = ownSound;
+      for (const child of component.children) {
+        const instSound = child.children.find(n => n.tag === 'Button')?.attrs.sound;
+        if (instSound && !instSound.startsWith('ui://') && child.name) out[`${component.fullName}#${child.name}`] = instSound;
+      }
+    }
+  }
+  return out;
+}
+
+function writeBootstrap(root, stage, project, deps, texts, buttonSounds) {
   const fw = relative => codePath(path.join(root, '.lgui/framework', relative));
   const entry = path.join(stage, 'boot.ts');
+  const extraSounds = Object.keys(buttonSounds).length ? ', buttonSounds: ' + JSON.stringify(buttonSounds) : '';
   fs.writeFileSync(entry, '// 由 lgui unity export 生成，不要手改。\n' +
     'import app from ' + codePath(path.join(root, 'src/main.ts')) + ';\n' +
     'import {createUnityBackend} from ' + fw('backends/unity/adapter/index.ts') + ';\n' +
@@ -174,7 +190,7 @@ function writeBootstrap(root, stage, project, deps, texts) {
     'const globals = globalThis as unknown as {__lguiStart: () => Promise<void>; __lguiReady?: boolean; __lguiDispose?: () => void};\n' +
     'globals.__lguiStart = async () => {\n  try {\n' +
     '    const backend = createUnityBackend();\n' +
-    '    await backend.init({projectName: ' + JSON.stringify(project.name) + ', defaultFont: ' + JSON.stringify(project.defaultFont) + ', fonts: ' + JSON.stringify(fontNames(root)) + ', uiBase: "UI", i18nBase: "UI/i18n"});\n' +
+    '    await backend.init({projectName: ' + JSON.stringify(project.name) + ', defaultFont: ' + JSON.stringify(project.defaultFont) + ', fonts: ' + JSON.stringify(fontNames(root)) + ', uiBase: "UI", i18nBase: "UI/i18n"' + extraSounds + '});\n' +
     '    await boot(backend, app, ' + JSON.stringify(runtimeConfig(project)) + ', ' + JSON.stringify(deps) + ', {texts: ' + JSON.stringify(texts) + '});\n' +
     '    globals.__lguiReady = true;\n' +
     '  } catch (error) {\n    const e = error as {code?: string; message?: string};\n' +
@@ -283,7 +299,7 @@ export async function unityExport({args, flags, cwd, projectRoot, project}) {
   generateTranslations(projectRoot, model, project.languages, path.join(stageUi, 'i18n'), project.defaultLanguage);
   await generateFonts(projectRoot, project, model, path.join(stageUi, 'fonts'), 'sfnt'); // Unity 导入成动态字体，适配层按 UI/fonts/<名字> 注册
   fs.mkdirSync(stageGame, {recursive: true});
-  const entry = writeBootstrap(projectRoot, stage, project, deps, texts);
+  const entry = writeBootstrap(projectRoot, stage, project, deps, texts, collectButtonSounds(model));
   try {
     await esbuild().build({...webBuildOptions(projectRoot, entry, {dev: false, outfile: path.join(stageGame, 'game.js.txt')}), format: 'iife', platform: 'neutral', sourcemap: false});
   } catch (cause) { throw bundleErrors(cause, projectRoot); }

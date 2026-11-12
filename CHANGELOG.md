@@ -1,5 +1,13 @@
 # 更新记录
 
+## 0.4.6（2026-11-12）
+
+**框架、检查与后端**
+
+- 代码合成声音（`synth://<名字>`）：包里不放 mp3 文件时，按钮的 `<Button sound="synth://…"/>`、工程配置 `sounds.click`、View 的 `static music = 'synth://…'` 和 Controller 里的 `lgui.sound.play('synth://…')` 都可以直接写 `synth://<名字>`，交由 `lgui.app({ platform: { audio } })` 提供的自定义 `AudioService` 实时合成播放；声道音量、静音、背景音乐选曲和切后台暂停与 `ui://` 声音一致。
+- `lgui check`（`LGUI-UI-065`、`LGUI-MVC-004`）：检查 `synth://<名字>` 格式正确，且工程在 `lgui.app({ platform: { audio } })` 里提供了自定义的声音出口；未提供或名字不合法时报错。
+- 后端与测试：网页（`h5`）和 Unity 后端都支持通过自定义 `platform.audio` 播放 `synth://`（Unity 导出时自动把按钮在 `ui/` 里写的 `synth://` 地址带入启动参数）；`synth://` 若落到未替换的默认声音出口报 `LGUI-RT-170`，不静默无声。`lgui test`（`headless` 与 `--browser`）照常把 `synth://<名字>` 记进 `t.sounds()` 和 `t.music()`。
+
 ## 0.4.5（2026-11-12）
 
 **命令行与无图工程**
