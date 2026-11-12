@@ -111,6 +111,11 @@ export class Rect {
   x: number; y: number; width: number; height: number;
 }
 
+export class Vec2 {
+  constructor(x?: number, y?: number);
+  x: number; y: number;
+}
+
 export class ScrollPane {
   posX: number;
   posY: number;

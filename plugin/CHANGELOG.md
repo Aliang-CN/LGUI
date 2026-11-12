@@ -1,5 +1,22 @@
 # 更新记录
 
+## 0.4.4（2026-11-12）
+
+**框架与界面**
+
+- 代码图标（`icon://<名字>`）：包里不放图片文件（也不放单独的 `.svg` 文件）时，图标形状可写在代码里（可选的 `src/icons.ts`），通过 `lgui.app({ icons })` 或 `lgui.registerIcons(icons)` 注册。支持 `shapes`（`path`、`circle`、`rect`、`polygon`、`line` 五种矢量图元，网页端序列化为缓存的 SVG 渲染）和 `draw(g, width, height)`（过程式 2D 绘制函数，`IconCanvas` 不含浏览器 DOM 类型，网页端按屏幕像素比在离屏画布上光栅化并缓存）。
+- 所有填图片地址的地方都能写 `icon://<名字>`：`<loader url="icon://…">`、`<Button icon="…" selectedIcon="…"/>`、`<Label icon="…"/>`、`<ComboBox icon="…"/>`、`gearIcon`、工程配置 `placeholder`、绑定表的 `icon` / `placeholder` / `dragIcon`。代码图标同步就绪，绑定切换时不先闪 `placeholder`；装载器的缩放、对齐、着色、变灰、裁剪填充照常生效；标签（`UILabel`）和加载器、按钮一样支持绑定 `icon` 和充当 `dragData` 的默认跟手图标。
+- `lgui check`：`LGUI-MVC-017` 允许 `src/icons.ts`；`LGUI-UI-009` 检查 XML、工程配置和代码里的静态 `icon://…` 格式正确且已在代码里注册；`LGUI-UI-066` 增查给按钮、标签、下拉框写了图标（实例上的 `icon` / `selectedIcon`、绑定表的 `icon`）但组件里没有名为 `icon` 的子控件的情况。
+
+**Unity 边界**
+
+- 代码图标只在网页端（`h5`）和 `lgui test`（`headless`）提供。`lgui unity export` 检测到工程使用了代码图标时直接报 `LGUI-CLI-144` 并拒绝导出（不改写 Unity 工程和 `.lgui/project.json`）；Unity 后端运行时遇到代码图标报 `LGUI-RT-072`，不静默空白。
+
+**新错误码**
+
+- `LGUI-CLI-144`：`lgui unity export` 拒绝导出使用了代码图标的工程。
+- `LGUI-RT-072`：代码图标定义不合法、引用了未注册的 `icon://<名字>`，或在 Unity 后端上使用代码图标。
+
 ## 0.4.3（2026-11-09）
 
 **和 0.4.2 不兼容的地方**

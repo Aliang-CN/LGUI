@@ -3,7 +3,7 @@ import * as fgui from '../vendor/fairygui.module.js';
 import type {
   Platform, KeyInput, WheelInput, NetResponse, NetSocket, Insets, PointerInput, Rect, Unsubscribe
 } from '../../../core/index';
-import {LgRuntimeError} from '../../../core/index';
+import {LgRuntimeError, hasIcon, isIconUrl, missingIconError} from '../../../core/index';
 import {fitDesign, stage, toDesign} from '../scale';
 import {pointerEventTypes, toPointerInput} from '../pointer';
 import {createH5Audio} from './audio';
@@ -98,12 +98,15 @@ export function createH5Platform(projectName: string, uiBase: string): Platform 
       loadPackage: async name => { if (!fgui.UIPackage.getByName(name)) await fgui.UIPackage.loadPackage(`${uiBase}/${name}`); },
       releasePackage: name => { if (fgui.UIPackage.getByName(name)) fgui.UIPackage.removePackage(name); },
       hasPackage: name => fgui.UIPackage.getByName(name) !== undefined,
-      loadImage: url => new Promise((resolve, reject) => {
-        const image = new Image();
-        image.onload = () => resolve();
-        image.onerror = () => reject(new LgRuntimeError('LGUI-RT-025', `图片 ${url} 加载失败。`, '确认地址对、文件存在。'));
-        image.src = url;
-      })
+      loadImage: url => {
+        if (isIconUrl(url)) return hasIcon(url) ? Promise.resolve() : Promise.reject(missingIconError(url));
+        return new Promise((resolve, reject) => {
+          const image = new Image();
+          image.onload = () => resolve();
+          image.onerror = () => reject(new LgRuntimeError('LGUI-RT-025', `图片 ${url} 加载失败。`, '确认地址对、文件存在。'));
+          image.src = url;
+        });
+      }
     },
     input: {onPointer: h => pointer.add(h), onKey: h => keys.add(h), onWheel: h => wheels.add(h), setInputMode: () => {}},
     textInput: {isComposing: () => composing},

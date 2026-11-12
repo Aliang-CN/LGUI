@@ -116,6 +116,7 @@ Windows Player 可设置为 Windowed 并开启 Resizable Window，通过改变�
 - **新控件、动效和拖放。** 标签、滑动条、下拉框、序列帧动画、树，动效的 `playing` / `play` / `done`，拖放找落点（FairyGUI 的命中测试）、滚轮只认落在控件上的事件、`t.visible` 的「真的显示」，在 Unity 后端都按同一套接口实现。功能、快照和可视像素按实际用例分别验收；开发用一致性运行器已经接了 `t.dragTo`、`t.setValue`、`t.choose`、`t.type`、`t.setSafeArea`。`t.type` 点击聚焦后全选原文字，再逐字输入或用退格清空；本次 Unity 6000.6.6f1 Editor 和 Windows Release IL2CPP Player 分别跑过 `input` 用例，ASCII 逐字输入、替换原文字、清空的完整快照均与 headless、H5 相等。该验证使用 Legacy Input（`activeInputHandler: 0`），未启用 `FAIRYGUI_INPUT_SYSTEM`；中文输入法选字过程未覆盖。
 - **安全区模拟。** 开发运行器的 `t.setSafeArea` 注入屏幕像素边距，等两次原生渲染更新后继续。Unity 平台优先读 `globalThis.__lguiSafeArea`，没有注入时读宿主安全区；边距变化在下一帧发一次尺寸通知，同一帧的尺寸和边距变化合并通知。Node 已覆盖注入读取、同值不重复、恢复宿主边距；Unity 6000.6.6f1 Editor 和 Windows Release IL2CPP Player 已验证 960×540 全屏界面的三组安全区重排，完整快照与 headless 一致。
 - **网络启动和关闭。** 请求遵守 Unity 工程的网络策略。HTTP 在启动时被拒绝等同步失败，会正常结束失败处理：原生失败原因含 `LGUI-RT-161`，JS 网络层按既有 `LGUI-RT-101` 报告；外链图片走已有失败回调，上层图片绑定使用既有错误处理和占位图；音频记录一次 `LGUI-RT-161` 并结束。宿主停止后不再派发旧代请求的回调；图片的一次回调触发宿主关闭时，也不会继续派发剩余旧回调。框架不会为此重试、修改网络策略或系统代理。专用验证工程的 HTTP 放行配置不代表普通 Player 配置。
+- **代码图标。** `icon://<名字>`（`lgui.app({ icons })`、`lgui.registerIcons`）只在网页端和 `lgui test` 提供。工程里用了代码图标时，`lgui unity export` 直接报 `LGUI-CLI-144` 并拒绝导出，不改写 Unity 工程和 `.lgui/project.json`；Unity 运行时遇到也报 `LGUI-RT-072`，不会静默空白。要导出到 Unity 的工程改用 `ui/` 包里登记的 PNG 图片。
 
 正常流程与预期失败用例分别记录：保留原始错误码和堆栈，并核对有没有额外的未预期错误。不要把一次构建成功、Node 边界测试或图片 URL 可访问，写成 Player 的功能、像素或内存验收通过。
 
@@ -150,5 +151,6 @@ node tests/unity/acceptance/memory-host.mjs --player "<验证Player>" --evidence
 | `LGUI-RT-160` | Unity 宿主启动、每帧回调或退出失败。按完整堆栈检查脚本、资源路径、PuerTS 和桥生成；回调出错时按该回调的实际原因修复。 |
 | `LGUI-RT-161` | Unity 存储、HTTP、音频等平台服务失败。按日志检查本地目录权限、请求和资源地址。 |
 | `LGUI-RT-001` | 当前能力尚未实现，例如 Unity WebSocket。按产品需要评估接口能力。 |
+| `LGUI-CLI-144` / `LGUI-RT-072` | 工程使用了代码图标（`icon://…`、`icons` 或 `lgui.registerIcons`），Unity 后端不支持。要导出到 Unity 就换成 `ui/` 包里登记的 PNG 图片。 |
 
 完整清单见 [error-codes.md](error-codes.md)。`LGUI-CLI-050` 仍表示 `lgui check` 无法读取 `tsconfig.json`，Unity 版本校验使用的是 `LGUI-CLI-052`。

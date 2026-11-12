@@ -128,6 +128,17 @@ ui/
 7. 平铺图（`tile`）左右两端要能无缝接上（`LGUI-CLI-086`）。
 8. 图里不画文字（第 8 节）。
 
+### 5.2 代码图标（`icon://`）
+
+包里不带图片文件时，图标的形状可以直接写在代码里（不是在 `ui/` 里放单独的 `.svg` 文件），运行时画出来。注册方法见 [MVC 开发规范](mvc-spec.md) 第 4 节（`lgui.app({ icons })` 或 `lgui.registerIcons`），注册后地址写成 `icon://<名字>`（名字由字母、数字和 `.`、`_`、`-`、`/` 组成，比如 `icon://play`、`icon://hud/shield`）：
+
+- **两种定义写法：**
+  - `shapes`：矢量图元数组（`path`、`circle`、`rect`、`polygon`、`line`），可设 `viewBox` 和设计宽高（默认 64×64），网页端转成缓存的 SVG 渲染，任意缩放都清晰；
+  - `draw(g, width, height)`：过程式 2D 绘制函数（`IconCanvas`，不含浏览器 DOM 类型），网页端按屏幕像素比在离屏画布上画一次并缓存。
+- **能用的地方：** 所有填图片地址的地方都能写 `icon://<名字>`——`<loader url="icon://play"/>`、按钮实例或按钮组件根的 `<Button icon="icon://play" selectedIcon="icon://pause"/>`、标签的 `<Label icon="icon://star"/>`、下拉框的 `<ComboBox icon="icon://mode"/>`、`gearIcon`、工程配置 `placeholder`、绑定表的 `icon` / `placeholder` / `dragIcon`。装载器的对齐、缩放（`fill`）、着色（`color`）、变灰、裁剪填充（`fillMethod` / `fillAmount`）照常生效。
+- **按钮、标签、下拉框要有 `icon` 子控件：** 给按钮、标签、下拉框写了图标（不论是 `ui://` 还是 `icon://`，写在 XML 实例上还是绑定表里），组件里都要有一个名为 `icon` 的装载器子控件，否则网页上显示不出来，`lgui check` 报 `LGUI-UI-066`。
+- **检查与后端边界：** `lgui check` 检查 XML、工程配置和代码里的静态 `'icon://…'` 都已注册（未注册或名字不合法报 `LGUI-UI-009`）；运行时未注册或定义不合法报 `LGUI-RT-072`。代码图标只在网页端（`h5`）和 `lgui test`（`headless`）提供；Unity 后端不支持，`lgui unity export` 检测到工程用了代码图标直接报 `LGUI-CLI-144` 并拒绝导出，Unity 运行时遇到也报 `LGUI-RT-072`。
+
 ## 6. 最小写法模板
 
 组件文件的根节点：
@@ -208,7 +219,7 @@ ui/
 <text id="n1" name="gold" xy="20,20" size="200,48" fontSize="32" color="#ffd84a" bold="true" strokeColor="#3a1f00" strokeSize="1" shadowColor="#80000000" shadowOffset="0,1" align="center" vAlign="middle" autoSize="shrink" singleLine="true" text="1436"/>
 ```
 
-**按钮组件**（`extention="Button"`，标题和图标控件名固定为 `title`、`icon`：实例上的 `<Button title>`、绑定表的 `text` 只写进名为 `title` 的子控件，按钮组件里有文字却没有 `title` 时网页上显示不出来，`lgui check` 报 `LGUI-UI-066`；标签、下拉框也一样）：
+**按钮组件**（`extention="Button"`，标题和图标控件名固定为 `title`、`icon`：实例上的 `<Button title>`、绑定表的 `text` 只写进名为 `title` 的子控件，实例上的 `<Button icon>` / `selectedIcon`、绑定表的 `icon` 只写进名为 `icon` 的子控件；组件里缺对应的子控件时网页上显示不出来，`lgui check` 报 `LGUI-UI-066`；标签、下拉框也一样）：
 
 ```xml
 <component size="160,56" extention="Button">
@@ -498,7 +509,7 @@ ui/
 - 框架默认开虚拟列表，只创建看得见的子项，数据多也不卡。所以子项组件的尺寸要固定。
 - **显示选中项：** 子项组件做成按钮（`extention="Button"`，带 `button` 控制器），根节点下写 `<Button mode="Radio"/>`；选中时 `button` 控制器在 `down` 页（鼠标悬停时是 `selectedOver`），用 `<gearDisplay controller="button" pages="1,3"/>` 挂一个选中框。普通模式（不写 `mode`）的按钮不保持选中，列表选了也看不出来。`lgui new view --pattern split|grid` 生成的子项已经这样写好了。
 - 列表里不要放手写的子项，子项都由代码给数据生成。
-- **拖放的格子：** 拖起时跟手的图标默认用被拖控件自己的图片，所以子项里放一个加载器（比如叫 `icon`），代码把 `dragData`、`drop` 写在它上面；格子本身不动，拖放以后由数据重新生成。
+- **拖放的格子：** 拖起时跟手的图标默认用被拖控件自己的图片（装载器的图片，或按钮、标签的图标），所以子项里放一个加载器（比如叫 `icon`），或者直接把 `dragData`、`drop` 写在带图标的按钮、标签上；格子本身不动，拖放以后由数据重新生成。
 - **树：** 列表写 `treeView="true"` 就是树，每个节点用 `defaultItem` 的组件显示（做成 Radio 模式的按钮就能显示选中，和列表一样）。绑定表和列表用同样的词，节点的子节点放在数据的 `children` 字段里，`key` 必须写。节点默认展开；`clickToExpand="1"` 时单击有子节点的节点展开或收起，`"2"` 时双击；选中一个收起的节点里的子节点时，框架先展开它的父节点。树不是虚拟列表，节点多（几百个以上）时用列表。
 
 ## 13. 检查规则表
@@ -514,7 +525,7 @@ ui/
 | `LGUI-UI-005` | 控件、控制器、动效不能重名 | 控制器 `tabs`，控件 `tabBar` | 控制器 `tabs`，控件也叫 `tabs`；动效叫 `title`，控件也叫 `title` |
 | `LGUI-UI-006` | 包名、组件名是大写开头的驼峰；后缀只能是 `@portrait`（组件）或 `@<语言>`（图片） | `BagPanel@portrait.xml` | `bagPanel.xml`、`BagPanel_portrait.xml` |
 | `LGUI-UI-007` | 横竖两版的控件名、类型、控制器和页名完全一致 | 两版都有 `sellButton`（按钮） | 竖版少了 `sellButton`，或者竖版里它是文字 |
-| `LGUI-UI-009` | 引用的资源存在；跨包引用的资源（子组件、图片）已导出 | `src="sword001"`（存在）；`<image pkg="cmn00001" src="placehd1">`（Common 里导出了） | 引用了已删掉的资源；引用别的包里没导出的图片 |
+| `LGUI-UI-009` | 引用的资源存在；跨包引用的资源（子组件、图片）已导出；`icon://<名字>` 格式正确且已在代码里注册 | `src="sword001"`（存在）；`<image pkg="cmn00001" src="placehd1">`（Common 里导出了）；`url="icon://play"`（已注册） | 引用了已删掉的资源；引用别的包里没导出的图片；`icon://` 名字没注册 |
 | `LGUI-UI-010` | 文字控件写了超长处理（`autoSize` 是 `shrink`、`height`、`ellipsis`、`both` 之一） | `autoSize="ellipsis" singleLine="true"` | 不写 `autoSize`，或写 `none` |
 | `LGUI-UI-011` | 字号不小于 20；没写 `fontSize` 按 FairyGUI 默认的 12 号算 | `fontSize="22"` | `fontSize="14"`、不写 `fontSize` |
 | `LGUI-UI-012` | 绑定了 `redDot` 的控件里有名为 `redDot` 的子控件 | 按钮里放了 `redDot` | 绑了 `redDot`，按钮里没有这个子控件 |
@@ -535,7 +546,7 @@ ui/
 | `LGUI-UI-063`（警告） | 横竖两版同一个控件的固定文字一样 | 两版都是 `text="背包"` | 竖版写 `text="我的背包"` |
 | `LGUI-UI-064` | 全屏界面（`static fullScreen = true`）的组件，横竖两版都有名为 `safe` 的直接子控件 | 见第 7.3 节 | 全屏界面没有 `safe` |
 | `LGUI-UI-065` | 音效（按钮的 `sound`、工程配置的 `sounds.click`）指向存在、已登记的 mp3；`sound=""` 表示不出声 | `<Button sound="ui://Bag/click"/>`，`click.mp3` 登记在 Bag 包里 | 没登记、文件不存在、`click.wav` |
-| `LGUI-UI-066` | 给按钮、标签写了标题（实例上的 `<Button title>`、`<Label title>`，绑定表的 `text`），给下拉框写了选项（实例上的 `<item title>`，绑定表的 `items`），组件里就要有名为 `title` 的子控件 | 组件里的文字叫 `title` | 文字叫 `text`、`label`，绑定表还给它写 `text` / `items` |
+| `LGUI-UI-066` | 给按钮、标签写了标题（实例上的 `<Button title>`、`<Label title>`，绑定表的 `text`），给下拉框写了选项（实例上的 `<item title>`，绑定表的 `items`），组件里就要有名为 `title` 的子控件；给按钮、标签、下拉框写了图标（实例上的 `icon` / `selectedIcon`，绑定表的 `icon`），组件里就要有名为 `icon` 的子控件 | 组件里的文字叫 `title`、装载器叫 `icon` | 文字叫 `label` 还给它写 `text`；没有 `icon` 子控件还给按钮写 `icon="icon://play"` |
 | `LGUI-UI-067` | 动效里旋转、缩放的控件设了轴心 | `pivot="0.5,0.5"`（要绕左上角写 `pivot="0,0"`） | 不写 `pivot` 就做 `Rotation` / `Scale` |
 | `LGUI-UI-068` | `shrink`、`ellipsis` 的文字，框只放得下一行时写 `singleLine="true"` | `size="300,40" fontSize="28" autoSize="shrink" singleLine="true"` | `size="300,40" fontSize="28" autoSize="shrink"` |
 | `LGUI-UI-069` | 动效的目标不是普通组（普通组只在编辑时有，生成界面包时会被去掉，动效动不了它） | 要动整组就用高级组 `<group … advanced="true"/>`，或者让动效直接动组里的控件 | `<group id="n8" …/>` + `<item type="XY" target="n8" …/>` |

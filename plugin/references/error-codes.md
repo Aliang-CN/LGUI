@@ -72,6 +72,7 @@ LGUI 的每条报错都带错误码，并写明：哪个文件哪一行（如果
 | `LGUI-CLI-141` | 静态文字里有字体没有的字（报错里列出是哪些字、在哪个文件或文本键）：`ui/` 里的固定文字按显示它的文字控件的字体查（按钮、标签、下拉框、列表项的标题看组件里名为 `title` 的文字控件；`gearText` 的值跟着所在控件），`i18n/` 里同键的翻译跟着那个控件，其余文案和框架自己显示的字（`format.compact` 的单位，按工程 `languages`）查默认字体 | 换一个有这些字的字体；表情符号这类字体里没有的字改用图片或 ArtText；写错的字改掉 |
 | `LGUI-CLI-142` | 工程配置的 `defaultFont` 不是 `ui/fonts/` 里的字体（系统字体名也不行，各平台不一样） | 把字体文件放进 `ui/fonts/<名字>.ttf`，或者把 `defaultFont` 改成 `ui/fonts/` 里的名字，或者改成 `null`（用系统默认字体） |
 | `LGUI-CLI-143` | `lgui unity export`：工程用了项目字体（Unity 上是 TextMesh Pro 字体），Unity 工程里没有 TMP Settings，导出要从 `com.unity.ugui` 自带的 TMP Essential Resources 资源包导入，但找不到资源包（报错里列出找过的位置：工程的 `Library/PackageCache/com.unity.ugui@…/`、`Packages/com.unity.ugui/`、Unity Hub 默认安装位置或 Windows `%LOCALAPPDATA%\Programs\Unity\<版本>` 用户安装位置里这个版本的内置包），或者资源包读不了、里面没有 TMP Settings、写入失败。什么都不写 | 用这个版本的 Unity 打开一次工程再导出；Unity 装在这些候选位置之外时，在 Unity 里点 Window → TextMeshPro → Import TMP Essential Resources 导入一次，再导出 |
+| `LGUI-CLI-144` | `lgui unity export`：工程使用了代码图标（`icon://…`、`lgui.app({ icons })` 或 `lgui.registerIcons`），Unity 后端不支持代码图标；什么都不写 | 要导出到 Unity 就把图标换成 `ui/` 包里登记的 PNG 图片，删掉代码图标定义和 `icon://` 引用；只出网页包的工程不用跑 `unity export` |
 | `LGUI-CLI-999` | 命令行内部错误（LGUI 自己的缺陷） | 把输出报告给维护者 |
 
 ## LGUI-RT-xxx
@@ -105,6 +106,7 @@ LGUI 的每条报错都带错误码，并写明：哪个文件哪一行（如果
 | `LGUI-RT-065` | 界面还没打开或已经关闭时用了 `this.ui` | 只在生命周期钩子里用 `this.ui` |
 | `LGUI-RT-070` | 网络图片加载失败，显示占位图（外部失败，记 `warn`） | 确认图片地址对、能访问 |
 | `LGUI-RT-071` | 加载器要显示 `ui://包名/图片名`，但那个包没有加载（不是这个界面依赖的包）；写错了，开发和测试里抛错 | 让界面用到那个包的组件（比如列表的 `defaultItem`，或者用那个包里的按钮组件、给它的 `icon` 赋值），打开界面时就会一起加载 |
+| `LGUI-RT-072` | 代码图标定义不合法（注册名带了 `icon://` 前缀或含非法字符、`shapes` 为空、图元类型未知、宽高或 `viewBox` 不是正数）、引用了未注册的 `icon://<名字>`，或者在 Unity 后端上使用了代码图标 | 按 ui-spec.md 第 5.2 节和 mvc-spec.md 第 4 节检查图标名字和定义，在 `lgui.app({ icons })` 或 `lgui.registerIcons` 里注册；Unity 工程改用 `ui://` 图片资源 |
 | `LGUI-RT-080` | 打开界面失败（界面包加载失败、组件不存在、绑定出错等），不会显示打开了一半的界面 | 按报错里的原因改 |
 | `LGUI-RT-081` | 界面在打开的过程中（或在 modal 队列里排队时）被关闭了，这次打开已取消 | 一般不需要处理 |
 | `LGUI-RT-082` | 关闭一个没有打开的界面（只记 `info` 日志，不算错误） | 不需要处理 |
@@ -126,11 +128,11 @@ LGUI 的每条报错都带错误码，并写明：哪个文件哪一行（如果
 | `LGUI-RT-152` | 树的绑定没写 `key`，或者树里有两个节点的 key 一样 | 写上 `key`（比如 `key: (n: TreeNode) => n.id`），key 在整棵树里要唯一 |
 | `LGUI-RT-210` | 动效只写了 `done`，但它不会自动播放，也没写 `playing` 或 `play`，永远放不完 | 加上 `playing` 或 `play`，或者在 `ui/` 里给它勾上自动播放 |
 | `LGUI-RT-211` | 动效同时写了 `playing` 和 `play`，或者在 `ItemView` 里写了 `play` | 二选一；`ItemView` 里用 `playing: it => …` |
-| `LGUI-RT-220` | 写了 `dragData` 的控件不是加载器或按钮，又没写 `dragIcon`，拖起时没有图标 | 加上 `dragIcon`，或者把 `dragData` 写在加载器、按钮上 |
+| `LGUI-RT-220` | 写了 `dragData` 的控件不是加载器、按钮或标签，又没写 `dragIcon`，拖起时没有图标 | 加上 `dragIcon`，或者把 `dragData` 写在加载器、按钮或标签上 |
 | `LGUI-RT-221` | 写了 `dragIcon` 但没写 `dragData` | 加上 `dragData`，或者去掉 `dragIcon` |
 | `LGUI-RT-230` | 网页端启动时 FairyGUI-dom 补丁装不上：上游没有要挂钩子的方法、属性或字段了（升级了上游，或者改了框架副本里的 `vendor/fairygui.module.js`）。错误里写着补丁编号 | 用户工程：不要改 `.lgui/framework/`，运行 `lgui upgrade` 换回插件带的框架。维护 LGUI：对照 `framework/backends/h5/vendor/PATCHES.md` 里那个编号重看补丁 |
 | `LGUI-RT-231` | 网页端启动时 FairyGUI-dom 补丁要加的方法，上游已经有同名的了 | 同 `LGUI-RT-230`；维护 LGUI 时判断上游是否已经实现了同样的功能，决定改用上游的还是去掉这个补丁 |
-| `LGUI-RT-232` | 网页端量 `autoSize="shrink"` 文字的宽度时浏览器给不出 Canvas 2D | 换一个支持 Canvas 2D 的浏览器或 WebView |
+| `LGUI-RT-232` | 网页端量 `autoSize="shrink"` 文字的宽度、或光栅化 `draw` 代码图标时浏览器给不出 Canvas 2D | 换一个支持 Canvas 2D 的浏览器或 WebView（代码图标也可改用 `shapes` 矢量图元写法） |
 | `LGUI-RT-240` | 对已经打开（或正在打开）的界面再 `open`，这次的参数和打开时的不同（不会生效，不静默丢掉） | 同一个界面同时只开一个：先用 `lgui.ui.isOpen` 判断，要换内容就改它绑定的 Model；要依次显示好几份（比如几份奖励），在 Controller 里排队，前一个关了再开下一个 |
 | `LGUI-RT-241` | 剪贴板读写失败（外部失败）：网页不是 https 或 localhost、浏览器拒绝；Unity 读写系统剪贴板出错，或者 Unity 包不是这一版（`LGUI.Platform` 没有 `ClipboardGet` / `ClipboardSet`） | 网页用 https 或 localhost；写入放在点击动作里直接调用；用 `lgui.request` 包一层，失败时拿到 `{ ok: false }` 并记 `warn` |
 | `LGUI-RT-242` | `selected` 绑在普通按钮（Common 模式）上，显示不出选中（绑定时就报） | 在 `ui/` 里把按钮组件的模式改成 Check（开关）或 Radio（单选），或者去掉 `selected` |

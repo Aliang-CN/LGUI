@@ -1,7 +1,7 @@
 // FairyGUI-unity 对象 → 引擎无关接口。缓存包装对象，所有原生事件均有成对的 Add/Remove。
 import type {PointerInput, Rect, UIObject, UIComponent, UIText, UIInput, UIButton, UIImage, UILoader, UIList, UIController, UITransition, UIProgress, UIGraph, Unsubscribe,
   UILabel, UISlider, UIComboBox, UIMovieClip, UITree, UITreeNode, WheelInput, TweenProp, TransitionTouch} from '../../../core/index';
-import {LgRuntimeError} from '../../../core/index';
+import {LgRuntimeError, isIconUrl, reportIconFault, unityIconError} from '../../../core/index';
 import type {NativeColor, NativeComponent, NativeController, NativeEventContext, NativeEventHandler, NativeEventListener, NativeFairyGUI, NativeGraph, NativeImage, NativeInputEvent, NativeList, NativeLoader, NativeObject, NativeProgress, NativeRect, NativeText, NativeTextInput, NativeButton, NativeTransition,
   NativeLabel, NativeSlider, NativeComboBox, NativeMovieClip, NativeTree, NativeTreeNode} from './native-ui';
 
@@ -284,7 +284,10 @@ export function createObjectAdapter(fgui: NativeFairyGUI, now: () => number, toP
     get title(): string { return this.native.title; }
     set title(value: string) { this.native.title = value; }
     get icon(): string { return this.native.icon; }
-    set icon(value: string) { this.native.icon = value; }
+    set icon(value: string) {
+      if (isIconUrl(value)) { this.native.icon = ''; reportIconFault(unityIconError(value), {url: value}); return; }
+      this.native.icon = value;
+    }
     get selected(): boolean { return this.native.selected; }
     set selected(value: boolean) { this.native.selected = value; }
     get mode(): string { return buttonModeName(this.native.mode); }
@@ -328,6 +331,12 @@ export function createObjectAdapter(fgui: NativeFairyGUI, now: () => number, toP
     constructor(readonly native: NativeLoader) { super(native); }
     get url(): string { return this.native.url ?? ''; }
     set url(value: string) {
+      if (isIconUrl(value)) {
+        this.native.url = '';
+        for (const handler of [...this.errors]) handler(value);
+        reportIconFault(unityIconError(value), {url: value});
+        return;
+      }
       this.native.url = value;
       if (!value.startsWith('ui://')) return;
       const item = fgui.UIPackage.GetItemByURL(value);
@@ -400,7 +409,10 @@ export function createObjectAdapter(fgui: NativeFairyGUI, now: () => number, toP
     get title(): string { return this.native.title ?? ''; }
     set title(value: string) { this.native.title = value; }
     get icon(): string { return this.native.icon ?? ''; }
-    set icon(value: string) { this.native.icon = value; }
+    set icon(value: string) {
+      if (isIconUrl(value)) { this.native.icon = ''; reportIconFault(unityIconError(value), {url: value}); return; }
+      this.native.icon = value;
+    }
   }
   class UnitySlider extends UnityComponent implements UISlider {
     constructor(readonly native: NativeSlider, name: string) { super(native, name); }

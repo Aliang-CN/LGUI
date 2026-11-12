@@ -14,7 +14,8 @@
 
 ```
 src/
-├── main.ts                       # 入口：选后端、注册服务、打开第一个界面
+├── main.ts                       # 入口：选后端、注册服务和代码图标、打开第一个界面
+├── icons.ts                      # 代码图标定义（可选，第 4 节）
 └── modules/
     └── bag/                      # 一个功能一个文件夹，小写
         ├── BagModel.ts           # 数据和规则
@@ -57,6 +58,39 @@ export default lgui.app({
 ```
 
 要把日志、声音交给宿主（比如 Lumio 引擎）时，加一项 `platform`，见第 14.3 节。
+
+包里不带图片文件时，图标形状可以写在 `src/icons.ts` 里，通过 `lgui.app({ icons })`（或启动前 / 运行时的 `lgui.registerIcons(icons)`）注册，界面和绑定表里写 `'icon://<名字>'`（见 [UI 开发规范](ui-spec.md) 第 5.2 节）：
+
+```ts
+// src/icons.ts
+import type { IconDef } from 'lgui';
+
+export const icons: Record<string, IconDef> = {
+  // 矢量图元：网页端序列化为缓存的 SVG 渲染，缩放不糊
+  play: {
+    viewBox: [0, 0, 64, 64],
+    shapes: [
+      { type: 'circle', cx: 32, cy: 32, r: 28, fill: '#264466', stroke: '#6aa7ff', strokeWidth: 3 },
+      { type: 'polygon', points: [[26, 20], [26, 44], [46, 32]], fill: '#ffffff' },
+    ],
+  },
+  // 过程式 2D 绘制（IconCanvas 不含浏览器 DOM 类型，不触发 LGUI-MVC-001）
+  spark: {
+    width: 64,
+    height: 64,
+    draw(g, w, h) {
+      g.strokeStyle = '#ffd84a';
+      g.lineWidth = 4;
+      g.beginPath();
+      g.arc(w / 2, h / 2, 20, 0, Math.PI * 2);
+      g.stroke();
+    },
+  },
+};
+```
+
+- 代码图标同步就绪，绑定表里切 `'icon://…'` 时直接换上，不会先闪一下 `placeholder`；引用未注册的名字或定义不合法时报 `LGUI-RT-072`（静态字符串先由 `lgui check` 报 `LGUI-UI-009`）。
+- 代码图标只在网页端（`h5`）和 `lgui test`（`headless`）提供；Unity 导出时报 `LGUI-CLI-144`，Unity 运行时报 `LGUI-RT-072`。
 
 ## 5. Model
 
@@ -163,7 +197,7 @@ export class BagView extends View<BagPanelUI> {
 | `text` | 文字、按钮和标签的标题、输入框、`ArtText` | `pick`（不写固定字符串：固定文字放在 `ui/` 里）；输入框显示 Model 的值，`input` 跑完后框里写回这个值（Model 截断了，框里也截断） | `text: pick(bagModel, s => s.gold, format.number)` |
 | `visible` | 任意控件 | 布尔 | `visible: pick(bagModel, s => s.items.length === 0)` |
 | `enabled` | 任意控件 | 布尔；`false` 时变灰、不可点 | `enabled: pick(bagModel, s => s.selectedId !== null)` |
-| `icon` | 加载器、按钮和标签的图标 | 图片地址 | `icon: it => it.iconUrl` |
+| `icon` | 加载器、按钮和标签的图标 | 图片地址（`ui://…`、`icon://…` 或网络图片） | `icon: it => it.iconUrl`、`icon: 'icon://play'` |
 | `progress` | 进度条 | 0–100 | `progress: pick(taskModel, s => s.percent)` |
 | `value` | 滑动条 | 数字，滑动条自己的单位（在 `ui/` 里写的 min 和 max 之间） | `value: pick(settingsModel, s => s.volume)` |
 | `playing` | 序列帧动画 | 布尔：真就播，假就停 | `playing: pick(fxModel, s => s.spinning)` |
@@ -182,12 +216,12 @@ export class BagView extends View<BagPanelUI> {
 | `select` | 列表、树、下拉框 | 用户点选时调用。列表、树：参数是 key；下拉框：参数是序号 | `select: id => bagController.select(id)` |
 | `lockWhilePending` | 有 `click` 的控件 | `true`：动作返回的 Promise 结束前保持锁住；结束前界面关了就不再碰控件，动作照常跑完，失败照常报出来 | `lockWhilePending: true` |
 | `visibleOn` | 任意控件 | 只在这些输入类型下显示 | `visibleOn: ['keyboardMouse']` |
-| `placeholder` | 加载器 | 加载中和失败时显示的图，不写用工程配置的默认占位图 | `placeholder: 'ui://Bag/iconLoading'` |
+| `placeholder` | 加载器 | 加载中和失败时显示的图（`ui://…` 或 `icon://…`），不写用工程配置的默认占位图 | `placeholder: 'ui://Bag/iconLoading'` |
 | `playing` | 动效 | 布尔；为真就播（按 `ui/` 里的播放次数，`-1` 一直循环），为假就停 | `glow: { playing: pick(bagModel, s => s.hasNew) }` |
 | `play` | 动效 | 值每变一次播一遍（打开时的值不播），比如一个递增的计数；不能和 `playing` 一起写，不能写在 `ItemView` 里 | `levelUp: { play: pick(heroModel, s => s.levelUps) }` |
 | `done` | 动效 | 一次播放放完时调用，调用 Controller 方法（被停掉、重播、界面关闭时不调用） | `done: () => heroController.levelUpShown()` |
 | `dragData` | 任意控件 | 能拖起来；值是松手时交给 `drop` 的数据，`null` 时拖不起来（比如空格子） | `dragData: it => it.id` |
-| `dragIcon` | 写了 `dragData` 的控件 | 拖起时跟手的图标（图片地址），不写用加载器自己的图片或按钮的图标 | `dragIcon: it => it.iconUrl` |
+| `dragIcon` | 写了 `dragData` 的控件 | 拖起时跟手的图标（图片地址），不写用加载器自己的图片，或按钮、标签的图标 | `dragIcon: it => it.iconUrl` |
 | `drop` | 任意控件 | 别的控件拖到这里松手时调用，参数是那边的 `dragData`；写在 `ItemView` 里时第二个参数是这一项的数据 | `drop: id => bagController.equip(id)` |
 | `roll` | 配 `text`（数字文字）或 `progress`（进度条） | `{ duration, ease? }`（毫秒，缓动默认 `'Quad.Out'`）：值从旧值平滑滚到新值。`text` 的 `pick` 取出的必须是数字，格式化函数每帧对滚动中的数字调用一次，结果变了才写；两端都是整数时每帧取整。打开时直接显示当前值，不滚；滚动中值又变了，从现在显示的数接着滚、重新计时。不能写在 `ItemView` 里 | `gold: { text: pick(walletModel, s => s.gold, format.number), roll: { duration: 500 } }` |
 | `tick` | 有显示词的任意一项 | 毫秒（正数）：每隔这么久重新算一遍这一项的显示值（`pick` 的取值和格式化、`ItemView` 里的函数），结果变了才写。被全屏界面盖住时不算，露出来马上算一次 | `eventTimer: { text: pick(eventModel, s => s.endsAt, t => format.duration(t - lgui.time.now())), tick: 1000 }` |
@@ -352,6 +386,7 @@ keys: Keys = {
 | `lgui.log.info('bag_opened', { count })` | 写日志（第 14.2 节） |
 | `await lgui.platform.clipboard.writeText(uid)`、`readText()` | 剪贴板（只在 Controller 里用）：放进文字、读出文字。读写不了时 Promise 失败（`LGUI-RT-241`，比如网页不是 https、浏览器拒绝），用 `lgui.request` 包一层拿 `{ ok }`；网页里写入放在点击动作里直接调用，不要先 `await` 别的 |
 | `lgui.sound.play(…)`、`setVolume`、`setMuted`、`settings` | 声音（第 15 节） |
+| `lgui.registerIcons(icons)` | 追加注册代码图标（第 4 节；固定图标优先写在 `lgui.app({ icons })` 里） |
 
 **文本表 `i18n/<语言>.json`：** 扁平的「键 → 文字」，键名是可读的点号键。要按数量变化的文字，值写成按复数形式分开的对象，用参数 `count` 选（形式名和 `Intl.PluralRules` 一致；中文、日文、韩文只写 `other`）：
 
@@ -494,7 +529,7 @@ beforeEach(() => bagModel.reset());
 | `LGUI-MVC-014` | 不写死用户能看到的文字：绑定表的 `text` 不写固定字符串（固定文字放在 `ui/` 里，动态文字用 `pick(…, lgui.t(键))`）；`lgui.toast` / `lgui.confirm` 的参数是文本键 | `lgui.toast('bag.sold')`、`text: pick(bagModel, s => lgui.t('bag.gold', { n: s.gold }))` | `lgui.toast('已售出')`、`text: '金币'`、`text: 'bag.title'` |
 | `LGUI-MVC-015` | 代码里不写坐标和尺寸 | 在 `ui/` 里用关联 | `this.ui.list.width = 800` |
 | `LGUI-MVC-016` | 全屏界面要么有 `@portrait` 竖版，要么写 `static bothOrientations = true` | 有 `BagPanel@portrait` | 全屏、没竖版、也没写 `bothOrientations` |
-| `LGUI-MVC-017` | 文件位置和命名照第 2 节；一个文件只写一个 View | `src/modules/bag/BagView.ts` | 一个文件里写两个 View |
+| `LGUI-MVC-017` | 文件位置和命名照第 2 节（`src/main.ts`、可选的 `src/icons.ts`、`src/modules/<模块>/*.ts`）；一个文件只写一个 View | `src/modules/bag/BagView.ts`、`src/icons.ts` | 一个文件里写两个 View |
 | `LGUI-MVC-018`（警告） | 不跨界面修改控件 | 改 Model | `lgui.ui.get(ShopView)` 之后改它的控件 |
 | `LGUI-MVC-019` | `keys` 表：`back` 是 `'close'`、`'none'` 或函数；其他动作是 `{ do, hint? }`，`hint` 是文本键 | `confirm: { do: …, hint: 'bag.sell' }` | `confirm: 'sell'` |
 | `LGUI-MVC-020`（警告） | View 里不直接改控件属性（坐标尺寸归 `LGUI-MVC-015`）：旋转、换语言重建组件后改的值就没了 | 绑定表 `title: { visible: pick(…) }` | 钩子里写 `this.ui.title.visible = false` |
@@ -507,7 +542,7 @@ TypeScript 自己的类型错误也一起报出来（带 TS 的错误码）。�
 
 | 类 | 什么情况 | 框架怎么做 | 例子 |
 |---|---|---|---|
-| ① 写错了 | 代码或界面写错了 | 抛 `LgRuntimeError`，并记一条 `error` 日志 | 缺文本键 `LGUI-RT-090`、加载器的图片所在的包没加载 `LGUI-RT-071`、ArtText 缺字符 `LGUI-RT-130`、字体的包没加载 `LGUI-RT-171`、没有 `Common/ActionHintBar` `LGUI-RT-172`、没配 `i18nBase` 就换语言 `LGUI-RT-173`、声音没登记 `LGUI-RT-170`、`lgui.sound` 参数不对 `LGUI-RT-174` |
+| ① 写错了 | 代码或界面写错了 | 抛 `LgRuntimeError`，并记一条 `error` 日志 | 缺文本键 `LGUI-RT-090`、加载器的图片所在的包没加载 `LGUI-RT-071`、代码图标未注册或写法不对 `LGUI-RT-072`、ArtText 缺字符 `LGUI-RT-130`、字体的包没加载 `LGUI-RT-171`、没有 `Common/ActionHintBar` `LGUI-RT-172`、没配 `i18nBase` 就换语言 `LGUI-RT-173`、声音没登记 `LGUI-RT-170`、`lgui.sound` 参数不对 `LGUI-RT-174` |
 | ② 外部失败 | 网络、加载这类外部的东西失败了 | 不抛错，把失败交回给代码；记一条 `warn` 日志 | 请求失败 `LGUI-RT-100` / `101`（`run` 返回 `{ ok: false }`）、网络图片加载失败 `LGUI-RT-070`（留着占位图）、声音加载失败 `LGUI-RT-026`、存着的声音设置读不出来 `LGUI-RT-175`、剪贴板读写不了 `LGUI-RT-241`（用 `lgui.request` 包着时） |
 | ③ 正常的先后顺序 | 不是错，只是先后顺序 | 记一条 `info` 日志 | `await` 之后要关的界面已经关了 `LGUI-RT-082` |
 
