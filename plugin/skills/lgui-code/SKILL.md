@@ -22,6 +22,6 @@ license: MIT
 | ui/ 里的固定文字提取到文本表 | `lgui i18n extract`，再翻译其他语言的 `i18n/<语言>.json` |
 | 跑测试 | `lgui test`（headless 后端、假时钟）；只跑一部分：`lgui test tests/bag.test.ts`、`--name 出售`；测位置、尺寸、文字排版：`--browser`（真浏览器，规范第 12 节） |
 
-**要点：** 只 `import` 自 `lgui` 和 `lgui/ui`；Model 只放数据和规则；View 只写绑定表（显示类用 `pick`，动作只调用一个 Controller 方法）；Controller 改 Model、调服务、开关界面；Service 先写接口，再写真实实现和测试用的假实现；不带图片文件时可在 `src/icons.ts` 定义代码图标并通过 `lgui.app({ icons })` 注册（规范第 4 节）。用户看得到的文字都用文本键。测试之间 Model 不重置，加 `reset()` 并在 `beforeEach` 里调用（规范第 12 节）。
+**要点：** 只 `import` 自 `lgui` 和 `lgui/ui`；Model 只放数据和规则；View 只写绑定表（显示类用 `pick`，动作只调用一个 Controller 方法）；Controller 改 Model、调服务、开关界面；Service 先写接口，再写真实实现和测试用的假实现；不带图片文件时可在 `src/icons.ts` 定义代码图标并通过 `lgui.app({ icons })` 注册（规范第 4 节）；不带 mp3 文件时声音地址可写 `synth://<名字>` 并在 `lgui.app({ platform: { audio } })` 提供自定义声音出口（规范第 15 节）。用户看得到的文字都用文本键。测试之间 Model 不重置，加 `reset()` 并在 `beforeEach` 里调用（规范第 12 节）。
 
 **产出：** `src/` 和 `tests/` 里的代码，`lgui check` 没有错误，`lgui test` 全部通过。接着用 `lgui-verify` 截图。

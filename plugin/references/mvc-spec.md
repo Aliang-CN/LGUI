@@ -179,7 +179,7 @@ export class BagView extends View<BagPanelUI> {
 | `result` | 否 | 不交回 | 关闭时可以顺带交回什么，只写类型：`static result: { itemId: string };` |
 | `inputMode` | 否 | `hud` 层是 `'game'`，其余是 `'ui'` | `'ui'`：只有界面收输入；`'game'`：只有游戏场景收；`'all'`：两边都收 |
 | `bothOrientations` | 否 | `false` | 全屏界面没有竖版时写 `true`，表示两种方向共用这一版 |
-| `music` | 否 | 不放 | 背景音乐 `'ui://<包>/<声音名>'`，见第 15.1 节 |
+| `music` | 否 | 不放 | 背景音乐 `'ui://<包>/<声音名>'` 或代码合成声音 `'synth://<名字>'`，见第 15.1 节 |
 
 写了表外的 static，`lgui check` 报 `LGUI-MVC-003`。
 
@@ -516,7 +516,7 @@ beforeEach(() => bagModel.reset());
 | `LGUI-MVC-001` | 游戏代码只 import `lgui`、`lgui/ui` 和工程内的相对路径；不用 `document`、`window`、`globalThis`、`CS`、`localStorage`、`fetch` 等平台全局对象（工程里自己声明的同名变量、参数不算） | `lgui.platform.net.fetch(…)` | `fetch(…)`、`document.body` |
 | `LGUI-MVC-002` | View 写了必填的 `component` 和 `layer` | `static layer = 'page'` | 没写 `layer` |
 | `LGUI-MVC-003` | View 只写 6.2 表里列出的 static；`ItemView`、`PartView` 只写 `component` | — | `static cache = true` |
-| `LGUI-MVC-004` | static 的值合法：`layer` 是 5 层之一，`component` 是存在的导出组件，`inputMode` 是 `ui`/`game`/`all`，`music` 是登记在 `ui/` 里的 mp3 音效（`ui://包名/音效名`） | `static layer = 'popup'`、`static music = 'ui://Bag/bgm'` | `static layer = 'dialog'`、`static music = 'bgm.mp3'` |
+| `LGUI-MVC-004` | static 的值合法：`layer` 是 5 层之一，`component` 是存在的导出组件，`inputMode` 是 `ui`/`game`/`all`，`music` 是登记在 `ui/` 里的 mp3 音效（`ui://包名/音效名`）或写法合法的 `synth://<名字>`（需配自定义 `platform.audio`） | `static layer = 'popup'`、`static music = 'ui://Bag/bgm'`、`static music = 'synth://bgm'` | `static layer = 'dialog'`、`static music = 'bgm.mp3'` |
 | `LGUI-MVC-005` | 绑定表的键是组件里真实存在的控件、控制器、动效或点号路径 | `'header.count'` | `'header.cnt'` |
 | `LGUI-MVC-006` | 绑定表只用词表里的词；控制器只用 `page`、`change`；动效只用 `playing`、`play`、`done` | `{ text: … }` | `{ label: … }`、控制器上写 `visible` |
 | `LGUI-MVC-007` | View 里显示类的值是固定值或 `pick(…)`；`ItemView` 里是函数 | `pick(bagModel, s => s.gold)` | `bagModel.get().gold` |
@@ -588,14 +588,19 @@ export default lgui.app({
 | 服务 | 后端自带的 |
 |---|---|
 | `log`（`Logger`：`enabled`、`debug`、`info`、`warn`、`error`、`child`） | h5：浏览器控制台；headless：记进测试状态，`error` 级的让测试失败 |
-| `audio`（`AudioService`：`play`、`music`、`setPaused`） | h5：浏览器的 Web Audio；headless：记下放过的音效和当前的背景音乐 |
+| `audio`（`AudioService`：`play`、`music`、`setPaused`） | h5：浏览器的 Web Audio（播登记的 mp3）；Unity：`LGUI.Platform` 的 AudioSource；headless：记下放过的音效和当前的背景音乐。用 `synth://` 代码合成声音时，必须在这里交入自定义的 `AudioService` |
 | `clipboard`（`ClipboardService`：`writeText`、`readText`） | h5：浏览器的 `navigator.clipboard`（只有 https 或 localhost 的页面能用）；Unity：系统剪贴板（Unity 包里 `LGUI.Platform` 的 `ClipboardGet` / `ClipboardSet`）；headless：存在内存里，测试里 `lgui.platform.clipboard.readText()` 读得到 |
 
 LGUI 不依赖 Lumio 引擎，只是日志接口照抄了引擎 `Logger` 的形状。`lgui test` 里 `platform` 不生效。
 
 ## 15. 界面声音
 
-声音文件是 mp3，登记在 `ui/` 的包里（UI 开发规范第 5 节），地址写成 `ui://<包>/<声音名>`。分两个声道：背景音乐 `music`、音效 `sfx`（按钮音和 `lgui.sound.play`）。
+声音地址支持两种写法：
+
+- **mp3 文件（`ui://<包>/<声音名>`）：** 登记在 `ui/` 的包里（UI 开发规范第 5 节），由后端自带的声音出口加载播放。
+- **代码合成声音（`synth://<名字>`）：** 名字以字母或数字开头，由字母、数字和 `.`、`_`、`-`、`/` 组成（比如 `synth://click`、`synth://bgm/menu`），不需要放任何音频文件，交由宿主在 `lgui.app({ platform: { audio } })` 里提供的自定义 `AudioService` 实时合成播放。工程里用了 `synth://` 却没提供自定义 `audio` 时，`lgui check` 报 `LGUI-UI-065` / `LGUI-MVC-004`，运行时落到后端默认声音出口报 `LGUI-RT-170`。`lgui test`（含 `--browser`）不需要真实发声，照常把 `synth://<名字>` 记进 `t.sounds()` 和 `t.music()`。
+
+分两个声道：背景音乐 `music`、音效 `sfx`（按钮音和 `lgui.sound.play`）。
 
 ### 15.1 背景音乐：`static music`
 
@@ -624,7 +629,7 @@ export class MainView extends View<MainViewUI> {
 
 | 写法 | 作用 |
 |---|---|
-| `lgui.sound.play('ui://Bag/coin', { volume: 0.8 })` | 放一次音效（只在 Controller 里用）；最终音量 = `volume` × 音效声道的音量 |
+| `lgui.sound.play('ui://Bag/coin', { volume: 0.8 })` | 放一次音效（也可写 `'synth://coin'`；只在 Controller 里用）；最终音量 = `volume` × 音效声道的音量 |
 | `lgui.sound.setVolume('music', 0.5)` | 设一个声道的音量（0–1） |
 | `lgui.sound.setMuted('sfx', true)` | 一个声道静音或取消静音 |
 | `pick(lgui.sound.settings, s => s.music.volume)` | 界面读当前设置：`{ music: { volume, muted }, sfx: { volume, muted } }` |

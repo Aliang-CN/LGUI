@@ -14,6 +14,8 @@ export interface BackendConfig {
   uiBase: string;
   /** 翻译文件所在的地址（h5 是生成目录里 i18n/ 对应的网址，比如 .lgui/build/dev/i18n/；生成的启动入口传 ./i18n）。不写时只能用默认语言，换语言报 LGUI-RT-173。 */
   i18nBase?: string;
+  /** Unity 用：ui/ 里按钮写的非 ui:// 声音地址（如 synth://）：组件默认音（"包/按钮组件"）和实例覆盖音（"包/组件#控件名"）。 */
+  buttonSounds?: Readonly<Record<string, string>>;
 }
 
 /** 一个后端。 */

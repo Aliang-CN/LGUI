@@ -84,7 +84,7 @@ ui/
 - 每个组件 XML 和图片都要登记；登记的文件必须存在，存在的文件也都要登记。
 - **九宫格：** 在图片上写 `scale="9grid"` 和 `scale9grid="左,上,宽,高"`（中间可拉伸区域），区域不能超出图片。边距按图片真实的边框像素取，不要统一取边长的四分之一。
 - **图集：** 生成时按包自动打图集，一般不用管。每张图不能比所在包的图集上限大。全局上限是 `ui/settings/Publish.json` 里的 `atlasSetting.maxSize`（编辑器「发布设置」里改的就是它），没写是 4096×4096；超了生成时报 `LGUI-CLI-113`，写明是哪张图、上限是从哪来的。某个包确实要更大的图，在它的 `package.xml` 已有的 `<publish name="包名">` 上加 `maxAtlasSize="8192"`（`lgui init`、`lgui new` 建的包都已经有一个空的 `<publish>`，再加第二个不生效；没有才在 `</resources>` 后面写 `<publish name="包名" maxAtlasSize="8192"/>`）。多数手机支持到 4096，更大先确认目标设备。
-- **声音：** mp3，登记成 `<sound>` 并导出（`exported="true"`）。代码和 View 的 `static music` 里写 `ui://<包名>/<声音名>`（`ui://Bag/coin`）；按钮的 `sound` 属性和别的资源引用一样写 `ui://<包ID><资源ID>`（`ui://bag00001coin0001`）。用法见 MVC 开发规范第 15 节。
+- **声音：** 有 mp3 文件时登记成 `<sound>` 并导出（`exported="true"`）：代码和 View 的 `static music` 里写 `ui://<包名>/<声音名>`（`ui://Bag/coin`），按钮的 `sound` 属性写 `ui://<包ID><资源ID>`（`ui://bag00001coin0001`）或 `ui://<包名>/<声音名>`。不带 mp3 文件、由自定义声音出口用代码实时合成声音时，地址写 `synth://<名字>`（比如 `synth://click`、`synth://bgm/menu`），不需要在 `package.xml` 里登记 `<sound>`。用法见 [MVC 开发规范](mvc-spec.md) 第 15 节。
 - `lgui art split`、`lgui art cut` 拆出来的小图会自动登记。
 
 **AI 出的图集拆成小图：**
@@ -171,7 +171,7 @@ ui/
 
 <!-- 按钮：引用一个 extention="Button" 的组件（按钮组件本身可以写 <Button mode="Check"/> 或 "Radio"，让它保持选中，见第 12 节） -->
 <component id="n4" name="sellButton" src="btn00001" xy="20,250" size="160,56">
-  <Button title="出售" sound="ui://bag00001coin0001" volume="80"/>   <!-- 点击音效和音量（百分比），都可以不写 -->
+  <Button title="出售" sound="ui://bag00001coin0001" volume="80"/>   <!-- 点击音效（也可写 synth://click）和音量（百分比），都可以不写 -->
 </component>
 
 <!-- 子组件 -->
@@ -545,7 +545,7 @@ ui/
 | `LGUI-UI-062`（警告） | 别的语言的翻译和默认语言的原文不一样（一字不差多半是还没翻；不含文字的值不算） | `"Main/MainView/button": "Tap me"` | `en.json` 里写 `"点我"` |
 | `LGUI-UI-063`（警告） | 横竖两版同一个控件的固定文字一样 | 两版都是 `text="背包"` | 竖版写 `text="我的背包"` |
 | `LGUI-UI-064` | 全屏界面（`static fullScreen = true`）的组件，横竖两版都有名为 `safe` 的直接子控件 | 见第 7.3 节 | 全屏界面没有 `safe` |
-| `LGUI-UI-065` | 音效（按钮的 `sound`、工程配置的 `sounds.click`）指向存在、已登记的 mp3；`sound=""` 表示不出声 | `<Button sound="ui://Bag/click"/>`，`click.mp3` 登记在 Bag 包里 | 没登记、文件不存在、`click.wav` |
+| `LGUI-UI-065` | 音效（按钮的 `sound`、工程配置的 `sounds.click`、代码 `lgui.sound.play` 的 `synth://` 地址）指向存在、已登记的 mp3，或是写法合法的 `synth://<名字>`（且工程在 `lgui.app({ platform: { audio } })` 里提供了自定义声音出口）；`sound=""` 表示不出声 | `<Button sound="ui://Bag/click"/>`（`click.mp3` 已登记）；`<Button sound="synth://click"/>`（已配自定义 `audio`） | 没登记、文件不存在、`click.wav`；写了 `synth://` 但没配自定义 `audio` |
 | `LGUI-UI-066` | 给按钮、标签写了标题（实例上的 `<Button title>`、`<Label title>`，绑定表的 `text`），给下拉框写了选项（实例上的 `<item title>`，绑定表的 `items`），组件里就要有名为 `title` 的子控件；给按钮、标签、下拉框写了图标（实例上的 `icon` / `selectedIcon`，绑定表的 `icon`），组件里就要有名为 `icon` 的子控件 | 组件里的文字叫 `title`、装载器叫 `icon` | 文字叫 `label` 还给它写 `text`；没有 `icon` 子控件还给按钮写 `icon="icon://play"` |
 | `LGUI-UI-067` | 动效里旋转、缩放的控件设了轴心 | `pivot="0.5,0.5"`（要绕左上角写 `pivot="0,0"`） | 不写 `pivot` 就做 `Rotation` / `Scale` |
 | `LGUI-UI-068` | `shrink`、`ellipsis` 的文字，框只放得下一行时写 `singleLine="true"` | `size="300,40" fontSize="28" autoSize="shrink" singleLine="true"` | `size="300,40" fontSize="28" autoSize="shrink"` |

@@ -1,6 +1,6 @@
 // lgui check：类型检查 + MVC 规范 + UI 规范 + 多语言 + 横竖屏。报错格式：文件:行:列  错误码  说明  → 怎么改。
 import {buildProgram, finding, sourceFiles} from './program.mjs';
-import {mvcRules, redDotBindings, wordBindings, usedTextKeys, fullScreenViews, codeIcons} from './mvc-rules.mjs';
+import {mvcRules, redDotBindings, wordBindings, usedTextKeys, fullScreenViews, codeIcons, hasCustomAudio} from './mvc-rules.mjs';
 import {uiRules} from './ui-rules.mjs';
 import {i18nRules} from './i18n-rules.mjs';
 import {fontRules} from './font-rules.mjs';
@@ -32,7 +32,8 @@ export async function runCheck(root, project) {
     const files = sourceFiles(root, program);
     const checker = program.getTypeChecker();
     const icons = codeIcons({ts, checker, root, files});
-    out.push(...mvcRules({ts, checker, root, files, model}));
+    const customAudio = hasCustomAudio({ts, checker, root, files});
+    out.push(...mvcRules({ts, checker, root, files, model, customAudio}));
     out.push(...icons.findings);
     out.push(...uiRules({
       root, model, languages: project.languages,
@@ -43,7 +44,8 @@ export async function runCheck(root, project) {
       fullScreens: fullScreenViews({ts, root, files}),
       sounds: project.sounds,
       placeholder: project.placeholder,
-      codeIcons: icons
+      codeIcons: icons,
+      customAudio
     }));
     const tables = Object.fromEntries(project.languages.map(l => [l, readTable(root, l)]));
     out.push(...i18nRules({root, model, tables, defaultLanguage: project.defaultLanguage, usedKeys: usedTextKeys({ts, root, files})}));

@@ -1,6 +1,6 @@
 // headless 后端：在 Node 里跑，只模拟控件树和属性，不算布局、不渲染。lgui test 用它。
 import type {Backend, BackendConfig, Insets, KeyInput, LogLevel, Logger, Platform, PointerInput, UIComponent, WheelInput} from '../../core/index';
-import {LgRuntimeError, hasIcon, iconSize, isIconUrl, missingIconError, notImplemented} from '../../core/index';
+import {LgRuntimeError, hasIcon, iconSize, invalidSynthUrlError, isIconUrl, isSynthUrl, isValidSynthUrl, missingIconError, notImplemented} from '../../core/index';
 import type {ComponentDescriptor, PackageDescriptor} from './descriptor';
 import {Handlers, HeadlessComponent, HeadlessLoader, HeadlessObject, HeadlessTransition, buildComponent, buildImage} from './objects';
 
@@ -34,7 +34,7 @@ export interface HeadlessState {
   languages: string[];
   /** 存储。 */
   storage: Map<string, string>;
-  /** 放过的音效（地址统一成 ui://包名/声音名，音量是最终音量）。 */
+  /** 放过的音效（ui:// 统一成 ui://包名/声音名，synth:// 原样保留，音量是最终音量）。 */
   sounds: {url: string; volume: number}[];
   /** 正在放的背景音乐，没有是 null。 */
   music: {url: string; volume: number} | null;
@@ -98,9 +98,13 @@ export function createHeadlessBackend(packages: readonly PackageDescriptor[], tr
   const sounds = new Map<string, string>();
   for (const p of packages) for (const sound of p.sounds ?? []) { const url = `ui://${p.package}/${sound.name}`; sounds.set(url, url); sounds.set(`ui://${p.id}${sound.id}`, url); }
   const soundUrl = (url: string, onError: (error: unknown) => void): string | null => {
+    if (isSynthUrl(url)) {
+      if (!isValidSynthUrl(url)) { onError(invalidSynthUrlError(url)); return null; }
+      return url;
+    }
     if (!url.startsWith('ui://')) return url;
     const found = sounds.get(url);
-    if (!found) onError(new LgRuntimeError('LGUI-RT-170', `声音 ${url} 没有登记在 ui/ 的包里。`, '把 mp3 放进包目录，在 package.xml 里登记成 <sound … exported="true"/>，地址写成 ui://包名/声音名。'));
+    if (!found) onError(new LgRuntimeError('LGUI-RT-170', `声音 ${url} 没有登记在 ui/ 的包里。`, '把 mp3 放进包目录，在 package.xml 里登记成 <sound … exported="true"/>，地址写成 ui://包名/声音名；或者用代码合成声音 synth://名字。'));
     return found ?? null;
   };
   const state: HeadlessState = {

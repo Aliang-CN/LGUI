@@ -549,3 +549,24 @@ test('Unity 代码补间：属性读写、齿轮主人、按钮按下效果（�
   owner.transitions.set('blink', transition);
   assert.deepEqual(a.wrapComponent(owner).transition('blink').touches().map(x => [x.target.name, x.what]), [['geared', 'alpha']], 'Sound 这类项、没有目标的项不算');
 });
+
+test('Unity 按钮音效：FairyGUI 原生没有 NAudioClip 时，按导出记录的 buttonSounds 还原 synth:// 地址', async () => {
+  const services = {
+    ...noServices,
+    buttonSound: button => button.sound ? 'ui://cmn00001click001' : '',
+    fallbackButtonSound: (button, parentComp, selfComp) => ({
+      'Main/Hud#fireBtn': 'synth://laser',
+      'Common/SynthBtn': 'synth://click'
+    })[`${parentComp}#${button.name}`] ?? ({'Common/SynthBtn': 'synth://click'})[selfComp] ?? ''
+  };
+  const a = await adapter(fgui, () => 0, (x, y) => ({x, y}), undefined, services);
+  const hud = Object.assign(new Component(), {name: 'hud', packageItem: {owner: {name: 'Main'}, name: 'Hud'}});
+  const fire = Object.assign(new Button(), {name: 'fireBtn', packageItem: {owner: {name: 'Common'}, name: 'SynthBtn'}});
+  const generic = Object.assign(new Button(), {name: 'okBtn', packageItem: {owner: {name: 'Common'}, name: 'SynthBtn'}});
+  hud.AddChild(fire);
+  hud.AddChild(generic);
+  assert.equal(a.wrap(fire).sound, 'synth://laser', '实例上写的 synth:// 优先');
+  assert.equal(a.wrap(generic).sound, 'synth://click', '没写实例音效时用按钮组件自己的 synth://');
+  fire.sound = {};
+  assert.equal(a.wrap(fire).sound, 'ui://cmn00001click001', '原生 NAudioClip 存在时优先');
+});
