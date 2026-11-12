@@ -5,6 +5,9 @@ import {createObjectAdapter} from './objects';
 import {createUnityPlatform} from './platform';
 import type {NativeBridge, UnityGlobals} from './native-backend';
 
+/** 没有项目字体且无法建 TMP 系统字体时，交给 FairyGUI FontManager 按逗号列表调 Font.CreateDynamicFontFromOSFont（避开 Unity 6 已移除的内置 Arial.ttf）。 */
+const UNITY_SYSTEM_FONT_NAMES = 'PingFang SC, Noto Sans CJK SC, Noto Sans SC, Source Han Sans SC, Microsoft YaHei, Droid Sans Fallback, WenQuanYi Micro Hei, Arial';
+
 /** 由 Unity 导出的启动代码选择，游戏源码不直接 import Unity 后端。 */
 export function createUnityBackend(bridge?: NativeBridge): Backend {
   const globals = globalThis as UnityGlobals;
@@ -55,10 +58,17 @@ export function createUnityBackend(bridge?: NativeBridge): Backend {
       api = found;
       config = options;
       const fgui = found.FairyGUI;
-      if (options.defaultFont) fgui.UIConfig.defaultFont = options.defaultFont;
+      const host = found.LGUI.Platform;
+      if (options.defaultFont) {
+        fgui.UIConfig.defaultFont = options.defaultFont;
+      } else {
+        const sysTmp = !(options.fonts ?? []).length && host.TmpSettingsFound === true && typeof host.RegisterSystemDefaultFont === 'function'
+          ? host.RegisterSystemDefaultFont()
+          : '';
+        fgui.UIConfig.defaultFont = sysTmp || UNITY_SYSTEM_FONT_NAMES;
+      }
       // 项目字体在创建任何界面之前注册成 TMP 字体（FontManager 找不到字体时会静默换成系统字体或 Arial，所以注册不上就报错）。
       // 每个项目字体后面挂同一个系统回退字体，显示子集外的字（聊天、玩家名）；一个系统字体都没找到时只记一次 LGUI-RT-182，不抛错。
-      const host = found.LGUI.Platform;
       if ((options.fonts ?? []).length) {
         if (typeof host.RegisterFont !== 'function' || typeof host.TmpSettingsFound !== 'boolean') throw new LgRuntimeError('LGUI-RT-181', `Unity 工程里的 LGUI 包是旧版（没有 LGUI.Platform.RegisterFont / TmpSettingsFound），注册不了项目字体 ${options.fonts?.join('、')}。`, '运行 lgui upgrade 把新版 Unity 包复制进工程，再 lgui unity export。');
         if (!host.TmpSettingsFound) throw new LgRuntimeError('LGUI-RT-181', `注册不了项目字体 ${options.fonts?.join('、')}：Unity 工程里没有 TextMesh Pro 的设置资源（TMP Settings），项目字体在 Unity 上是 TMP 字体，TMP 建字体要用它。`, '重新运行 lgui unity export（它会从 com.unity.ugui 自带的资源包导入 TMP Essential Resources）；或者在 Unity 里点 Window → TextMeshPro → Import TMP Essential Resources。');

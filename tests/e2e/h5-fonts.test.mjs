@@ -13,6 +13,8 @@ import {readUiModel} from '../../plugin/tools/lib/generate/model.mjs';
 import {generateFonts} from '../../plugin/tools/lib/generate/fonts.mjs';
 import {validateProject} from '../../plugin/tools/lib/project.mjs';
 import {esbuild} from '../../plugin/tools/lib/vendor.mjs';
+import {run} from '../unit/cli/helpers.mjs';
+import os from 'node:os';
 
 const fw = fileURLToPath(new URL('../../plugin/framework', import.meta.url));
 const sample = fileURLToPath(new URL('../fixtures/fonts/NotoSansSC-Sample.otf', import.meta.url));
@@ -114,5 +116,85 @@ test('h5：项目字体在第一个界面之前 loaded，文字和 Shrink 都按
     }
   } finally {
     await browser.close();
+  }
+});
+
+test('h5：不带字体文件（ui/fonts/ 为空、defaultFont 为 null）时统一使用无衬线系统字体栈，不拼出 font-family: undefined，check/test/verify 全过', async t => {
+  const browser = await launchBrowser();
+  if (!browser) { t.skip('未找到 Chrome 或 Edge'); return; }
+  const parent = fs.mkdtempSync(path.join(os.tmpdir(), 'lgui-sysfont-'));
+  try {
+    const init = await run(['init', 'game', '--code-only'], parent);
+    assert.equal(init.code, 0, init.stderr);
+    const root = path.join(parent, 'game');
+    fs.mkdirSync(path.join(root, 'ui/fonts'), {recursive: true}); // 空的 ui/fonts/ 目录
+
+    // 加一个输入框和生僻汉字，验证无字体文件时普通文字、输入框、Shrink 量宽一致且不报缺字
+    for (const [rel, inputY] of [['ui/assets/Main/MainView.xml', '660'], ['ui/assets/Main/MainView@portrait.xml', '1080']]) {
+      const full = path.join(root, rel);
+      fs.writeFileSync(full, fs.readFileSync(full, 'utf8')
+        .replace('text="你好，LGUI"', 'text="你好，LGUI 龘"')
+        .replace('</displayList>', `    <inputtext id="n0000009" name="nick" xy="260,${inputY}" size="400,56" fontSize="28" color="#ffffff" prompt="输入昵称"/>\n  </displayList>`));
+    }
+    for (const [lang, title, prompt] of [['zh-CN', '你好，LGUI 龘', '输入昵称'], ['en', 'Hello, LGUI', 'Enter nickname']]) {
+      const f = path.join(root, 'i18n', `${lang}.json`);
+      const table = JSON.parse(fs.readFileSync(f, 'utf8'));
+      table['Main/MainView/title'] = title;
+      table['Main/MainView/nick@prompt'] = prompt;
+      fs.writeFileSync(f, JSON.stringify(table, null, 2) + '\n');
+    }
+
+    fs.writeFileSync(path.join(root, 'tests/main.test.ts'), fs.readFileSync(path.join(root, 'tests/main.test.ts'), 'utf8').replace("'你好，LGUI'", "'你好，LGUI 龘'"));
+
+    for (const args of [['check'], ['test'], ['test', '--browser'], ['verify', '--size', 'desktop', '--json']]) {
+      const res = await run(args, root);
+      assert.equal(res.code, 0, `${args.join(' ')}: ${res.stdout}${res.stderr}`);
+    }
+
+    // 直接检查 H5 舞台注入样式、文字和输入框的最终 font-family 与无字体请求
+    const uiDir = path.join(root, 'web/ui');
+    await generateWeb(uiProjectPath(root), uiDir);
+    const entry = path.join(root, 'entry-sys.ts');
+    const f = rel => JSON.stringify(path.join(fw, rel));
+    fs.writeFileSync(entry, `import {createH5Backend} from ${f('backends/h5/index.ts')};
+(async () => {
+  const backend = createH5Backend();
+  await backend.init({projectName: 'sysfont', defaultFont: null, fonts: [], uiBase: '/ui'});
+  await backend.loadPackage('Common');
+  await backend.loadPackage('Main');
+  const view = backend.create('Main', 'MainView');
+  backend.root.addChild(view);
+  Object.assign(window, {view, ready: true});
+})().catch(e => { (window as unknown as {failure: unknown}).failure = String(e); });`);
+    await esbuild().build({entryPoints: [entry], bundle: true, format: 'esm', target: 'es2020', outfile: path.join(root, 'web/app.js'), logLevel: 'silent', keepNames: true});
+    fs.writeFileSync(path.join(root, 'web/index.html'), '<!doctype html><meta charset="utf-8"><body><script type="module" src="/app.js"></script>');
+    const server = await serve({'/': path.join(root, 'web')});
+    try {
+      const page = await browser.newPage({viewport: {width: 1280, height: 720}});
+      await page.goto(server.url + '/index.html');
+      await page.waitForFunction(() => window.ready || window.failure, null, {timeout: 10000});
+      assert.equal(await page.evaluate(() => window.failure ?? null), null);
+      const info = await page.evaluate(() => {
+        const styles = [...document.querySelectorAll('style')].map(s => s.textContent ?? '').join('\n');
+        const titleSpan = window.view.native.getChild('title').element._span;
+        const inputEl = window.view.native.getChild('nick').element.querySelector('input, textarea');
+        return {
+          hasUndefinedFont: styles.includes('font-family : undefined') || styles.includes('font-family: undefined'),
+          loadedFontFaces: [...document.fonts].length,
+          titleFamily: getComputedStyle(titleSpan).fontFamily,
+          inputFamily: inputEl ? getComputedStyle(inputEl).fontFamily : null
+        };
+      });
+      await page.close();
+      assert.equal(info.hasUndefinedFont, false, '舞台样式表不应拼出 font-family: undefined');
+      assert.equal(info.loadedFontFaces, 0, '不加载任何项目字体文件');
+      assert.match(info.titleFamily, /system-ui|sans-serif/i);
+      assert.equal(info.inputFamily, info.titleFamily, '输入框与普通文字使用同一套无衬线系统字体栈');
+    } finally {
+      await server.close();
+    }
+  } finally {
+    await browser.close();
+    fs.rmSync(parent, {recursive: true, force: true});
   }
 });

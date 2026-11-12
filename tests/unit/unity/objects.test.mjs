@@ -492,11 +492,19 @@ test('Unity 项目字体：启动时按名字把 Resources 里的 UI/fonts/<名�
     e => e.code === 'LGUI-RT-181' && /TMP Settings/.test(e.message) && /lgui unity export/.test(e.next) && /Window → TextMeshPro → Import TMP Essential Resources/.test(e.next));
   assert.deepEqual(tried, []);
   dispose();
-  // 没有项目字体时不调 RegisterFont（旧版 Unity 包照样能启动），也不管系统回退字体（不记 RT-182）
+  // 没有项目字体时不调 RegisterFont（旧版 Unity 包照样能启动），也不管系统回退字体（不记 RT-182）；
+  // 有 TMP Settings 时优先调 RegisterSystemDefaultFont 注册 SDF 系统字体，没有时设逗号分隔的 OS 字体列表（避开 Unity 6 已移除的 Arial.ttf）
   const quiet = [];
-  await containerBackend({platform: {FallbackFontName: '', FallbackFontCandidates: 'x', Log(level, message) { quiet.push(message); }}});
+  const noTmp = await containerBackend({platform: {FallbackFontName: '', FallbackFontCandidates: 'x', Log(level, message) { quiet.push(message); }}});
   assert.deepEqual(quiet.filter(m => m.includes('lgui_rt_182')), []);
-  dispose();
+  assert.match(noTmp.bridge.FairyGUI.UIConfig.defaultFont, /PingFang SC.*Microsoft YaHei/);
+  noTmp.dispose();
+
+  let sysCalls = 0;
+  const withSysTmp = await containerBackend({platform: {TmpSettingsFound: true, RegisterSystemDefaultFont() { sysCalls += 1; return 'PingFang SC'; }}});
+  assert.equal(sysCalls, 1);
+  assert.equal(withSysTmp.bridge.FairyGUI.UIConfig.defaultFont, 'PingFang SC');
+  withSysTmp.dispose();
 });
 
 test('Unity 项目字体：一个系统回退字体都没找到时，启动照常，只记一次 LGUI-RT-182 错误日志（写明试过哪些）', async () => {

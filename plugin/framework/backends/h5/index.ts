@@ -3,7 +3,7 @@ import * as fgui from './vendor/fairygui.module.js';
 import type {Backend, BackendConfig, Platform, UIComponent} from '../../core/index';
 import {LgRuntimeError, iconSize, isIconUrl} from '../../core/index';
 import {createH5Platform} from './platform/index';
-import {loadFonts} from './fonts';
+import {SYSTEM_FONT_STACK, loadFonts} from './fonts';
 import {installFairyGuiPatches} from './fairygui-patches/index';
 import {setNineSliceOverlap} from './fairygui-patches/nine-slice';
 import {stage} from './scale';
@@ -25,7 +25,8 @@ export function createH5Backend(): Backend {
     name: 'h5',
     async init(config: BackendConfig) {
       installFairyGuiPatches(); // 在创建任何 FairyGUI 对象之前
-      if (config.defaultFont) fgui.UIConfig.defaultFont = config.defaultFont;
+      // defaultFont 为 null（ui/fonts/ 为空）时用无衬线系统字体栈，同时避免上游 Stage 样式表拼出 font-family: undefined。
+      fgui.UIConfig.defaultFont = config.defaultFont || SYSTEM_FONT_STACK;
       i18nBase = config.i18nBase;
       uiBaseUrl = config.uiBase;
       await Promise.all([fgui.UIPackage.loadImageManifest(`${config.uiBase}/manifest.json`), loadFonts(config.uiBase, config.fonts ?? [])]);

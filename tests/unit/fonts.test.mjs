@@ -73,10 +73,17 @@ test('子集：收 ASCII、ui/ 的文字、i18n/ 的文案和 format.compact 的
   assert.ok(fs.statSync(path.join(unity, 'Noto.otf')).size < fs.statSync(sample).size / 3, '子集要比原字体小得多');
 });
 
-test('没有 ui/fonts/：不生成目录，返回空；defaultFont 是 null 照旧可以', async () => {
-  const root = fixture({fonts: {}});
-  fs.rmSync(path.join(root, 'ui/fonts'), {recursive: true});
+test('没有 ui/fonts/ 或 ui/fonts/ 为空目录：不生成目录、返回空；defaultFont 是 null 时静态生僻字也不报缺字', async () => {
+  const root = fixture({fonts: {}, i18n: {'zh-CN': {'shop.title': '龘齉鬱的商店'}}, extra: '<text id="n9" name="tip" xy="0,0" size="200,40" fontSize="24" autoSize="shrink" singleLine="true" text="龘齉鬱"/>'});
   const out = path.join(root, 'out');
+  // 1) ui/fonts/ 存在但为空目录
+  assert.deepEqual(listFonts(root), []);
+  await checkFonts(root, project(), model(root));
+  assert.deepEqual(await fontRules({root, project: project(), model: model(root), tables: {'zh-CN': {'shop.title': '龘齉鬱的商店'}}}), []);
+  assert.deepEqual(await generateFonts(root, project(), model(root), out, 'woff2'), []);
+  assert.equal(fs.existsSync(out), false);
+  // 2) ui/fonts/ 目录不存在
+  fs.rmSync(path.join(root, 'ui/fonts'), {recursive: true});
   assert.deepEqual(await generateFonts(root, project(), model(root), out, 'woff2'), []);
   assert.equal(fs.existsSync(out), false);
 });

@@ -235,7 +235,7 @@ installBrowserEnv({
 });
 `);
   fs.writeFileSync(path.join(out, 'page.html'), `<!doctype html><meta charset="utf-8"><link rel="icon" href="data:,">
-<style>html,body{margin:0;height:100%;overflow:hidden;background:#000}</style>
+<style>html,body{margin:0;height:100%;overflow:hidden;background:#000;font-family:system-ui,-apple-system,"PingFang SC","Microsoft YaHei","Noto Sans CJK SC",sans-serif}</style>
 <body><script type="module">
 const file = new URLSearchParams(location.search).get('file');
 import('./' + file).then(() => { window.__lguiLoaded = true; }, error => { window.__lguiLoadError = String(error && error.stack || error); });

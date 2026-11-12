@@ -4,6 +4,9 @@
 // 子集外的字（运行时才知道的玩家名、服务器数据）由浏览器按字回退到系统字体。
 import {LgRuntimeError} from '../../core/index';
 
+/** ui/fonts/ 为空（defaultFont 为 null）时网页端使用的跨平台无衬线系统字体栈（含中英文）。 */
+export const SYSTEM_FONT_STACK = 'system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif';
+
 const loadError = (name: string, url: string, reason: string) => new LgRuntimeError('LGUI-RT-180', `项目字体 ${name} 加载失败（${url}）：${reason}`,
   '确认 ui/fonts/ 里有这个字体，重新运行生成它的命令（lgui dev、verify、test --browser）；部署网页时 ui/fonts/ 要和 ui/ 的界面包一起发布。');
 
