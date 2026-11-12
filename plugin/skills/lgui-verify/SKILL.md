@@ -14,7 +14,7 @@ license: MIT
 
 | 要做的事 | 命令 |
 |---|---|
-| 6 组标准尺寸 × 横竖，同一个画面只截一次（默认 8 张） | `lgui verify`；只看一组：`--size desktop`；先打开某个界面：`--view BagView` |
+| 6 组标准尺寸 × 横竖，同一个画面只截一次（默认 8 张） | `lgui verify`；只看一组：`--size desktop`；先打开某个界面：`--view BagView`；有 `host/main.ts` 但只想截纯界面：`--no-host` |
 | 换语言截图 | `lgui verify --lang en` |
 | 伪翻译（文字加长 40%）找截断 | `lgui verify --lang pseudo` |
 | 跑测试 | `lgui test`；失败时报错里附带测试结束时的界面状态快照；同一套测试在真浏览器里跑：`lgui test --browser`（headless 不算布局，读位置和尺寸报 `LGUI-RT-260`） |

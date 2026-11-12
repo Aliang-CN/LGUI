@@ -1,4 +1,5 @@
 // lgui check 的基础：按工程的 tsconfig.json 建 TypeScript program，报类型错误；把 src/ 里的 View 读成结构（给规则用）。
+import fs from 'node:fs';
 import path from 'node:path';
 import {typescript} from '../vendor.mjs';
 
@@ -27,6 +28,46 @@ export function buildProgram(root) {
     return finding(`TS${d.code}`, ts.flattenDiagnosticMessageText(d.messageText, '\n'), '按 TypeScript 的提示改；控件名和类型以 lgui ui list 为准。', loc);
   });
   return {ts, program, findings};
+}
+
+/** 网页端宿主目录 host/ 存在时，带 DOM 类型库单独做 strict 类型检查（src/ 继续不引入 DOM）。 */
+export function buildHostProgram(root, ts = typescript()) {
+  const hostDir = path.join(root, 'host');
+  if (!fs.existsSync(hostDir) || !fs.statSync(hostDir).isDirectory()) return {hostProgram: null, hostFiles: [], findings: []};
+  const customConfig = path.join(hostDir, 'tsconfig.json');
+  let parsed;
+  if (fs.existsSync(customConfig)) {
+    const {config, error} = ts.readConfigFile(customConfig, ts.sys.readFile);
+    if (error) return {hostProgram: null, hostFiles: [], findings: [finding('LGUI-CLI-050', `读不了 host/tsconfig.json：${ts.flattenDiagnosticMessageText(error.messageText, '\n')}`, '修正 host/tsconfig.json，或者删掉它让 lgui check 自动沿用根目录的严格配置。', {file: 'host/tsconfig.json'})]};
+    parsed = ts.parseJsonConfigFileContent(config, ts.sys, hostDir);
+  } else {
+    const {config, error} = ts.readConfigFile(path.join(root, 'tsconfig.json'), ts.sys.readFile);
+    if (error) return {hostProgram: null, hostFiles: [], findings: []};
+    const hostConfig = {
+      compilerOptions: {
+        ...(config.compilerOptions ?? {}),
+        lib: ['ES2020', 'DOM', 'DOM.Iterable'],
+        baseUrl: '.',
+        paths: {
+          ...(config.compilerOptions?.paths ?? {}),
+          lgui: ['.lgui/framework/index.ts'],
+          'lgui/host': ['.lgui/framework/host.ts'],
+          'lgui/ui': ['.lgui/build/types/index.d.ts']
+        }
+      },
+      include: ['host', '.lgui/framework/env.d.ts']
+    };
+    parsed = ts.parseJsonConfigFileContent(hostConfig, ts.sys, root);
+  }
+  const hostPrefix = path.resolve(hostDir) + path.sep;
+  if (!parsed.fileNames.some(f => path.resolve(f).startsWith(hostPrefix))) return {hostProgram: null, hostFiles: [], findings: []};
+  const hostProgram = ts.createProgram(parsed.fileNames, parsed.options);
+  const findings = ts.getPreEmitDiagnostics(hostProgram).filter(d => !d.file || path.resolve(d.file.fileName).startsWith(hostPrefix)).map(d => {
+    const loc = d.file ? (() => { const {line, character} = d.file.getLineAndCharacterOfPosition(d.start ?? 0); return {file: path.relative(root, d.file.fileName).split(path.sep).join('/'), line: line + 1, col: character + 1}; })() : {};
+    return finding(`TS${d.code}`, ts.flattenDiagnosticMessageText(d.messageText, '\n'), '按 TypeScript 的提示修改 host/ 里的网页宿主代码。', loc);
+  });
+  const hostFiles = sourceFiles(root, hostProgram).filter(sf => path.resolve(sf.fileName).startsWith(hostPrefix));
+  return {hostProgram, hostFiles, findings};
 }
 
 /** src/ 和 tests/ 里的工程源文件（不含 .lgui/）。 */

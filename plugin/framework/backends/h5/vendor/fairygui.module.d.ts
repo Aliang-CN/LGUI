@@ -50,6 +50,7 @@ export class GObject extends EventDispatcher {
 }
 
 export class GComponent extends GObject {
+  opaque: boolean;
   readonly numChildren: number;
   getChild(name: string): GObject | null;
   getChildAt(index: number): GObject;
@@ -240,7 +241,11 @@ export declare const PackageItemType: {readonly Image: number; readonly Componen
 export function convertToHtmlColor(rgb: number): string;
 
 /** DOM 元素类（fgui-div 等），补丁在它们的原型上挂钩子。 */
-export class UIElement extends HTMLElement {}
+export class UIElement extends HTMLElement {
+  readonly parent: UIElement | null;
+  touchable: boolean;
+  opaque: boolean;
+}
 export class Image extends UIElement {}
 export class MovieClip extends Image {}
 export class TextField extends UIElement {}

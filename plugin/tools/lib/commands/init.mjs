@@ -7,7 +7,7 @@ import {pluginVersion} from '../version.mjs';
 import {generateProjectTypes} from '../generate/index.mjs';
 
 // 复制进工程 .lgui/framework/ 的部分。Unity 包模板（backends/unity/package/）不复制，导出时从插件里取。
-export const frameworkParts = ['index.ts', 'env.d.ts', 'core', 'mvc', 'backends/h5', 'backends/headless', 'backends/unity/adapter'];
+export const frameworkParts = ['index.ts', 'host.ts', 'env.d.ts', 'core', 'mvc', 'backends/h5', 'backends/headless', 'backends/unity/adapter'];
 
 export function copyFramework(target) {
   fs.rmSync(target, {recursive: true, force: true});

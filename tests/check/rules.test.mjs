@@ -435,3 +435,45 @@ test('代码合成声音 synth://：没配自定义 platform.audio 时报 LGUI-U
   assert.ok(bad.some(f => f.code === 'LGUI-UI-065' && f.file === CTRL), JSON.stringify(bad));
   assert.ok(bad.some(f => f.code === 'LGUI-MVC-004' && f.file === VIEW), JSON.stringify(bad));
 });
+
+test('网页宿主 host/main.ts 与 LGUI-UI-070：无 host 时不查 opaque；有 host 时查 host 类型、认 defineWebHost({ audio })、要求 game/all 界面写 opaque="false"，src/ 不能 import lgui/host', async () => {
+  const root = await fresh();
+  // 把 MainView 改成 hud 层（默认 inputMode: 'game'），但没有 host/main.ts：2D 工程不报 LGUI-UI-070
+  edit(root, VIEW, "static layer = 'page' as const;", "static layer = 'hud' as const;");
+  assert.deepEqual(await findings(root), []);
+
+  // 加 host/main.ts（同时用 synth:// 声音，且只在 host/main.ts 里提供 audio）：
+  // 此时 MainView 和 MainView@portrait 没写 opaque="false"，应报两条 LGUI-UI-070，且 synth:// 不报错
+  edit(root, MAIN_XML, '<Button title="点我"/>', '<Button title="点我" sound="synth://tap"/>');
+  write(root, 'host/main.ts', [
+    "import { defineWebHost } from 'lgui/host';",
+    'export default defineWebHost({',
+    '  audio: { play() {}, music() {}, setPaused() {} },',
+    '  mount(stage) {',
+    "    const ctx = stage.canvas.getContext('2d');",
+    '    void ctx;',
+    '  },',
+    '});',
+    ''
+  ].join('\n'));
+  const missingOpaque = await findings(root);
+  assert.deepEqual(missingOpaque.map(f => f.code), ['LGUI-UI-070', 'LGUI-UI-070'], JSON.stringify(missingOpaque));
+  assert.ok(missingOpaque.some(f => f.file === MAIN_XML), JSON.stringify(missingOpaque));
+  assert.ok(missingOpaque.some(f => f.file === 'ui/assets/Main/MainView@portrait.xml'), JSON.stringify(missingOpaque));
+
+  // 横竖两版都补上 opaque="false"（并去掉铺满全屏的不透明 bg 或保留透明布局）后通过检查
+  edit(root, MAIN_XML, '<component size="1920,1080">', '<component size="1920,1080" opaque="false">');
+  edit(root, 'ui/assets/Main/MainView@portrait.xml', '<component size="1080,1920">', '<component size="1080,1920" opaque="false">');
+  assert.deepEqual(await findings(root), []);
+
+  // host/main.ts 里的类型错误会被 lgui check 报出（TSxxxx）
+  write(root, 'host/bad.ts', "import { defineWebHost } from 'lgui/host';\nconst x: number = 'not-a-number';\nexport { defineWebHost, x };\n");
+  const tsErr = await findings(root);
+  assert.ok(tsErr.some(f => f.file === 'host/bad.ts' && /^TS\d+$/.test(f.code)), JSON.stringify(tsErr));
+  fs.rmSync(path.join(root, 'host/bad.ts'));
+
+  // src/ 里试图 import 'lgui/host' 报 LGUI-MVC-001
+  edit(root, CTRL, "import { Controller } from 'lgui';", "import { Controller } from 'lgui';\nimport { defineWebHost } from 'lgui/host';\nvoid defineWebHost;");
+  const mvcErr = await findings(root);
+  assert.ok(mvcErr.some(f => f.code === 'LGUI-MVC-001' && f.file === CTRL), JSON.stringify(mvcErr));
+});

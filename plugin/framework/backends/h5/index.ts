@@ -34,6 +34,9 @@ export function createH5Backend(): Backend {
       const screen = platform.screen;
       const applyDesignSize = screen.applyDesignSize.bind(screen);
       screen.applyDesignSize = design => { const visible = applyDesignSize(design); setNineSliceOverlap(stage.scale * devicePixelRatio); return visible; };
+      // 舞台根与 5 个层容器均设为 opaque = false（空白处 pointer-events: none、背景透明），让底层三维画布能透出并接收场景触点。
+      fgui.GRoot.inst.opaque = false;
+      fgui.GRoot.inst.element.style.zIndex = '1';
       setComponentName(fgui.GRoot.inst, 'root');
       root = wrapComponent(fgui.GRoot.inst);
     },
@@ -82,6 +85,7 @@ export function createH5Backend(): Backend {
     createContainer(name: string): UIComponent {
       const native = new fgui.GComponent();
       native.name = name;
+      native.opaque = false;
       setComponentName(native, '');
       return wrapComponent(native);
     },

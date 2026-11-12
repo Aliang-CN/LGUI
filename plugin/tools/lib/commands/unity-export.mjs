@@ -10,7 +10,7 @@ import {esbuild, typescript} from '../vendor.mjs';
 import {generateUnity, generateProjectTypes, uiProjectPath} from '../generate/index.mjs';
 import {generateTranslations} from '../generate/i18n.mjs';
 import {fontNames, generateFonts} from '../generate/fonts.mjs';
-import {runtimeConfig, readTexts, bundleErrors, webBuildOptions} from '../dev/bundle.mjs';
+import {runtimeConfig, readTexts, bundleErrors, webBuildOptions, hasWebHost} from '../dev/bundle.mjs';
 import {readUnityPackage, writeUnityPackage} from '../unitypackage.mjs';
 import {collectUiIconUrls} from '../check/ui-rules.mjs';
 import {objectProps} from '../check/program.mjs';
@@ -327,13 +327,16 @@ export async function unityExport({args, flags, cwd, projectRoot, project}) {
   const raw = JSON.parse(fs.readFileSync(configFile, 'utf8'));
   raw.unityProject = path.relative(projectRoot, target).split(path.sep).join('/') || '.';
   fs.writeFileSync(configFile, JSON.stringify(raw, null, 2) + '\n');
+  const webHostSkipped = hasWebHost(projectRoot);
   return {
     data: {unityProject: target, package: packageDir, installed: !installed, patch: patch.status, scene, sceneCreated, ui, game: path.join(game, 'game.js.txt'), linker: link,
+      webHostSkipped,
       tmpEssentials: tmpResult ? {imported: tmpResult.written, kept: tmpResult.kept, from: tmp.file} : null},
     summary: [
       (!installed ? '已安装' : '已核对') + ' Unity 包 ' + packageName + ' ' + pluginVersion() + '。',
       patch.bytes ? '已对本地 PuerTS 3.0.3 应用四处 Unity 6.6 兼容补丁。' : 'PuerTS 四处补丁已经应用，明确跳过，文件不变。',
       '已生成 Unity 界面包、翻译和游戏脚本：' + target,
+      ...(webHostSkipped ? ['检测到网页端宿主 host/main.ts：Unity 导出已跳过 host/（三维场景由 Unity 工程自己管理；若在 host/main.ts 配了平台服务，Unity 侧请通过 src/main.ts 的 platform 或 C# 接入）。'] : []),
       sceneCreated ? '已生成启动场景 Assets/LGUI/LGUIBoot.unity。' : '已有启动场景保持不变。',
       ...(tmpResult ? ['已从 com.unity.ugui 自带的资源包导入 TMP Essential Resources（' + tmpResult.written + ' 个文件，没联网；工程里已有的 ' + tmpResult.kept + ' 个没动）：' + tmp.file] : []),
       '已复制 Assets/LGUI/link.xml 保留动态调用需要的程序集；在 Unity 打开启动场景并点 Play。'

@@ -29,7 +29,7 @@ LGUI 的每条报错都带错误码，并写明：哪个文件哪一行（如果
 | `LGUI-CLI-032` | 打包 `src/` 失败（语法错误、找不到 import 的文件等），带文件和行号 | 按提示改代码 |
 | `LGUI-CLI-040` | `tests/` 里没有测试文件（`*.test.ts`） | 在 `tests/` 下写测试，写法见 mvc-spec.md 第 12 节 |
 | `LGUI-CLI-041` | 测试没通过（报错里附上测试结束时的界面状态快照） | 看测试输出，按断言改代码或测试 |
-| `LGUI-CLI-050` | `lgui check` 读不了 `tsconfig.json` | 用 `lgui init` 生成的 `tsconfig.json`，不要改它 |
+| `LGUI-CLI-050` | `lgui check` 读不了 `tsconfig.json` 或 `host/tsconfig.json` | 用 `lgui init` 生成的 `tsconfig.json`，或者修正/删除 `host/tsconfig.json` |
 | `LGUI-CLI-051` | Unity 工程缺少 embedded 的 PuerTS Core/V8 3.0.3 本地包、使用了目录链接或包缓存，或者 C++ 补丁目标摘要不可信 | 将官方 Core/V8 压缩包解压到工程的 `Packages/com.tencent.puerts.core/` 和 `Packages/com.tencent.puerts.v8/`；保留自己的修改后恢复官方原文件再导出 |
 | `LGUI-CLI-052` | 导出目标不是 Unity 6000.6.x 工程、管理路径使用了文件/目录链接，或目标条目的文件/目录类型不对 | 使用 Unity 6000.6 创建的工程根目录；管理路径使用实际目录和文件，移走同名的错误类型条目 |
 | `TSxxxx` | `lgui check` 报的 TypeScript 类型错误（错误码是 TypeScript 自己的） | 按提示改；控件名和类型以 `lgui ui list` 为准 |
@@ -150,7 +150,7 @@ LGUI 的每条报错都带错误码，并写明：哪个文件哪一行（如果
 | `LGUI-RT-027` | 后端还没启动就开始用 | 先调用 `backend.init(config)`（框架启动时会自动调用） |
 | `LGUI-RT-160` | Unity 启动脚本或 Resources 文本缺失、PuerTS 启动失败、每帧回调或宿主驱动、退出清理失败 | 每帧回调出错时按堆栈修正该回调，其他回调和后续帧继续运行；宿主启动失败时核对导出文件、PuerTS 3.0.3 本地包后重新启动场景 |
 | `LGUI-RT-161` | Unity 平台存储、HTTP、音频等服务失败 | 按日志检查存储权限、请求参数、资源地址或本地 PuerTS 环境 |
-| `LGUI-RT-170` | 声音地址 `ui://…` 没有登记在 `ui/` 的包里；或者 `synth://…` 写法不对、落到了未替换的默认声音出口 | `ui://` 声音把 mp3 放进包目录并在 `package.xml` 里登记导出；`synth://<名字>` 代码合成声音在 `lgui.app({ platform: { audio } })` 里提供自定义的 `AudioService` |
+| `LGUI-RT-170` | 声音地址 `ui://…` 没有登记在 `ui/` 的包里；或者 `synth://…` 写法不对、落到了未替换的默认声音出口 | `ui://` 声音把 mp3 放进包目录并在 `package.xml` 里登记导出；`synth://<名字>` 代码合成声音在 `lgui.app({ platform: { audio } })` 或网页端 `host/main.ts` 的 `defineWebHost({ audio })` 里提供自定义的 `AudioService` |
 | `LGUI-RT-171` | ArtText 用的字体所在的包没有加载 | 把 ArtText 放在字体所在包的组件里，或者让界面用到那个包的组件 |
 | `LGUI-RT-172` | 没有 Common 包或 `Common/ActionHintBar`，建不了操作提示栏（开发和测试里启动就报；正式构建里不显示提示栏） | 用 `lgui init` 自带的 Common 包，不要删掉 `ActionHintBar` |
 | `LGUI-RT-173` | 网页端没配 `i18nBase` 就切换语言 | `backend.init` 时传 `i18nBase`（`lgui dev` 生成的启动入口传的是 `./i18n`） |

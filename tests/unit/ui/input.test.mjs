@@ -48,7 +48,7 @@ test('输入类型：用触摸操作后 visibleOn: keyboardMouse 的控件隐藏
   assert.deepEqual(types, ['touch', 'keyboardMouse']);
 });
 
-test('inputMode：hud 默认 game，其余 ui；激活界面一变就通知游戏场景', async () => {
+test('inputMode：hud 默认 game，其余 ui；激活界面一变就通知游戏场景；关掉全部界面后回到 game', async () => {
   const {fw, backend, views: {HudView, MainView}} = await setup();
   const {lgui} = fw;
   const modes = [];
@@ -57,6 +57,9 @@ test('inputMode：hud 默认 game，其余 ui；激活界面一变就通知游�
   assert.equal(backend.state.inputMode, 'game');
   await lgui.ui.open(MainView);
   assert.deepEqual([backend.state.inputMode, modes], ['ui', ['game', 'ui']]);
+  lgui.ui.close(MainView);
+  lgui.ui.close(HudView);
+  assert.deepEqual([backend.state.inputMode, modes], ['game', ['game', 'ui', 'game']]);
 });
 
 test('返回键：Esc 和安卓返回键关闭激活的界面；back: none 不关；函数就调用它；主界面关不掉', async () => {

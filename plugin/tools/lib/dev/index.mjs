@@ -158,6 +158,7 @@ export async function startDev(root, project, {port = project.devPort, log = () 
   };
   watch(path.join(root, 'ui'), 'ui');
   watch(path.join(root, 'src'), 'code');
+  watch(path.join(root, 'host'), 'code');
   watch(path.join(root, 'i18n'), 'text');
   for (const e of extra) watch(e.dir, 'code');
 
@@ -186,7 +187,8 @@ export async function dev({projectRoot, project, flags}) {
   }
   const server = await startDev(projectRoot, project, {port, log: line => process.stderr.write(line + '\n')});
   const opened = flags['no-open'] ? false : openInBrowser(server.url);
-  const summary = [`预览地址：${server.url}`, opened ? '已经用 Chrome / Edge 打开。' : (flags['no-open'] ? '没有自动打开浏览器（--no-open）。' : '没找到 Chrome 或 Edge，请手动打开上面的地址。'), `改 ${['ui/', 'src/', 'i18n/', ...project.devWatch].join('、')} 会自动刷新；按 Ctrl+C 停止。`];
+  const watched = ['ui/', 'src/', ...(fs.existsSync(path.join(projectRoot, 'host')) ? ['host/'] : []), 'i18n/', ...project.devWatch];
+  const summary = [`预览地址：${server.url}`, opened ? '已经用 Chrome / Edge 打开。' : (flags['no-open'] ? '没有自动打开浏览器（--no-open）。' : '没找到 Chrome 或 Edge，请手动打开上面的地址。'), `改 ${watched.join('、')} 会自动刷新；按 Ctrl+C 停止。`];
   const errors = server.errors();
   if (errors.length) summary.push(`现在有 ${errors.length} 个错误，页面上也会显示。`);
   // 命令一直运行到 Ctrl+C；摘要先打印出来。

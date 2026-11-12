@@ -1,6 +1,6 @@
 // lgui check：类型检查 + MVC 规范 + UI 规范 + 多语言 + 横竖屏。报错格式：文件:行:列  错误码  说明  → 怎么改。
-import {buildProgram, finding, sourceFiles} from './program.mjs';
-import {mvcRules, redDotBindings, wordBindings, usedTextKeys, fullScreenViews, codeIcons, hasCustomAudio} from './mvc-rules.mjs';
+import {buildProgram, buildHostProgram, finding, sourceFiles} from './program.mjs';
+import {mvcRules, redDotBindings, wordBindings, usedTextKeys, fullScreenViews, sceneInputViews, codeIcons, hasCustomAudio} from './mvc-rules.mjs';
 import {uiRules} from './ui-rules.mjs';
 import {i18nRules} from './i18n-rules.mjs';
 import {fontRules} from './font-rules.mjs';
@@ -9,6 +9,7 @@ import {readUiProject} from '../generate/read.mjs';
 import {readUiModel} from '../generate/model.mjs';
 import {generateProjectTypes, uiProjectPath} from '../generate/index.mjs';
 import {readTable} from '../generate/i18n.mjs';
+import {hasWebHost} from '../dev/bundle.mjs';
 
 export async function runCheck(root, project) {
   // OpenFairyGUI 的校验问题也报出来，但不停下：后面的规则能给出更具体的错误码和改法。
@@ -27,12 +28,14 @@ export async function runCheck(root, project) {
   }
   void typesError;
   const {ts, program, findings} = buildProgram(root);
-  const out = [...validation, ...findings];
+  const hostResult = buildHostProgram(root, ts);
+  const out = [...validation, ...findings, ...hostResult.findings];
   if (program) {
     const files = sourceFiles(root, program);
     const checker = program.getTypeChecker();
+    const hostChecker = hostResult.hostProgram ? hostResult.hostProgram.getTypeChecker() : null;
     const icons = codeIcons({ts, checker, root, files});
-    const customAudio = hasCustomAudio({ts, checker, root, files});
+    const customAudio = hasCustomAudio({ts, checker, root, files, hostChecker, hostFiles: hostResult.hostFiles});
     out.push(...mvcRules({ts, checker, root, files, model, customAudio}));
     out.push(...icons.findings);
     out.push(...uiRules({
@@ -42,6 +45,8 @@ export async function runCheck(root, project) {
       items: wordBindings({ts, root, files}, 'items'),
       iconBindings: wordBindings({ts, root, files}, 'icon'),
       fullScreens: fullScreenViews({ts, root, files}),
+      sceneViews: sceneInputViews({ts, root, files}),
+      hasHost: hasWebHost(root),
       sounds: project.sounds,
       placeholder: project.placeholder,
       codeIcons: icons,

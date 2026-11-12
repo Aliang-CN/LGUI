@@ -62,7 +62,7 @@ async function launch() {
 }
 
 /** 跑一次验证，返回截图清单。 */
-export async function runVerify(root, project, {size, view, params, lang} = {}) {
+export async function runVerify(root, project, {size, view, params, lang, noHost = false} = {}) {
   const sizes = size ? project.verifySizes.filter(s => s.name === size) : project.verifySizes;
   if (!sizes.length) throw new LgCliError('LGUI-CLI-061', `没有名为 ${size} 的验证尺寸。`, {fix: `能用的：${project.verifySizes.map(s => s.name).join('、')}（工程配置 verifySizes）。`});
   if (lang && lang !== 'pseudo' && !project.languages.includes(lang)) throw new LgCliError('LGUI-CLI-062', `工程不支持语言 ${lang}。`, {fix: `能用的：${project.languages.join('、')}，或者 pseudo（伪翻译）。`});
@@ -88,7 +88,7 @@ export async function runVerify(root, project, {size, view, params, lang} = {}) 
     languages.push('pseudo');
   }
   const verifyProject = {...project, languages};
-  const entry = writeWebBootstrap(root, verifyProject, {texts, dir: site});
+  const entry = writeWebBootstrap(root, verifyProject, {texts, dir: site, noHost});
   try {
     await esbuild().build(webBuildOptions(root, entry, {outfile: path.join(site, 'app.js')}));
   } catch (error) {
@@ -169,7 +169,7 @@ export async function verify({projectRoot, project, flags}) {
     try { params = JSON.parse(flags.params); } catch (error) { throw new LgCliError('LGUI-CLI-114', `--params 不是合法的 JSON：${error.message}`, {fix: `写成一个 JSON 对象，比如 --params '{"id":1}'（Windows 的 cmd 里写 --params "{\\"id\\":1}"）。`}); }
     if (params === null || typeof params !== 'object' || Array.isArray(params)) throw new LgCliError('LGUI-CLI-114', `--params 要是一个 JSON 对象（现在是 ${flags.params}）。`, {fix: `写成 --params '{"id":1}'，字段见这个 View 的 static params。`});
   }
-  const {shots} = await runVerify(projectRoot, project, {size: flags.size, view: flags.view, params, lang: flags.lang});
+  const {shots} = await runVerify(projectRoot, project, {size: flags.size, view: flags.view, params, lang: flags.lang, noHost: Boolean(flags['no-host'])});
   const failed = shots.filter(s => s.errors.length);
   return {
     data: {shots},
