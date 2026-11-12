@@ -1,5 +1,13 @@
 # 更新记录
 
+## 0.4.5（2026-11-12）
+
+**命令行与无图工程**
+
+- `lgui init --code-only`：新建不带任何图片文件的工程——不写入 `ui/assets/Common/placeholder.png`，`Common/package.xml` 不登记 `<image>`，`.lgui/project.json` 的 `placeholder` 设为 `null`。默认 `lgui init` 行为不变。
+- `.lgui/project.json` 的 `placeholder` 和加载器绑定的 `placeholder` 支持写成 `null`（不显示占位图）。无图工程通过 `lgui check`、`lgui test`、`lgui test --browser`、`lgui verify` 和 `lgui unity export`（未使用 `icon://` 时导出 `<包名>_fui.bytes`，无图集 PNG）。
+- `lgui check`（`LGUI-UI-009`）：检查 `.lgui/project.json` 里 `ui://` 开头的 `placeholder` 指向的图片是否存在且已导出；手动删除 `placeholder.png` 而未把 `placeholder` 改为 `null` 时给出明确改法。
+
 ## 0.4.4（2026-11-12）
 
 **框架与界面**

@@ -216,7 +216,7 @@ export class BagView extends View<BagPanelUI> {
 | `select` | 列表、树、下拉框 | 用户点选时调用。列表、树：参数是 key；下拉框：参数是序号 | `select: id => bagController.select(id)` |
 | `lockWhilePending` | 有 `click` 的控件 | `true`：动作返回的 Promise 结束前保持锁住；结束前界面关了就不再碰控件，动作照常跑完，失败照常报出来 | `lockWhilePending: true` |
 | `visibleOn` | 任意控件 | 只在这些输入类型下显示 | `visibleOn: ['keyboardMouse']` |
-| `placeholder` | 加载器 | 加载中和失败时显示的图（`ui://…` 或 `icon://…`），不写用工程配置的默认占位图 | `placeholder: 'ui://Bag/iconLoading'` |
+| `placeholder` | 加载器 | 加载中和失败时显示的图（`ui://…` 或 `icon://…`），写 `null` 表示不显示占位图，不写用工程配置的默认占位图 | `placeholder: 'ui://Bag/iconLoading'`、`placeholder: null` |
 | `playing` | 动效 | 布尔；为真就播（按 `ui/` 里的播放次数，`-1` 一直循环），为假就停 | `glow: { playing: pick(bagModel, s => s.hasNew) }` |
 | `play` | 动效 | 值每变一次播一遍（打开时的值不播），比如一个递增的计数；不能和 `playing` 一起写，不能写在 `ItemView` 里 | `levelUp: { play: pick(heroModel, s => s.levelUps) }` |
 | `done` | 动效 | 一次播放放完时调用，调用 Controller 方法（被停掉、重播、界面关闭时不调用） | `done: () => heroController.levelUpShown()` |

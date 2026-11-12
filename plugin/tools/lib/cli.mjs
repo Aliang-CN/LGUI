@@ -24,7 +24,7 @@ import {unityExport} from './commands/unity-export.mjs';
 // flags：这条命令认识的参数；'string' 后面要跟一个值，'boolean' 是开关。
 // run：实现；null 表示还没实现，报 LGUI-CLI-000。
 export const registry = [
-  {name: 'init', usage: 'init [目录] [--name 名称]', about: '新建工程', project: 'none', versionCheck: false, flags: {name: 'string'}, run: init},
+  {name: 'init', usage: 'init [目录] [--name 名称] [--code-only]', about: '新建工程（--code-only 不带任何图片文件）', project: 'none', versionCheck: false, flags: {name: 'string', 'code-only': 'boolean'}, run: init},
   {name: 'doctor', usage: 'doctor [--paths]', about: '检查环境', project: 'none', versionCheck: false, flags: {paths: 'boolean'}, run: doctor},
   {name: 'dev', usage: 'dev [--port 端口] [--no-open]', about: '打开网页预览，改动后自动刷新', project: 'required', versionCheck: true, flags: {port: 'string', 'no-open': 'boolean'}, run: dev},
   {name: 'editor', usage: 'editor [--no-open]', about: '打开编辑器', project: 'required', versionCheck: true, flags: {'no-open': 'boolean'}, run: editor},
