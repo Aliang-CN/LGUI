@@ -234,3 +234,79 @@ test('Unity export：管理路径链接即使指向工程内其他 Assets 也不
   assert.equal(hash(patchPath(c.unity)), puertsOriginalHash);
   assert.equal(read(c.root, '.lgui/project.json'), config);
 });
+
+test('Unity export：工程用了代码图标（icons / registerIcons / icon://）时明确报 LGUI-CLI-144，不改写 Unity 工程或 project.json', async () => {
+  for (const mutate of [
+    root => {
+      const main = path.join(root, 'src/main.ts');
+      fs.writeFileSync(main, fs.readFileSync(main, 'utf8').replace("backend: 'h5',", "backend: 'h5',\n  icons: { play: { shapes: [{ type: 'circle', cx: 16, cy: 16, r: 10, fill: '#fff' }] } },"));
+    },
+    root => {
+      for (const rel of ['ui/assets/Main/MainView.xml', 'ui/assets/Main/MainView@portrait.xml']) {
+        const xmlFile = path.join(root, rel);
+        fs.writeFileSync(xmlFile, fs.readFileSync(xmlFile, 'utf8').replace('</displayList>', '  <loader id="n9" name="ico" xy="0,0" size="48,48" url="icon://play"/>\n  </displayList>'));
+      }
+    }
+  ]) {
+    const c = await context();
+    mutate(c.root);
+    const before = files(c.unity);
+    const config = read(c.root, '.lgui/project.json');
+    const result = await exportTo(c);
+    assertFailure(result, 'LGUI-CLI-144');
+    assert.deepEqual(files(c.unity), before);
+    assert.equal(read(c.root, '.lgui/project.json'), config);
+  }
+});
+
+test('Unity export：lgui init --code-only 无图工程（未用代码图标）可正常导出 .bytes，且不生成图集 PNG', async () => {
+  const parent = fs.mkdtempSync(path.join(os.tmpdir(), 'lgui-export-code-only-'));
+  const init = await run(['init', 'game', '--code-only'], parent);
+  assert.equal(init.code, 0, init.stderr);
+  const c = {parent, root: path.join(parent, 'game'), unity: createUnityProject(path.join(parent, 'UnityProject'))};
+  const result = await exportTo(c);
+  assert.equal(result.code, 0, result.stdout);
+  assert.equal(result.json.ok, true);
+  const uiFiles = fs.readdirSync(path.join(c.unity, 'Assets/LGUI/Resources/UI'));
+  assert.ok(uiFiles.includes('Common_fui.bytes'), uiFiles.join(', '));
+  assert.ok(uiFiles.includes('Main_fui.bytes'), uiFiles.join(', '));
+  assert.equal(uiFiles.some(name => name.endsWith('.png')), false, uiFiles.join(', '));
+});
+
+test('Unity export：使用 synth:// 合成声音并配置自定义 platform.audio 的工程正常导出，并把按钮的 synth:// 地址打进脚本', async () => {
+  const parent = fs.mkdtempSync(path.join(os.tmpdir(), 'lgui-export-synth-'));
+  const init = await run(['init', 'game', '--code-only'], parent);
+  assert.equal(init.code, 0, init.stderr);
+  const root = path.join(parent, 'game');
+  for (const rel of ['ui/assets/Main/MainView.xml', 'ui/assets/Main/MainView@portrait.xml']) {
+    const file = path.join(root, rel);
+    fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace('<Button title="点我"/>', '<Button title="点我" sound="synth://laser"/>'));
+  }
+  const main = path.join(root, 'src/main.ts');
+  fs.writeFileSync(main, fs.readFileSync(main, 'utf8').replace(
+    "backend: 'h5',",
+    "backend: 'h5',\n  platform: { audio: { play() {}, music() {}, setPaused() {} } },"
+  ));
+  const check = await run(['check'], root);
+  assert.equal(check.code, 0, check.stdout + check.stderr);
+  const c = {parent, root, unity: createUnityProject(path.join(parent, 'UnityProject'))};
+  const result = await exportTo(c);
+  assert.equal(result.code, 0, result.stdout);
+  const bundle = fs.readFileSync(path.join(c.unity, 'Assets/LGUI/Resources/Game/game.js.txt'), 'utf8');
+  assert.match(bundle, /Main\/MainView#button/);
+  assert.match(bundle, /synth:\/\/laser/);
+});
+
+test('Unity export：存在网页宿主 host/main.ts 时明确跳过 host/ 并在摘要中提示，不把它打进 game.js.txt', async () => {
+  const c = await context();
+  fs.mkdirSync(path.join(c.root, 'host'), {recursive: true});
+  fs.writeFileSync(path.join(c.root, 'host/main.ts'), "import { defineWebHost } from 'lgui/host';\nexport default defineWebHost({ mount(stage) { const marker = '__WEB_HOST_ONLY__'; void stage; void marker; } });\n");
+  const result = await exportTo(c);
+  assert.equal(result.code, 0, result.stdout);
+  assert.equal(result.json.data.webHostSkipped, true);
+  const plain = await run(['unity', 'export', '--to', c.unity], c.root);
+  assert.equal(plain.code, 0, plain.stdout + plain.stderr);
+  assert.match(plain.stdout, /跳过 host\//);
+  const bundle = fs.readFileSync(path.join(c.unity, 'Assets/LGUI/Resources/Game/game.js.txt'), 'utf8');
+  assert.doesNotMatch(bundle, /__WEB_HOST_ONLY__/);
+});

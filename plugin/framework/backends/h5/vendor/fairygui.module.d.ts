@@ -50,6 +50,7 @@ export class GObject extends EventDispatcher {
 }
 
 export class GComponent extends GObject {
+  opaque: boolean;
   readonly numChildren: number;
   getChild(name: string): GObject | null;
   getChildAt(index: number): GObject;
@@ -109,6 +110,11 @@ export class GLoader extends GObject {
 export class Rect {
   constructor(x: number, y: number, width: number, height: number);
   x: number; y: number; width: number; height: number;
+}
+
+export class Vec2 {
+  constructor(x?: number, y?: number);
+  x: number; y: number;
 }
 
 export class ScrollPane {
@@ -235,7 +241,11 @@ export declare const PackageItemType: {readonly Image: number; readonly Componen
 export function convertToHtmlColor(rgb: number): string;
 
 /** DOM 元素类（fgui-div 等），补丁在它们的原型上挂钩子。 */
-export class UIElement extends HTMLElement {}
+export class UIElement extends HTMLElement {
+  readonly parent: UIElement | null;
+  touchable: boolean;
+  opaque: boolean;
+}
 export class Image extends UIElement {}
 export class MovieClip extends Image {}
 export class TextField extends UIElement {}
@@ -245,5 +255,6 @@ export class XML {
 }
 
 export class TranslationHelper {
+  static strings: Record<string, Record<string, string>> | null;
   static loadFromXML(source: XML): void;
 }

@@ -62,7 +62,7 @@ export interface ChildDescriptor {
   rect: [number, number, number, number];
   /** 初始属性。 */
   props: {
-    visible: boolean; enabled: boolean; touchable: boolean; customData?: string; text?: string; promptText?: string; url?: string; title?: string; icon?: string;
+    visible: boolean; enabled: boolean; touchable: boolean; customData?: string; text?: string; promptText?: string; url?: string; title?: string; icon?: string; selectedIcon?: string;
     selected?: boolean; selectedIndex?: number; value?: number; max?: number; min?: number; color?: string; items?: string[]; playing?: boolean; frame?: number; clickToExpand?: number; sound?: string; soundVolume?: number; scrollable?: boolean;
     /** 文字的自动大小（none、both、height、shrink、ellipsis）；加载器写 true 是尺寸跟着图片。 */
     autoSize?: string;

@@ -13,6 +13,7 @@
     "baseUrl": ".",
     "paths": {
       "lgui": [".lgui/framework/index.ts"],
+      "lgui/host": [".lgui/framework/host.ts"],
       "lgui/ui": [".lgui/build/types/index.d.ts"]
     }
   },

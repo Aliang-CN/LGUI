@@ -1,4 +1,4 @@
-// 网页用的界面包：每个包输出到 <out>/<包名>/，内含 package.xml（FairyGUI-dom 实际请求的文件名，内容是 Layabox 格式的二进制包）、
+// 网页用的界面包：每个包输出到 <out>/<包名>/，内含 package.json（{ fui: "<base64>" }，Layabox 格式的二进制包以 JSON 封装，使网页构建不含 .xml / .fui 文件）、
 // 按资源 ID 命名的散图 <资源ID>.png 和声音 <资源ID>.mp3；再写一份 <out>/manifest.json，网页运行时靠它找到散图和声音。
 // 声音：OpenFairyGUI 0.7.0 会把导出的（或被引用的）声音写成 <包名>_<资源ID>.mp3，包里记的文件名是 <资源ID>.mp3；
 // 这里和图片一样直接从 ui/assets/ 复制登记过的每个声音，放在包目录下、用包里记的那个文件名。
@@ -33,8 +33,8 @@ export async function generateWeb(fairyPath, out) {
       fs.mkdirSync(dir, {recursive: true});
       const binary = path.join(temp, `${name}.fui`);
       if (!fs.existsSync(binary)) throw new LgCliError('LGUI-CLI-021', `OpenFairyGUI 没有生成包 ${name} 的 ${name}.fui。`, {fix: '这是生成步骤的缺陷，请把输出报告给维护者。'});
-      fs.copyFileSync(binary, path.join(dir, 'package.xml'));
-      files.push(path.join(dir, 'package.xml'));
+      fs.writeFileSync(path.join(dir, 'package.json'), JSON.stringify({fui: fs.readFileSync(binary).toString('base64')}) + '\n');
+      files.push(path.join(dir, 'package.json'));
       const images = {};
       for (const image of pkg.listImageResources()) {
         // 直接从 ui/assets/ 读图片字节（OpenFairyGUI 后端的 readResourceBytes 有 1 MiB 上限）。

@@ -167,18 +167,22 @@ export class UIManager {
 
   // ---------- 按键和操作提示栏 ----------
 
+  /** 内部用：最近一次 keydown 是否被界面消费（触发了激活界面的 keys 动作或返回关闭）。 */
+  lastKeyConsumed = false;
+
   private onKey(e: KeyInput): void {
+    this.lastKeyConsumed = false;
     if (e.type !== 'down' || e.repeat || this.backend.platform.textInput.isComposing()) return;
     inputType.set('keyboardMouse');
     const action = actionForKey(e.key, this.backend.name, this.settings.keyMap ?? {});
     if (!action || action === 'none') return;
-    if (action === 'back') { this.back(); return; }
+    if (action === 'back') { this.lastKeyConsumed = this.back(); return; }
     const active = this.all().find(x => x.active);
     if (!active) return;
     const def = active.view.keys[action];
-    if (def === 'close') this.closeEntry(active);
-    else if (typeof def === 'function') asActor(active.view, () => (def as () => unknown)());
-    else if (def && typeof def === 'object' && typeof (def as {do?: unknown}).do === 'function') asActor(active.view, () => (def as {do: () => unknown}).do());
+    if (def === 'close') { this.lastKeyConsumed = true; this.closeEntry(active); }
+    else if (typeof def === 'function') { this.lastKeyConsumed = true; asActor(active.view, () => (def as () => unknown)()); }
+    else if (def && typeof def === 'object' && typeof (def as {do?: unknown}).do === 'function') { this.lastKeyConsumed = true; asActor(active.view, () => (def as {do: () => unknown}).do()); }
   }
 
   /** 内部用：建操作提示栏（Common/ActionHintBar）。启动时调用。没有 Common 包或这个组件是写错了（LGUI-RT-172）：正式构建里只记 error、不建提示栏。 */
@@ -431,8 +435,8 @@ export class UIManager {
     for (const e of deactivated) errors.run(() => this.hook(e, 'onDeactivate'));
     for (const e of activated) errors.run(() => this.hook(e, 'onActivate'));
     this.updateHints();
-    if (activated.length) {
-      const mode: InputMode = active?.cls.inputMode ?? (active?.layer === 'hud' ? 'game' : 'ui');
+    if (activated.length || (deactivated.length && !active)) {
+      const mode: InputMode = active ? (active.cls.inputMode ?? (active.layer === 'hud' ? 'game' : 'ui')) : 'game';
       this.backend.platform.input.setInputMode(mode);
       bus.emit(builtinEvents.inputModeChange, {inputMode: mode}, errors.add);
     }
@@ -650,14 +654,15 @@ export class UIManager {
     return this.open(cls, params);
   }
 
-  /** 和按返回键一样：关闭当前激活、可以返回的界面。hud 层的界面和 page 层最底下的主界面关不掉；keys.back 写成函数时照常调用。 */
-  back(): void {
+  /** 和按返回键一样：关闭当前激活、可以返回的界面。hud 层的界面和 page 层最底下的主界面关不掉；keys.back 写成函数时照常调用。返回这次是否处理了返回动作。 */
+  back(): boolean {
     const active = this.all().find(e => e.active);
-    if (!active) return;
+    if (!active) return false;
     const back = active.view.keys.back ?? 'close';
-    if (back === 'none') return;
-    if (typeof back === 'function') { asActor(active.view, () => (back as () => void)()); return; }
-    if (this.canGoBack(active)) this.closeEntry(active);
+    if (back === 'none') return false;
+    if (typeof back === 'function') { asActor(active.view, () => (back as () => void)()); return true; }
+    if (this.canGoBack(active)) { this.closeEntry(active); return true; }
+    return false;
   }
 
   /** 一直关到指定界面为止（它上面的界面全部关掉）。全部关完才重新算一次激活。 */

@@ -51,3 +51,31 @@ test('模板里的类型检查会拦住写错的绑定', async () => {
   const errors = typecheckProject(path.join(parent, 'g'));
   assert.ok(errors.some(e => /buton/.test(e)), errors.join('\n'));
 });
+
+test('lgui init --code-only：工程不含任何图片/音频/字体文件，placeholder 为 null，check、test、verify 全部通过', async () => {
+  const parent = fs.mkdtempSync(path.join(os.tmpdir(), 'lgui-init-code-only-'));
+  const result = await run(['init', 'pure-game', '--code-only', '--json'], parent);
+  const json = JSON.parse(result.stdout);
+  assert.equal(json.ok, true, result.stdout);
+  assert.equal(json.data.codeOnly, true);
+  const root = path.join(parent, 'pure-game');
+  assert.equal(fs.existsSync(path.join(root, 'ui/assets/Common/placeholder.png')), false);
+  const commonXml = fs.readFileSync(path.join(root, 'ui/assets/Common/package.xml'), 'utf8');
+  assert.doesNotMatch(commonXml, /<image\b/);
+  const project = JSON.parse(fs.readFileSync(path.join(root, '.lgui/project.json'), 'utf8'));
+  assert.equal(project.placeholder, null);
+  const walk = d => fs.readdirSync(d, {withFileTypes: true}).flatMap(e => e.isDirectory() ? walk(path.join(d, e.name)) : [path.join(d, e.name)]);
+  const binaryAssets = walk(root).filter(f => /\.(png|jpg|jpeg|webp|gif|svg|mp3|wav|ogg|ttf|otf|woff2?)$/i.test(f));
+  assert.deepEqual(binaryAssets, []);
+  assert.deepEqual(typecheckProject(root), []);
+
+  const checkRes = JSON.parse((await run(['check', '--json'], root)).stdout);
+  assert.equal(checkRes.ok, true, JSON.stringify(checkRes));
+  assert.deepEqual(checkRes.data.findings, []);
+
+  const testRes = JSON.parse((await run(['test', '--json'], root)).stdout);
+  assert.equal(testRes.ok, true, JSON.stringify(testRes));
+
+  const verifyRes = JSON.parse((await run(['verify', '--size', 'desktop', '--json'], root)).stdout);
+  assert.equal(verifyRes.ok, true, JSON.stringify(verifyRes));
+});

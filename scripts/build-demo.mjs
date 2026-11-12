@@ -29,9 +29,9 @@ try {
   await generateWeb(uiProjectPath(root), path.join(out, 'ui'));
   await generateProjectTypes(root, {validated: true});
   const model = readUiModel(uiProjectPath(root));
-  generateTranslations(root, model, project.languages, path.join(out, 'i18n'), project.defaultLanguage);
+  generateTranslations(root, model, project.languages, path.join(out, 'i18n'), project.defaultLanguage, {format: 'json'});
   await generateFonts(root, project, model, path.join(out, 'ui', 'fonts'), 'woff2');
-  const entry = writeWebBootstrap(root, project, {dir: buildDir(root, 'demo')}); // 启动入口不放进要发布的输出目录
+  const entry = writeWebBootstrap(root, project, {dir: buildDir(root, 'demo'), dev: false}); // 启动入口不放进要发布的输出目录
   try {
     await esbuild().build({...webBuildOptions(root, entry, {dev: false, outfile: path.join(out, 'app.js')}), sourcemap: false});
   } catch (error) {

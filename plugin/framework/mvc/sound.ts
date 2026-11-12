@@ -55,7 +55,7 @@ export const soundSettings: Readable<SoundSettings> = {
 
 // 参数不对是写错了（LGUI-RT-174）：开发和测试里抛错；正式构建里记 error，这次调用不生效。
 function check(ok: boolean, message: string): boolean {
-  if (!ok) fault(new LgRuntimeError('LGUI-RT-174', message, "照 mvc-spec 第 15 节写：声道是 'music' 或 'sfx'，音量是 0 到 1 的数，静音是 true 或 false，地址是 ui://包名/声音名。"));
+  if (!ok) fault(new LgRuntimeError('LGUI-RT-174', message, "照 mvc-spec 第 15 节写：声道是 'music' 或 'sfx'，音量是 0 到 1 的数，静音是 true 或 false，地址是 ui://包名/声音名 或 synth://名字。"));
   return ok;
 }
 const isChannel = (channel: unknown): channel is SoundChannel => check(channels.includes(channel as SoundChannel), `声道 ${String(channel)} 不对。`);

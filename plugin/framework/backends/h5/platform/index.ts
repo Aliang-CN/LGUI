@@ -3,7 +3,7 @@ import * as fgui from '../vendor/fairygui.module.js';
 import type {
   Platform, KeyInput, WheelInput, NetResponse, NetSocket, Insets, PointerInput, Rect, Unsubscribe
 } from '../../../core/index';
-import {LgRuntimeError} from '../../../core/index';
+import {LgRuntimeError, hasIcon, isIconUrl, missingIconError} from '../../../core/index';
 import {fitDesign, stage, toDesign} from '../scale';
 import {pointerEventTypes, toPointerInput} from '../pointer';
 import {createH5Audio} from './audio';
@@ -11,7 +11,7 @@ import {consoleLogger} from './log';
 import {createH5Clipboard} from './clipboard';
 
 // 一组回调，返回取消函数。传了 onError 时，一个回调出错交给 onError，其余回调照常调用。
-class Handlers<T> {
+export class Handlers<T> {
   private set = new Set<(value: T) => void>();
   add(handler: (value: T) => void): Unsubscribe { this.set.add(handler); return () => { this.set.delete(handler); }; }
   emit(value: T, onError?: (error: unknown) => void): void {
@@ -23,10 +23,20 @@ class Handlers<T> {
 }
 
 // 统一按键名：安卓返回键当 Back。
-function keyName(event: KeyboardEvent): string {
+export function keyName(event: KeyboardEvent): string {
   if (event.key === 'GoBack' || event.key === 'BrowserBack') return 'Back';
   if (event.key === 'Esc') return 'Escape';
   return event.key;
+}
+
+type InputModeValue = 'ui' | 'game' | 'all';
+const h5InputModes = new WeakMap<Platform, {mode: () => InputModeValue; onChange: (h: (mode: InputModeValue) => void) => Unsubscribe}>();
+
+/** 内部用（web-stage.ts）：读取并订阅 H5 平台当前的 inputMode。 */
+export function h5InputModeState(platform: Platform): {mode: () => InputModeValue; onChange: (h: (mode: InputModeValue) => void) => Unsubscribe} {
+  const found = h5InputModes.get(platform);
+  if (!found) return {mode: () => 'game', onChange: () => () => {}};
+  return found;
 }
 
 // 安全区：设置了 globalThis.__lguiSafeArea 时用它（lgui verify 用它模拟刘海），否则用一个放了 env(safe-area-inset-*) 的探测元素读出来。
@@ -49,6 +59,8 @@ export function createH5Platform(projectName: string, uiBase: string): Platform 
   const keys = new Handlers<KeyInput>();
   const wheels = new Handlers<WheelInput>();
   const resizes = new Handlers<{width: number; height: number}>();
+  const inputModes = new Handlers<InputModeValue>();
+  let currentInputMode: InputModeValue = 'game';
   let composing = false;
   const audio = createH5Audio(uiBase);
   const unlockAudio = (): void => audio.unlock(); // 第一次点击或按键时解锁声音
@@ -87,7 +99,7 @@ export function createH5Platform(projectName: string, uiBase: string): Platform 
 
   const prefix = `lgui:${projectName}:`;
 
-  return {
+  const platform: Platform = {
     time: {now: () => performance.now(), onFrame: h => frame.add(h), onVisibilityChange: h => visibility.add(h)},
     storage: {
       get: key => localStorage.getItem(prefix + key),
@@ -98,14 +110,26 @@ export function createH5Platform(projectName: string, uiBase: string): Platform 
       loadPackage: async name => { if (!fgui.UIPackage.getByName(name)) await fgui.UIPackage.loadPackage(`${uiBase}/${name}`); },
       releasePackage: name => { if (fgui.UIPackage.getByName(name)) fgui.UIPackage.removePackage(name); },
       hasPackage: name => fgui.UIPackage.getByName(name) !== undefined,
-      loadImage: url => new Promise((resolve, reject) => {
-        const image = new Image();
-        image.onload = () => resolve();
-        image.onerror = () => reject(new LgRuntimeError('LGUI-RT-025', `图片 ${url} 加载失败。`, '确认地址对、文件存在。'));
-        image.src = url;
-      })
+      loadImage: url => {
+        if (isIconUrl(url)) return hasIcon(url) ? Promise.resolve() : Promise.reject(missingIconError(url));
+        return new Promise((resolve, reject) => {
+          const image = new Image();
+          image.onload = () => resolve();
+          image.onerror = () => reject(new LgRuntimeError('LGUI-RT-025', `图片 ${url} 加载失败。`, '确认地址对、文件存在。'));
+          image.src = url;
+        });
+      }
     },
-    input: {onPointer: h => pointer.add(h), onKey: h => keys.add(h), onWheel: h => wheels.add(h), setInputMode: () => {}},
+    input: {
+      onPointer: h => pointer.add(h),
+      onKey: h => keys.add(h),
+      onWheel: h => wheels.add(h),
+      setInputMode: mode => {
+        if (mode === currentInputMode) return;
+        currentInputMode = mode;
+        inputModes.emit(mode, reportError);
+      }
+    },
     textInput: {isComposing: () => composing},
     screen: {
       size,
@@ -146,4 +170,6 @@ export function createH5Platform(projectName: string, uiBase: string): Platform 
       }
     }
   };
+  h5InputModes.set(platform, {mode: () => currentInputMode, onChange: h => inputModes.add(h)});
+  return platform;
 }

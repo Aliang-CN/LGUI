@@ -174,7 +174,7 @@ export interface CommonBinding {
   lockWhilePending?: boolean;
   /** 拖放：能拖起来，值是松手时交给 drop 的数据；null 表示这时拖不起来（比如空格子）。 */
   dragData?: Value<unknown>;
-  /** 拖起时跟手的图标（图片地址），不写时用加载器自己的图片或按钮的图标。 */
+  /** 拖起时跟手的图标（图片地址），不写时用加载器自己的图片，或按钮、标签的图标。 */
   dragIcon?: Value<string>;
   /** 拖放：别的控件拖到这里松手时调用，参数是那边的 dragData；写在 ItemView 里时第二个参数是这一项的数据。 */
   drop?: (data: never, item: never) => unknown;
@@ -216,8 +216,8 @@ export interface ButtonBinding extends LabelBinding {
 export interface LoaderBinding extends CommonBinding {
   /** 图片地址。 */
   icon?: Value<string>;
-  /** 加载中和失败时显示的占位图，不写用工程配置的默认占位图。 */
-  placeholder?: string;
+  /** 加载中和失败时显示的占位图，不写用工程配置的默认占位图；null 表示不显示占位图。 */
+  placeholder?: string | null;
 }
 
 /** 进度条。 */

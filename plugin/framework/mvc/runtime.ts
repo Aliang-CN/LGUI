@@ -22,8 +22,8 @@ export interface RuntimeConfig {
   requestErrorToast: boolean;
   /** 请求超时（毫秒）。 */
   requestTimeoutMs: number;
-  /** 默认占位图。 */
-  placeholder: string;
+  /** 默认占位图；null 表示不显示占位图。 */
+  placeholder: string | null;
   /** 按钮的默认音效（ui/ 里按钮没写音效时用），null 表示不放。 */
   sounds: {click: string | null};
 }

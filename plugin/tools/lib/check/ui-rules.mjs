@@ -22,6 +22,71 @@ const titleFix = c => {
 };
 // 写了什么：按钮、标签是标题，下拉框是选中项的文字
 const shows = c => c.extension === 'ComboBox' ? '选中项的文字' : '标题';
+// 按钮、标签、下拉框的图标（实例上的 icon / selectedIcon、绑定表的 icon）只写进组件里名为 icon 的子控件：FairyGUI 按名字找，找不到就不显示。
+const iconless = c => Boolean(TITLED[c?.extension]) && !c.children.some(ch => ch.name === 'icon');
+const iconFix = c => {
+  const loaders = c.children.filter(ch => ch.tag === 'loader' && ch.name).map(ch => ch.name);
+  return `在 ${c.fullName} 里加一个名为 icon 的装载器（loader）子控件${loaders.length ? `，或者把现有的装载器（${loaders.join('、')}）改名为 icon` : ''}。按钮、标签、下拉框的图标只写进名为 icon 的子控件。`;
+};
+
+const ICON_URL_RE = /^icon:\/\/([A-Za-z0-9][A-Za-z0-9._/-]*)$/;
+
+/** 扫描工程配置和 ui/ XML 里出现的全部 icon:// 地址（lgui check 和 lgui unity export 共用）。 */
+export function collectUiIconUrls(root, model, placeholder = null) {
+  const rel = file => path.relative(root, file).split(path.sep).join('/');
+  const out = [];
+  if (typeof placeholder === 'string' && placeholder.startsWith('icon://')) {
+    out.push({url: placeholder, file: '.lgui/project.json', line: 1, where: '工程配置 placeholder'});
+  }
+  for (const pkg of model.packages) {
+    for (const component of pkg.components) {
+      const file = rel(component.file);
+      for (const child of component.children) {
+        if (child.tag === 'loader' && child.attrs.url?.startsWith('icon://')) {
+          out.push({url: child.attrs.url, file, line: child.line, where: `组件 ${component.fullName} 的装载器 ${child.name}`});
+        }
+        const ext = child.children.find(n => ['Button', 'Label', 'ComboBox'].includes(n.tag));
+        if (ext) {
+          for (const attrName of ['icon', 'selectedIcon']) {
+            if (ext.attrs[attrName]?.startsWith('icon://')) {
+              out.push({url: ext.attrs[attrName], file, line: child.line, where: `组件 ${component.fullName} 的${TITLED[ext.tag]} ${child.name}`});
+            }
+          }
+          for (const item of ext.children ?? []) {
+            if (item.tag === 'item' && item.attrs.icon?.startsWith('icon://')) {
+              out.push({url: item.attrs.icon, file, line: child.line, where: `组件 ${component.fullName} 的下拉框 ${child.name}`});
+            }
+          }
+        }
+        for (const gear of child.children.filter(n => n.tag === 'gearIcon')) {
+          for (const val of [...(gear.attrs.values ?? '').split('|'), gear.attrs.default ?? '']) {
+            if (val.startsWith('icon://')) {
+              out.push({url: val, file, line: child.line, where: `组件 ${component.fullName} 的 ${child.name} 的 gearIcon`});
+            }
+          }
+        }
+      }
+    }
+  }
+  return out;
+}
+
+function iconUrlProblem(url, codeIcons) {
+  const m = ICON_URL_RE.exec(url);
+  if (!m) {
+    return {
+      message: `代码图标地址「${url}」写法不对（要写成 icon://<名字>，名字以字母或数字开头，只能用字母、数字和 . _ / -）`,
+      fix: "改成比如 'icon://play'、'icon://hud/sword'。"
+    };
+  }
+  if (codeIcons && !codeIcons.dynamic && !codeIcons.names.has(m[1])) {
+    return {
+      message: `代码图标 ${url} 没有在代码里注册`,
+      fix: `在 src/main.ts 的 lgui.app({ icons }) 里注册 '${m[1]}'，或者调用 lgui.registerIcons({ '${m[1]}': ... })。`
+    };
+  }
+  return null;
+}
 
 // 动效里旋转、缩放的值都是原样（缩放 1,1、旋转 0）时不需要轴心。
 const IDENTITY = {Scale: v => v.split(',').every(n => Number(n) === 1), Rotation: v => Number(v) === 0};
@@ -43,10 +108,17 @@ export function resourceByUrl(model, url) {
 // 图片有 @<语言> 版本（带字图片）
 const hasLanguages = (pkg, image) => image.type === 'image' && pkg.resources.some(r => r.type === 'image' && r.name.startsWith(image.name + '@'));
 
-/** 音效地址的问题：不存在、没登记、不是 mp3；没问题返回 null。 */
-export function soundProblem(model, url) {
+const SYNTH_URL_RE = /^synth:\/\/([A-Za-z0-9][A-Za-z0-9._/-]*)$/;
+
+/** 音效地址的问题：不存在、没登记、不是 mp3，或者 synth:// 写法不对、没配自定义 audio 出口；没问题返回 null。 */
+export function soundProblem(model, url, {customAudio = false} = {}) {
+  if (typeof url === 'string' && url.startsWith('synth://')) {
+    if (!SYNTH_URL_RE.test(url)) return `合成声音地址「${url}」写法不对（要写成 synth://<名字>，名字以字母或数字开头，只能用字母、数字和 . _ / -）`;
+    if (!customAudio) return `用了代码合成声音 ${url}，但没有在 lgui.app({ platform: { audio } }) 或 host/main.ts 的 defineWebHost({ audio }) 里提供自定义的声音出口`;
+    return null;
+  }
   const found = resourceByUrl(model, url);
-  if (!found) return `${url} 没有登记在 ui/ 的包里（地址写成 ui://包名/音效名）`;
+  if (!found) return `${url} 没有登记在 ui/ 的包里（地址写成 ui://包名/音效名，或者代码合成声音写成 synth://名字）`;
   const {res} = found;
   if (res.type !== 'sound') return `${url} 不是音效（package.xml 里登记的是 ${res.type}）`;
   if (!/\.mp3$/i.test(res.fileName)) return `${url} 是 ${res.fileName}，音效只用 mp3`;
@@ -58,11 +130,11 @@ export function soundProblem(model, url) {
   return null;
 }
 
-export function uiRules({root, model, languages, redDots = [], texts = [], items = [], fullScreens = [], sounds = null}) {
+export function uiRules({root, model, languages, redDots = [], texts = [], items = [], iconBindings = [], fullScreens = [], sceneViews = [], hasHost = false, sounds = null, placeholder = null, codeIcons = null, customAudio = false}) {
   const out = [];
   const rel = file => path.relative(root, file).split(path.sep).join('/');
   const add = (code, message, fix, file, line) => out.push(finding(code, message, fix, {file: file ? rel(file) : undefined, line, col: 1}));
-  const soundFix = '音效用 mp3，放进包目录并登记进 package.xml（<sound id="…" name="click.mp3" path="/" exported="true"/>），地址写 ui://包名/音效名；不要声音就写 sound=""。';
+  const soundFix = '音效用 mp3 放进包目录并登记进 package.xml（<sound id="…" name="click.mp3" path="/" exported="true"/>），地址写 ui://包名/音效名；或者用代码合成声音写 synth://<名字>（并在 lgui.app({ platform: { audio } }) 或 host/main.ts 的 defineWebHost({ audio }) 提供自定义声音出口）；不要声音就写 sound=""。';
 
   // UI-001 包 ID
   const pkgIds = new Map();
@@ -113,7 +185,7 @@ export function uiRules({root, model, languages, redDots = [], texts = [], items
     for (const component of pkg.components) {
       // UI-065 按钮组件自己写的音效
       const ownSound = component.root?.children.find(n => n.tag === 'Button')?.attrs.sound;
-      if (ownSound) { const problem = soundProblem(model, ownSound); if (problem) add('LGUI-UI-065', `按钮组件 ${component.fullName} 的音效不对：${problem}。`, soundFix, component.file, 1); }
+      if (ownSound) { const problem = soundProblem(model, ownSound, {customAudio}); if (problem) add('LGUI-UI-065', `按钮组件 ${component.fullName} 的音效不对：${problem}。`, soundFix, component.file, 1); }
       // UI-003 元素 ID、UI-004 控件名
       const ids = new Set();
       for (const child of component.children) {
@@ -135,14 +207,16 @@ export function uiRules({root, model, languages, redDots = [], texts = [], items
           if (texts.length) add('LGUI-UI-060', `组件 ${component.fullName} 的 ${child.name} 在 gearText 里写了用户能看到的文字（${texts.join('|')}）。这些字不会被提取翻译，lgui test 里也看不到。`, '删掉 gearText，改用绑定表：text: pick(数据, s => lgui.t(键))，文字写进 i18n/<语言>.json。', component.file, child.line);
         }
         const button = child.children.find(n => n.tag === 'Button' || n.tag === 'Label');
-        // UI-066 按钮、标签实例上写了标题，下拉框实例上写了选项，组件里却没有 title 子控件：网页上显示不出来
+        // UI-066 按钮、标签实例上写了标题/图标，下拉框实例上写了选项/图标，组件里却没有 title / icon 子控件：网页上显示不出来
         const own = child.ref && child.children.find(n => n.tag === child.ref.extension);
         const written = own && (own.attrs.title || (own.tag === 'ComboBox' && own.children.some(n => n.tag === 'item' && n.attrs.title)));
         if (written && titleless(child.ref)) add('LGUI-UI-066', `组件 ${component.fullName} 的${TITLED[own.tag]} ${child.name} 写了${own.attrs.title ? `标题「${own.attrs.title}」` : '选项'}，但${TITLED[own.tag]}组件 ${child.ref.fullName} 里没有名为 title 的子控件，${shows(child.ref)}在网页上显示不出来。`, titleFix(child.ref), component.file, child.line);
+        const writtenIcon = own && (own.attrs.icon || own.attrs.selectedIcon || (own.tag === 'ComboBox' && own.children.some(n => n.tag === 'item' && n.attrs.icon)));
+        if (writtenIcon && iconless(child.ref)) add('LGUI-UI-066', `组件 ${component.fullName} 的${TITLED[own.tag]} ${child.name} 写了图标，但${TITLED[own.tag]}组件 ${child.ref.fullName} 里没有名为 icon 的子控件，图标显示不出来。`, iconFix(child.ref), component.file, child.line);
         // UI-061 按钮直接绑控制器（点了就切页）：绕过了 Model，lgui test 里也不切
         if (button?.tag === 'Button' && button.attrs.controller) add('LGUI-UI-061', `组件 ${component.fullName} 的按钮 ${child.name} 直接绑了控制器 ${button.attrs.controller}（点了就切页）。这样切页不经过 Model，lgui test 里也不会切。`, '删掉 <Button> 上的 controller 和 page；在绑定表里写 click: () => xxxController.方法()，由 Controller 改 Model，控制器写 page: pick(…)。', component.file, child.line);
         // UI-065 按钮实例上写的音效；写空表示不出声
-        if (button?.tag === 'Button' && button.attrs.sound) { const problem = soundProblem(model, button.attrs.sound); if (problem) add('LGUI-UI-065', `组件 ${component.fullName} 的按钮 ${child.name} 的音效不对：${problem}。`, soundFix, component.file, child.line); }
+        if (button?.tag === 'Button' && button.attrs.sound) { const problem = soundProblem(model, button.attrs.sound, {customAudio}); if (problem) add('LGUI-UI-065', `组件 ${component.fullName} 的按钮 ${child.name} 的音效不对：${problem}。`, soundFix, component.file, child.line); }
         // UI-017 装载器的 url、按钮的 icon 写死了带字图片：不会随语言换
         for (const url of [child.tag === 'loader' ? child.attrs.url : null, button?.attrs.icon]) {
           const found = url ? resourceByUrl(model, url) : null;
@@ -232,7 +306,29 @@ export function uiRules({root, model, languages, redDots = [], texts = [], items
   }
 
   // UI-065 工程配置里的默认点击音效
-  if (sounds?.click) { const problem = soundProblem(model, sounds.click); if (problem) out.push(finding('LGUI-UI-065', `工程配置 sounds.click 的音效不对：${problem}。`, '改成登记过的 mp3 音效地址（ui://包名/音效名），或者写 null（不播）。', {file: '.lgui/project.json', line: 1, col: 1})); }
+  if (sounds?.click) { const problem = soundProblem(model, sounds.click, {customAudio}); if (problem) out.push(finding('LGUI-UI-065', `工程配置 sounds.click 的音效不对：${problem}。`, '改成登记过的 mp3 音效地址（ui://包名/音效名），或者代码合成声音（synth://名字，并在 lgui.app({ platform: { audio } }) 或 host/main.ts 的 defineWebHost({ audio }) 提供自定义声音出口），或者写 null（不播）。', {file: '.lgui/project.json', line: 1, col: 1})); }
+
+  // UI-070 有网页宿主（host/main.ts）时，inputMode 为 game 或 all 的界面组件（横竖两版）根 <component> 必须写 opaque="false"，空白处才能透给底层三维画布
+  if (hasHost) {
+    const checkedOpaque = new Set();
+    for (const v of sceneViews) {
+      const component = findComponent(model, v.component);
+      const portrait = component && findComponent(model, `${v.component}${PORTRAIT}`);
+      for (const c of [component, portrait].filter(Boolean)) {
+        if (checkedOpaque.has(c)) continue;
+        checkedOpaque.add(c);
+        if (c.root?.attrs.opaque !== 'false') {
+          add(
+            'LGUI-UI-070',
+            `界面 ${v.viewName} 的 inputMode 是 ${v.mode}（空白处要透给底层三维画布），但组件 ${c.fullName} 的根 <component> 没写 opaque="false"，整张界面会挡住底层画布的输入。`,
+            `在 ${rel(c.file)} 的 <component …> 上加 opaque="false"；若这个界面本来就要独占全部输入，在 ${v.viewName} 上写 static inputMode = 'ui' as const;。`,
+            c.file,
+            lineWith(c.file, ['<component']) ?? 1
+          );
+        }
+      }
+    }
+  }
 
   // UI-012 绑定了 redDot 的控件里有 redDot 子控件
   for (const b of redDots) {
@@ -256,6 +352,37 @@ export function uiRules({root, model, languages, redDots = [], texts = [], items
     }
     if (child?.tag !== 'component' || !titleless(child.ref) || (b.word === 'items' && child.ref.extension !== 'ComboBox')) continue;
     out.push(finding('LGUI-UI-066', `${b.component} 的 ${b.key} 绑定了 ${b.word}，但它的${TITLED[child.ref.extension]}组件 ${child.ref.fullName} 里没有名为 title 的子控件，${shows(child.ref)}在网页上显示不出来。`, titleFix(child.ref), b.loc));
+  }
+  // UI-066 绑定表给按钮、标签写了 icon，组件里却没有 icon 子控件：显示不出来
+  for (const b of iconBindings) {
+    const component = findComponent(model, b.component);
+    let owner = component, child = null;
+    for (const part of b.key.split('.')) {
+      child = owner?.children.find(c => c.name === part) ?? null;
+      owner = child?.ref ?? null;
+    }
+    if (child?.tag !== 'component' || !iconless(child.ref)) continue;
+    out.push(finding('LGUI-UI-066', `${b.component} 的 ${b.key} 绑定了 icon，但它的${TITLED[child.ref.extension]}组件 ${child.ref.fullName} 里没有名为 icon 的子控件，图标显示不出来。`, iconFix(child.ref), b.loc));
+  }
+  // UI-009 工程配置的默认占位图（ui://）：指向的图片存在且已导出；无图工程应写成 null 或 icon://
+  if (typeof placeholder === 'string' && placeholder.startsWith('ui://')) {
+    const found = resourceByUrl(model, placeholder);
+    if (!found || found.res.type !== 'image') {
+      if (common || !placeholder.startsWith('ui://Common/')) {
+        out.push(finding('LGUI-UI-009', `工程配置 placeholder 指向的图片 ${placeholder} 不存在。`, '在对应的 package.xml 里登记这张图片，或者在 .lgui/project.json 里把 placeholder 改成 null（无图工程不显示占位图）。', {file: '.lgui/project.json', line: 1, col: 1}));
+      }
+    } else if (!found.res.exported) {
+      out.push(finding('LGUI-UI-009', `工程配置 placeholder 指向的图片 ${placeholder} 没有导出。`, `在 ${found.pkg.name}/package.xml 里给它写 exported="true"，或者把 placeholder 改成 null。`, {file: '.lgui/project.json', line: 1, col: 1}));
+    }
+  }
+  // UI-009 代码图标地址（icon://）：写法合法且在代码里已注册
+  for (const entry of collectUiIconUrls(root, model, placeholder)) {
+    const problem = iconUrlProblem(entry.url, codeIcons);
+    if (problem) out.push(finding('LGUI-UI-009', `${entry.where}：${problem.message}。`, problem.fix, {file: entry.file, line: entry.line, col: 1}));
+  }
+  for (const entry of codeIcons?.urls ?? []) {
+    const problem = iconUrlProblem(entry.url, codeIcons);
+    if (problem) out.push(finding('LGUI-UI-009', `${problem.message}。`, problem.fix, entry.loc));
   }
   return out;
 }

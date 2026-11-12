@@ -1,9 +1,12 @@
 // Unity 后端：用 PuerTS 调用 FairyGUI-unity；游戏代码只通过 core/MVC 接口使用它。
 import type {Backend, BackendConfig, Platform, UIComponent} from '../../../core/index';
-import {LgRuntimeError} from '../../../core/index';
+import {LgRuntimeError, isIconUrl, reportIconFault, unityIconError} from '../../../core/index';
 import {createObjectAdapter} from './objects';
 import {createUnityPlatform} from './platform';
 import type {NativeBridge, UnityGlobals} from './native-backend';
+
+/** 没有项目字体且无法建 TMP 系统字体时，交给 FairyGUI FontManager 按逗号列表调 Font.CreateDynamicFontFromOSFont（避开 Unity 6 已移除的内置 Arial.ttf）。 */
+const UNITY_SYSTEM_FONT_NAMES = 'PingFang SC, Noto Sans CJK SC, Noto Sans SC, Source Han Sans SC, Microsoft YaHei, Droid Sans Fallback, WenQuanYi Micro Hei, Arial';
 
 /** 由 Unity 导出的启动代码选择，游戏源码不直接 import Unity 后端。 */
 export function createUnityBackend(bridge?: NativeBridge): Backend {
@@ -55,10 +58,17 @@ export function createUnityBackend(bridge?: NativeBridge): Backend {
       api = found;
       config = options;
       const fgui = found.FairyGUI;
-      if (options.defaultFont) fgui.UIConfig.defaultFont = options.defaultFont;
+      const host = found.LGUI.Platform;
+      if (options.defaultFont) {
+        fgui.UIConfig.defaultFont = options.defaultFont;
+      } else {
+        const sysTmp = !(options.fonts ?? []).length && host.TmpSettingsFound === true && typeof host.RegisterSystemDefaultFont === 'function'
+          ? host.RegisterSystemDefaultFont()
+          : '';
+        fgui.UIConfig.defaultFont = sysTmp || UNITY_SYSTEM_FONT_NAMES;
+      }
       // 项目字体在创建任何界面之前注册成 TMP 字体（FontManager 找不到字体时会静默换成系统字体或 Arial，所以注册不上就报错）。
       // 每个项目字体后面挂同一个系统回退字体，显示子集外的字（聊天、玩家名）；一个系统字体都没找到时只记一次 LGUI-RT-182，不抛错。
-      const host = found.LGUI.Platform;
       if ((options.fonts ?? []).length) {
         if (typeof host.RegisterFont !== 'function' || typeof host.TmpSettingsFound !== 'boolean') throw new LgRuntimeError('LGUI-RT-181', `Unity 工程里的 LGUI 包是旧版（没有 LGUI.Platform.RegisterFont / TmpSettingsFound），注册不了项目字体 ${options.fonts?.join('、')}。`, '运行 lgui upgrade 把新版 Unity 包复制进工程，再 lgui unity export。');
         if (!host.TmpSettingsFound) throw new LgRuntimeError('LGUI-RT-181', `注册不了项目字体 ${options.fonts?.join('、')}：Unity 工程里没有 TextMesh Pro 的设置资源（TMP Settings），项目字体在 Unity 上是 TMP 字体，TMP 建字体要用它。`, '重新运行 lgui unity export（它会从 com.unity.ugui 自带的资源包导入 TMP Essential Resources）；或者在 Unity 里点 Window → TextMeshPro → Import TMP Essential Resources。');
@@ -70,6 +80,7 @@ export function createUnityBackend(bridge?: NativeBridge): Backend {
       const noFallback = (options.fonts ?? []).length > 0 && host.FallbackFontName === '';
       // FairyGUI-unity 的按钮、动效会自己放声音（网页版的 FairyGUI 不放）。LGUI 的声音都由框架经 platform.audio 放，所以关掉 FairyGUI 自己的。
       fgui.Stage.inst.soundVolume = 0;
+      const buttonSounds = options.buttonSounds ?? {};
       objects = createObjectAdapter(fgui, () => host.Now, (x, y) => ({x: x / scale.value, y: y / scale.value}),
         (x, y, width, height) => new found.UnityEngine.Rect(x, y, width, height), {
           wheelDeltaX: () => host.WheelDeltaX,
@@ -80,6 +91,7 @@ export function createUnityBackend(bridge?: NativeBridge): Backend {
             return display?.gOwner ?? null;
           },
           buttonSound: button => host.ButtonSoundUrl(button),
+          fallbackButtonSound: (button, parentComp, selfComp) => (parentComp ? buttonSounds[`${parentComp}#${button.name}`] : undefined) ?? (selfComp ? buttonSounds[selfComp] : undefined) ?? '',
           transitionSettings: transition => ({autoPlay: host.TransitionAutoPlay(transition), times: host.TransitionAutoPlayTimes(transition), delay: Math.round(host.TransitionAutoPlayDelay(transition) * 1000)}),
           gearController: (object, index) => host.GearController(object, index),
           downEffect: button => ({type: host.ButtonDownEffect(button), value: host.ButtonDownEffectValue(button)}),
@@ -142,12 +154,17 @@ export function createUnityBackend(bridge?: NativeBridge): Backend {
       return pkg !== null && pkg.GetItemByName(componentName) !== null;
     },
     imageSize(url) {
+      if (isIconUrl(url)) return null;
       const item = ready().FairyGUI.UIPackage.GetItemByURL(url);
       return item ? {width: item.width, height: item.height} : null;
     },
     createImage(url) {
       const cs = ready();
       const loader = new cs.LGUI.LGUIResourceLoader();
+      if (isIconUrl(url)) {
+        reportIconFault(unityIconError(url), {url});
+        return objects!.wrap(loader);
+      }
       loader.url = url;
       const size = this.imageSize(url);
       if (size) loader.SetSize(size.width, size.height);

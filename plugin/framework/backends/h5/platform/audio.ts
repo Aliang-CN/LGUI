@@ -1,7 +1,7 @@
 // h5 的声音出口：Web Audio。浏览器要求用户先点一下或按一下键才能出声：解锁之前要放的背景音乐先记着，解锁后再放；之前的音效不放。
 // ui://包名/声音名（也认 ui://包ID资源ID）按 lgui 生成的 manifest.json 找到 <uiBase>/<包名>/<资源ID>.mp3；整首解码进内存，背景音乐循环播放。
 import type {AudioService} from '../../../core/index';
-import {LgRuntimeError} from '../../../core/index';
+import {LgRuntimeError, defaultAudioSynthError, invalidSynthUrlError, isSynthUrl, isValidSynthUrl} from '../../../core/index';
 
 interface Manifest {
   packages: Record<string, {name: string; sounds?: Record<string, {name: string; file: string}>}>;
@@ -28,8 +28,9 @@ export function createH5Audio(uiBase: string): {service: AudioService; unlock():
     return r.json() as Promise<Manifest>;
   });
 
-  // 地址 → 文件地址。没登记的 ui:// 声音报 LGUI-RT-170。
+  // 地址 → 文件地址。没登记的 ui:// 声音或落到默认出口的 synth:// 声音报 LGUI-RT-170。
   async function fileOf(url: string): Promise<string> {
+    if (isSynthUrl(url)) throw isValidSynthUrl(url) ? defaultAudioSynthError(url) : invalidSynthUrlError(url);
     if (!url.startsWith('ui://')) return url;
     const rest = url.slice(5);
     for (const [id, pkg] of Object.entries((await loadManifest()).packages)) {
@@ -37,7 +38,7 @@ export function createH5Audio(uiBase: string): {service: AudioService; unlock():
         if (rest === `${pkg.name}/${sound.name}` || rest === id + resId) return `${uiBase}/${pkg.name}/${sound.file}`;
       }
     }
-    throw new LgRuntimeError('LGUI-RT-170', `声音 ${url} 没有登记在 ui/ 的包里。`, '把 mp3 放进包目录，在 package.xml 里登记成 <sound … exported="true"/>，地址写成 ui://包名/声音名。');
+    throw new LgRuntimeError('LGUI-RT-170', `声音 ${url} 没有登记在 ui/ 的包里。`, '把 mp3 放进包目录，在 package.xml 里登记成 <sound … exported="true"/>，地址写成 ui://包名/声音名；或者用代码合成声音 synth://名字。');
   }
 
   function load(url: string, ctx: AudioContext): Promise<AudioBuffer> {

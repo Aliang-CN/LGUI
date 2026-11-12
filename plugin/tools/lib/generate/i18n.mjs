@@ -78,6 +78,17 @@ export function translationXml(entries, table) {
   return lines.join('\n');
 }
 
+/** 一种语言的翻译文件（网页端 JSON：{ "<包ID><组件ID>-<元素ID>": "翻译" }）。 */
+export function translationJson(entries, table) {
+  const out = {};
+  for (const entry of entries) {
+    const value = table[entry.key];
+    if (typeof value !== 'string') continue;
+    for (const target of entry.targets) out[target.name] = value;
+  }
+  return JSON.stringify(out, null, 2) + '\n';
+}
+
 /** 每种语言：翻译文件里的名字 → 文字（给 headless 后端用）。默认语言的固定文字以 ui/ 为准，不翻译。 */
 export function translationMaps(entries, tables, defaultLanguage) {
   return Object.fromEntries(Object.entries(tables).map(([language, table]) => [language, language === defaultLanguage ? {} : Object.fromEntries(
@@ -85,15 +96,17 @@ export function translationMaps(entries, tables, defaultLanguage) {
   )]));
 }
 
-/** 生成全部语言的翻译文件到 outDir/<语言>.xml，并写对照表 .lgui/build/i18n/map.json。
+/** 生成全部语言的翻译文件到 outDir/<语言>.xml（默认，给 Unity 和核对用）或 <语言>.json（format: 'json'，给网页用），并写对照表 .lgui/build/i18n/map.json。
  *  默认语言的固定文字以 ui/ 为准：它的翻译文件是空的（切回默认语言时显示 ui/ 里的原文），改 ui/ 马上生效。 */
-export function generateTranslations(root, model, languages, outDir, defaultLanguage) {
+export function generateTranslations(root, model, languages, outDir, defaultLanguage, {format = 'xml'} = {}) {
   const entries = extractTexts(model);
   const tables = {};
   const files = new Map();
+  const ext = format === 'json' ? 'json' : 'xml';
+  const serialize = format === 'json' ? translationJson : translationXml;
   for (const language of languages) {
     tables[language] = readTable(root, language);
-    files.set(`${language}.xml`, translationXml(entries, language === defaultLanguage ? {} : tables[language]));
+    files.set(`${language}.${ext}`, serialize(entries, language === defaultLanguage ? {} : tables[language]));
   }
   writeDir(outDir, files);
   const mapFile = path.join(root, '.lgui', 'build', 'i18n', 'map.json');
