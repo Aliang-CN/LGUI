@@ -302,7 +302,7 @@ export async function runBrowserTests(root, project, {files, name} = {}) {
   await generateWeb(uiProjectPath(root), path.join(out, 'ui'));
   await generateProjectTypes(root, {validated: true});
   const model = readUiModel(uiProjectPath(root));
-  generateTranslations(root, model, project.languages, path.join(out, 'i18n'), project.defaultLanguage);
+  generateTranslations(root, model, project.languages, path.join(out, 'i18n'), project.defaultLanguage, {format: 'json'});
   await generateFonts(root, project, model, path.join(out, 'ui', 'fonts'), 'woff2');
   const env = writeBrowserEnv(root, project, out);
   const bundles = [];

@@ -1,5 +1,17 @@
 # 更新记录
 
+## 0.5.0（2026-11-12）
+
+**正式网页构建命令（`lgui build`）与纯代码网页产物**
+
+- 新增 `lgui build [--out 目录] [--no-minify]`：打正式网页静态包（默认输出到 `dist/`，`LGUI_DEV = false`，不带 sourcemap 和自动刷新脚本，默认开启代码压缩，`index.html` 带项目标题、默认语言和 `app.js` 内容哈希防缓存），放在根路径或子路径下均可直接打开；打印未压缩总字节数、`app.js` 字节数以及其中 LGUI 运行时（`.lgui/framework/` 含框架与 FairyGUI-dom）所占的字节数，并在 `--json` 输出里提供结构化明细。工程没有图片、音频、字体文件时正常出包不报错；模板 `.gitignore` 默认忽略 `dist/`。
+- 网页端包描述与多语言文件统一改为 `.json`：网页界面包由 `package.xml`（二进制 `.fui`）改为 `package.json`（`{ fui: "<base64>" }`，FairyGUI-dom 补丁 6 同步解码），网页组件翻译文件由 `<语言>.xml` 改为 `<语言>.json`（Unity 导出仍保持 `_fui.bytes` 与 `<语言>.xml` 不变），使纯代码工程打出的网页目录里只含 `.html`、`.js`、`.css`、`.json` 文件。
+- 正式模式打包（`writeWebBootstrap` `dev: false`）不再在顶层全量导入所有 View 模块或挂载调试对象，便于 tree-shaking。
+
+**新错误码**
+
+- `LGUI-CLI-150`：`lgui build` 的 `--out` 输出路径不安全（为空、指向文件系统根目录、工程根目录或其上级目录、与源码/管理目录重叠、目标不是文件夹，或经过符号链接）。
+
 ## 0.4.8（2026-11-12）
 
 **无字体文件工程与系统字体回退**

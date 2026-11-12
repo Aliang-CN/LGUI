@@ -41,7 +41,7 @@ export async function conformanceProject() {
   await generateWeb(uiProjectPath(root), path.join(root, '.lgui', 'build', 'web', 'ui'));
   await generateProjectTypes(root, {validated: true});
   const model = readUiModel(uiProjectPath(root));
-  generateTranslations(root, model, project.languages, path.join(root, '.lgui', 'build', 'web', 'i18n'), project.defaultLanguage);
+  generateTranslations(root, model, project.languages, path.join(root, '.lgui', 'build', 'web', 'i18n'), project.defaultLanguage, {format: 'json'});
   const packages = fs.readdirSync(headlessDir(root)).map(f => JSON.parse(fs.readFileSync(path.join(headlessDir(root), f), 'utf8')));
   const texts = readTexts(root, project.languages);
   fs.writeFileSync(path.join(dir, 'layout.ts'), `export default ${JSON.stringify(layoutOf(packages))};\n`);

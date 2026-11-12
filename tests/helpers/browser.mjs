@@ -4,7 +4,7 @@ import http from 'node:http';
 import path from 'node:path';
 import {playwright} from '../../plugin/tools/lib/vendor.mjs';
 
-const types = {'.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8', '.json': 'application/json', '.png': 'image/png', '.xml': 'application/octet-stream', '.css': 'text/css'};
+const types = {'.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8', '.json': 'application/json; charset=utf-8', '.png': 'image/png', '.woff2': 'font/woff2', '.mp3': 'audio/mpeg', '.xml': 'application/octet-stream', '.css': 'text/css'};
 
 // routes：网址前缀 → 本地目录或文件。
 export async function serve(routes) {

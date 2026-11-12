@@ -113,7 +113,7 @@ export default {screen:{width:1280,height:720},run:(t:Parameters<typeof runBindi
   await generateProjectTypes(root, {validated: true});
   const model = readUiModel(uiProjectPath(root));
   const texts = readTexts(root, project.languages);
-  generateTranslations(root, model, project.languages, path.join(root, '.lgui/build/web/i18n'), project.defaultLanguage);
+  generateTranslations(root, model, project.languages, path.join(root, '.lgui/build/web/i18n'), project.defaultLanguage, {format: 'json'});
   const packages = fs.readdirSync(headlessDir(root)).map(file => JSON.parse(fs.readFileSync(path.join(headlessDir(root), file), 'utf8')));
   fs.writeFileSync(path.join(root, 'conformance/layout.ts'), 'export default ' + JSON.stringify(layoutOf(packages)) + ';\n');
   return {root, project, packages, texts, translations: translationMaps(extractTexts(model), texts, project.defaultLanguage),

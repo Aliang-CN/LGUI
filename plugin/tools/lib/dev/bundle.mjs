@@ -47,15 +47,22 @@ function viewFiles(root) {
   return walk(dir);
 }
 
-/** 写网页端的启动入口 <dir>/boot.ts（dir 是命令自己的生成目录，比如 .lgui/build/dev/）。texts：不写就读 i18n/ 下的文本表（lgui verify 的伪翻译会传进来）。noHost：lgui verify --no-host 跳过 host/main.ts。 */
-export function writeWebBootstrap(root, project, {texts, dir, noHost = false}) {
+/** 写网页端的启动入口 <dir>/boot.ts（dir 是命令自己的生成目录，比如 .lgui/build/dev/）。texts：不写就读 i18n/ 下的文本表（lgui verify 的伪翻译会传进来）。noHost：lgui verify --no-host 跳过 host/main.ts。dev：正式构建（dev: false）不全量引入 View 模块和调试全局对象，便于 tree-shaking。 */
+export function writeWebBootstrap(root, project, {texts, dir, noHost = false, dev = true}) {
   const fw = rel => JSON.stringify(path.join(root, '.lgui', 'framework', rel).split(path.sep).join('/'));
   const file = path.join(dir, 'boot.ts');
   const withHost = !noHost && hasWebHost(root);
   const skippedHost = noHost && hasWebHost(root);
+  const views = dev ? viewFiles(root) : [];
   fs.mkdirSync(path.dirname(file), {recursive: true});
   const hostImports = withHost
     ? `import host from ${JSON.stringify(hostEntry(root).split(path.sep).join('/'))};\nimport {attachWebStage} from ${fw('backends/h5/web-stage.ts')};\n`
+    : '';
+  const devImports = dev
+    ? `import {lgui} from ${fw('index.ts')};\n${views.map((f, i) => `import * as views${i} from ${JSON.stringify(f.split(path.sep).join('/'))};`).join('\n')}\nconst views: Record<string, unknown> = {};\nfor (const mod of [${views.map((_, i) => `views${i}`).join(', ')}] as Record<string, unknown>[]) for (const [name, value] of Object.entries(mod)) if (typeof value === 'function' && 'layer' in value) views[name] = value;\n`
+    : '';
+  const devGlobal = dev
+    ? `  // 开发模式下给调试面板和端到端测试用；正式构建（dev: false）不挂。\n  if (LGUI_DEV) (window as unknown as {__lgui: unknown}).__lgui = {snapshot: () => lgui.debug.snapshot(), lgui, views};\n`
     : '';
   const bootStep = withHost
     ? `  const platform = {
@@ -79,16 +86,11 @@ export function writeWebBootstrap(root, project, {texts, dir, noHost = false}) {
   const platform = app.platform?.audio ? app.platform : {...(app.platform ?? {}), audio: noHostAudio};
   await boot(backend, app, config, deps, {texts, platform});`
       : `  await boot(backend, app, config, deps, {texts});`;
-  fs.writeFileSync(file, `// 由 lgui dev 生成，不要手改。
+  fs.writeFileSync(file, `// 由 lgui 生成，不要手改。
 import app from ${JSON.stringify(path.join(root, 'src', 'main.ts').split(path.sep).join('/'))};
 ${hostImports}import {createH5Backend} from ${fw('backends/h5/index.ts')};
 import {boot} from ${fw('mvc/boot.ts')};
-import {lgui} from ${fw('index.ts')};
-${viewFiles(root).map((f, i) => `import * as views${i} from ${JSON.stringify(f.split(path.sep).join('/'))};`).join('\n')}
-const views: Record<string, unknown> = {};
-for (const mod of [${viewFiles(root).map((_, i) => `views${i}`).join(', ')}] as Record<string, unknown>[]) for (const [name, value] of Object.entries(mod)) if (typeof value === 'function' && 'layer' in value) views[name] = value;
-
-declare const LGUI_DEV: boolean; // 打包时由 esbuild 的 define 换成 true / false（见 webBuildOptions）
+${devImports}declare const LGUI_DEV: boolean; // 打包时由 esbuild 的 define 换成 true / false（见 webBuildOptions）
 
 const config = ${JSON.stringify(runtimeConfig(project))};
 const deps = ${JSON.stringify(readDeps(root))};
@@ -98,9 +100,7 @@ const texts = ${JSON.stringify(texts ?? readTexts(root, project.languages))};
   const backend = createH5Backend();
   // 相对页面的路径：页面放在子路径下（比如 GitHub Pages 的 /LGUI/）也能打开。
   await backend.init({projectName: config.name, defaultFont: ${JSON.stringify(project.defaultFont)}, fonts: ${JSON.stringify(fontNames(root))}, uiBase: './ui', i18nBase: './i18n'});
-  // 开发模式下给调试面板和端到端测试用；正式构建（LGUI_DEV = false）不挂。
-  if (LGUI_DEV) (window as unknown as {__lgui: unknown}).__lgui = {snapshot: () => lgui.debug.snapshot(), lgui, views};
-${bootStep}
+${devGlobal}${bootStep}
   (window as unknown as {__lguiReady: boolean}).__lguiReady = true;
 })().catch(error => {
   const e = error as {code?: string; message?: string};

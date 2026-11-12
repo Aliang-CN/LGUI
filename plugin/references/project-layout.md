@@ -25,8 +25,9 @@ MyGame/
 │   ├── project.json           #   工程配置（字段见下）
 │   ├── framework/             #   建工程时从插件复制一份框架进来，锁定版本
 │   └── build/                 #   生成物，不手改，不进 git：预览文件、控件类型（types/）、本地连接文件
+├── dist/                      # 正式网页构建输出（lgui build 生成，不进 git）
 ├── package.json               # 只有工程名称等少量字段，不需要 npm install
-└── .gitignore                 # 忽略 .lgui/build/、node_modules/
+└── .gitignore                 # 忽略 .lgui/build/、dist/、node_modules/
 ```
 
 ## `.lgui/project.json` 的字段
@@ -75,7 +76,7 @@ MyGame/
 - **框架复制进工程，不走 npm 安装。** 离线可用，版本固定，同一工程在谁的机器上跑都一样。插件和工程的版本不一致时，命令会直接报错，提示运行 `lgui upgrade`。
 - **游戏代码的写法。** `src/main.ts` 里 `import` 的是 `lgui`，指向 `.lgui/framework/`；需要的配置由 `lgui init` 生成。游戏代码不出现 `document`、`window`、`CS.` 这类引擎或平台的 API，这一条由 `lgui check` 检查。
 - **`src/modules/` 里的细节以 MVC 开发规范为准。** 比如文件怎么命名、服务放在哪里。本节只定到"一个功能一个文件夹"。
-- **日常命令。** 预览用 `lgui dev`（打开浏览器，改动后自动刷新），改界面用 `lgui editor`（打开编辑器；在编辑器里授权过 `ui/` 文件夹，保存就写回 `ui/`），检查用 `lgui check`，测试用 `lgui test`。
+- **日常命令。** 预览用 `lgui dev`（打开浏览器，改动后自动刷新），改界面用 `lgui editor`（打开编辑器；在编辑器里授权过 `ui/` 文件夹，保存就写回 `ui/`），检查用 `lgui check`，测试用 `lgui test`，出正式网页包用 `lgui build`。
 - **队友和 CI。** 也要装插件，才能运行 `lgui` 命令。
 
 ## `import 'lgui'` 怎么生效
@@ -83,5 +84,16 @@ MyGame/
 全工程只用这一种办法，不需要 `node_modules`，也不需要 import map：
 
 - **类型检查：** `tsconfig.json` 的 `paths` 把 `lgui` 指向 `.lgui/framework/index.ts`，`lgui/host` 指向 `.lgui/framework/host.ts`（供可选的 `host/main.ts` 使用），`lgui/ui` 指向 `.lgui/build/types/index.d.ts`（由 `ui/` 生成的控件类型）。`src/` 和 `tests/` 不开 DOM 类型库；`host/` 由 `lgui check` 带 DOM 类型库单独做严格类型检查。
-- **网页预览、测试、导出 Unity：** 全部由随插件带的 esbuild 打包，用 esbuild 的 `alias` 把 `lgui` 指向 `.lgui/framework/index.ts`、`lgui/host` 指向 `.lgui/framework/host.ts`；`lgui/ui` 只有类型，打包时会被去掉。
+- **网页预览、正式构建、测试、导出 Unity：** 全部由随插件带的 esbuild 打包，用 esbuild 的 `alias` 把 `lgui` 指向 `.lgui/framework/index.ts`、`lgui/host` 指向 `.lgui/framework/host.ts`；`lgui/ui` 只有类型，打包时会被去掉。
 - 测试文件里可以 `import` 的 Node 模块只有 `node:test` 和 `node:assert/strict`，它们的类型在 `.lgui/framework/env.d.ts`。
+
+## 正式网页构建（`lgui build`）
+
+```bash
+lgui build [--out 目录] [--no-minify]
+```
+
+- **默认输出到 `<工程>/dist/`**（构建成功后整目录替换；`--out` 不能指向工程根、上级目录、源码/管理目录或符号链接，否则报 `LGUI-CLI-150`）。页面内全部资源地址按相对路径引用，放在根路径或子路径（如 GitHub Pages 的 `/MyGame/`）下都能直接用静态服务打开。
+- **正式模式打包：** `LGUI_DEV = false`，不带自动刷新脚本和 sourcemap，默认开启代码压缩（排查问题时可加 `--no-minify`），`index.html` 对 `app.js` 附加内容哈希防旧缓存。
+- **输出目录结构：** `index.html`、`app.js`、`ui/<包>/package.json`、`ui/manifest.json`、`i18n/<语言>.json`（有项目图片、mp3、字体时附带散图、mp3 和 `ui/fonts/*.woff2`；不带图片、音频、字体文件的纯代码工程不会报错，输出目录里只有 `.html`、`.js`、`.css`、`.json` 文件，不含任何二进制媒体或 `.xml`、`.svg` 文件）。
+- **体积账：** 命令结束时打印未压缩总字节数、`app.js` 字节数以及其中 **LGUI 运行时**（`.lgui/framework/` 含框架与 FairyGUI-dom）所占的字节数（`--json` 输出里的 `totalBytes`、`appJsBytes`、`lguiRuntimeBytes`）。

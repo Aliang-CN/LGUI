@@ -10,7 +10,7 @@ import {esbuild, playwright} from '../vendor.mjs';
 import {generateProjectTypes, generateWeb, uiProjectPath} from '../generate/index.mjs';
 import {buildDir} from '../paths.mjs';
 import {readUiModel} from '../generate/model.mjs';
-import {extractTexts, generateTranslations, translationXml} from '../generate/i18n.mjs';
+import {extractTexts, generateTranslations, translationJson} from '../generate/i18n.mjs';
 import {readTexts, webBuildOptions, writeWebBootstrap, bundleErrors} from '../dev/bundle.mjs';
 import {serveBuilt} from '../dev/index.mjs';
 import {generateFonts} from '../generate/fonts.mjs';
@@ -75,7 +75,7 @@ export async function runVerify(root, project, {size, view, params, lang, noHost
   await generateProjectTypes(root, {validated: true});
   const model = readUiModel(uiProjectPath(root));
   const i18nDir = path.join(site, 'i18n');
-  generateTranslations(root, model, project.languages, i18nDir, project.defaultLanguage);
+  generateTranslations(root, model, project.languages, i18nDir, project.defaultLanguage, {format: 'json'});
   await generateFonts(root, project, model, path.join(site, 'ui', 'fonts'), 'woff2');
   const texts = readTexts(root, project.languages);
   const languages = [...project.languages];
@@ -84,7 +84,7 @@ export async function runVerify(root, project, {size, view, params, lang, noHost
     const entries = extractTexts(model);
     const base = {...Object.fromEntries(entries.map(e => [e.key, e.text])), ...texts[project.defaultLanguage]};
     texts.pseudo = pseudoTable(base);
-    fs.writeFileSync(path.join(i18nDir, 'pseudo.xml'), translationXml(entries, texts.pseudo));
+    fs.writeFileSync(path.join(i18nDir, 'pseudo.json'), translationJson(entries, texts.pseudo));
     languages.push('pseudo');
   }
   const verifyProject = {...project, languages};

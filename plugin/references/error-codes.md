@@ -73,6 +73,7 @@ LGUI 的每条报错都带错误码，并写明：哪个文件哪一行（如果
 | `LGUI-CLI-142` | 工程配置的 `defaultFont` 不是 `ui/fonts/` 里的字体（系统字体名也不行，各平台不一样） | 把字体文件放进 `ui/fonts/<名字>.ttf`，或者把 `defaultFont` 改成 `ui/fonts/` 里的名字，或者改成 `null`（用系统默认字体） |
 | `LGUI-CLI-143` | `lgui unity export`：工程用了项目字体（Unity 上是 TextMesh Pro 字体），Unity 工程里没有 TMP Settings，导出要从 `com.unity.ugui` 自带的 TMP Essential Resources 资源包导入，但找不到资源包（报错里列出找过的位置：工程的 `Library/PackageCache/com.unity.ugui@…/`、`Packages/com.unity.ugui/`、Unity Hub 默认安装位置或 Windows `%LOCALAPPDATA%\Programs\Unity\<版本>` 用户安装位置里这个版本的内置包），或者资源包读不了、里面没有 TMP Settings、写入失败。什么都不写 | 用这个版本的 Unity 打开一次工程再导出；Unity 装在这些候选位置之外时，在 Unity 里点 Window → TextMeshPro → Import TMP Essential Resources 导入一次，再导出 |
 | `LGUI-CLI-144` | `lgui unity export`：工程使用了代码图标（`icon://…`、`lgui.app({ icons })` 或 `lgui.registerIcons`），Unity 后端不支持代码图标；什么都不写 | 要导出到 Unity 就把图标换成 `ui/` 包里登记的 PNG 图片，删掉代码图标定义和 `icon://` 引用；只出网页包的工程不用跑 `unity export` |
+| `LGUI-CLI-150` | `lgui build` 的输出目录（`--out`）不安全：为空、指向文件系统根目录、工程根目录或其上级目录、与 `src/` / `host/` / `ui/` / `i18n/` / `tests/` / `.lgui/framework/` / `.git/` / `node_modules/` 重叠、目标已存在但不是文件夹，或者路径经过符号链接（构建成功后会整目录替换输出目录） | 用默认的 `dist/`，或者把 `--out` 指向独立的真实文件夹（如 `--out dist`、`--out build/web`） |
 | `LGUI-CLI-999` | 命令行内部错误（LGUI 自己的缺陷） | 把输出报告给维护者 |
 
 ## LGUI-RT-xxx
@@ -84,8 +85,8 @@ LGUI 的每条报错都带错误码，并写明：哪个文件哪一行（如果
 | `LGUI-RT-001` | 当前后端或框架还没实现这项功能（开发中） | 换到已经实现的后端，或者先不用这项功能 |
 | `LGUI-RT-002` | 创建界面时它所在的界面包还没加载 | 先加载这个包（UIManager 打开界面时会自动加载） |
 | `LGUI-RT-003` | 界面包里没有这个组件 | 用 `lgui ui list` 查看有哪些组件 |
-| `LGUI-RT-010` | 网页端的散图映射 `manifest.json` 格式不对，或者里面没有某个包、某张图片 | 重新运行 `lgui dev` 生成界面包 |
-| `LGUI-RT-011` | 后端加载界面包失败（地址不对或文件不存在） | 确认包名对；网页重新运行 `lgui dev`，Unity 重新导出并确认 `Resources/UI/` 的文件存在 |
+| `LGUI-RT-010` | 网页端的散图映射 `manifest.json` 格式不对，或者里面没有某个包、某张图片 | 重新运行 `lgui dev` 或 `lgui build` 生成界面包 |
+| `LGUI-RT-011` | 后端加载界面包失败（地址不对、文件不存在，或网页端 `package.json` 格式不对） | 确认包名对；网页重新运行 `lgui dev` 或 `lgui build`，Unity 重新导出并确认 `Resources/UI/` 的文件存在 |
 | `LGUI-RT-020` | 颜色的格式不对 | 写成 `#rrggbb` |
 | `LGUI-RT-021` | 列表设成虚拟列表以后又想改回去 | 在第一次给数据之前决定要不要虚拟列表 |
 | `LGUI-RT-022` | 控制器没有这个页名 | 看报错里列出的页名 |
@@ -122,7 +123,7 @@ LGUI 的每条报错都带错误码，并写明：哪个文件哪一行（如果
 | `LGUI-RT-120` | 红点路径写法不对 | 写成用「.」分隔的英文名，比如 `bag.newItem` |
 | `LGUI-RT-130` | ArtText 要显示的字符没有对应的图片（报错里写明是哪个字符）；正式构建里跳过这个字符 | 在字体目录下加上这个字符的图片，登记进 `package.xml` 并导出 |
 | `LGUI-RT-140` | 切换到工程不支持的语言 | 在 `.lgui/project.json` 的 `languages` 里加上它，并新建 `i18n/<语言>.json` |
-| `LGUI-RT-141` | 后端读不到这种语言的翻译文件，或翻译 XML 无法解析 | 网页重新运行 `lgui dev`；Unity 重新导出并确认 `Resources/UI/i18n/` 下有对应语言的 XML |
+| `LGUI-RT-141` | 后端读不到这种语言的翻译文件，或翻译文件内容无法解析（网页端 `<语言>.json`、Unity 端 `<语言>.xml`） | 网页重新运行 `lgui dev` 或 `lgui build`；Unity 重新导出并确认 `Resources/UI/i18n/` 下有对应语言的 XML |
 | `LGUI-RT-150` | 测试里的改值操作用错了控件：`t.type` 只能用在输入框上，`t.setValue` 只能用在滑动条上，`t.choose` 只能用在下拉框上 | 换成对应控件的路径（`lgui ui list` 里能看到控件类型） |
 | `LGUI-RT-151` | `t.choose` 的序号超出了下拉框的项数 | 序号从 0 开始；先确认下拉框的 `items` 已经给好 |
 | `LGUI-RT-152` | 树的绑定没写 `key`，或者树里有两个节点的 key 一样 | 写上 `key`（比如 `key: (n: TreeNode) => n.id`），key 在整棵树里要唯一 |
@@ -157,7 +158,7 @@ LGUI 的每条报错都带错误码，并写明：哪个文件哪一行（如果
 | `LGUI-RT-174` | `lgui.sound` 的参数不对：声道不是 `music` / `sfx`，音量不在 0–1，静音不是布尔值，地址是空的 | 照 mvc-spec.md 第 15 节写 |
 | `LGUI-RT-175` | 本地存储里的声音设置读不出来，用默认值（外部失败，记 `warn`） | 不需要处理；玩家下次改音量时会重新存 |
 | `LGUI-RT-176` | `lgui test` 里这个测试记了 `error` 级的日志（报错里写明是哪条） | 按日志改代码或界面 |
-| `LGUI-RT-180` | 网页端启动时项目字体加载失败（报错里写明地址和原因：HTTP 状态、浏览器解不开、浏览器没有 FontFace）。启动就停下，不悄悄换成系统字体 | 重新运行生成它的命令（`lgui dev`、`verify`、`test --browser`）；部署网页时 `ui/fonts/` 要和界面包一起发布 |
+| `LGUI-RT-180` | 网页端启动时项目字体加载失败（报错里写明地址和原因：HTTP 状态、浏览器解不开、浏览器没有 FontFace）。启动就停下，不悄悄换成系统字体 | 重新运行生成它的命令（`lgui dev`、`build`、`verify`、`test --browser`）；部署网页时 `ui/fonts/` 要和界面包一起发布 |
 | `LGUI-RT-181` | Unity 启动时注册不了项目字体：工程里没有 TextMesh Pro 的设置资源（TMP Settings，没导入 TMP Essential Resources；以前这里是空引用）；`Resources/UI/fonts/<名字>` 没有、没被导入成字体，或者 TextMesh Pro 用它建不成字体；或者工程里的 LGUI Unity 包是旧版（没有 `LGUI.Platform.RegisterFont` / `TmpSettingsFound`） | 重新 `lgui unity export`（缺 TMP Settings 时它会导入 TMP Essential Resources），或者在 Unity 里点 Window → TextMeshPro → Import TMP Essential Resources；回到 Unity 等导入完成再点 Play；字体的导入设置要勾「Include Font Data」（默认勾着）；旧版包先 `lgui upgrade` |
 | `LGUI-RT-182` | Unity 上一个候选的系统字体都没找到，项目字体后面没挂上系统回退字体（报错里列出试过的字体）。只记一次 `error` 日志、不抛错，游戏照常运行；项目字体里没有的字（聊天、玩家名）显示成方框 | iOS、Android、电脑原生包上一般都找得到；微信小游戏、WebGL 读不到系统字体，要在 `ui/fonts/` 里带一个常用字字体 |
 | `LGUI-RT-183` | Unity 上一段文字的描边粗细加投影偏移超出了项目字体（TextMesh Pro SDF）在这个字号下画得出来的范围，一般是 `autoSize="shrink"` 把字缩小了（`lgui check` 的 `LGUI-UI-081` 按没缩的字号查）。报错里写明字体、字号、描边、投影和大约能画多少；同一组值只记一次 `error` 日志，不抛错，描边和投影画得比写的细、近 | 改小 `strokeSize`、`shadowOffset`，或者把字号、文字框放大，让缩完的字号也在上限内（字号的 7.5%，见 UI 开发规范第 8 节） |

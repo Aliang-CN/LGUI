@@ -118,6 +118,7 @@ Windows Player 可设置为 Windowed 并开启 Resizable Window，通过改变�
 - **网络启动和关闭。** 请求遵守 Unity 工程的网络策略。HTTP 在启动时被拒绝等同步失败，会正常结束失败处理：原生失败原因含 `LGUI-RT-161`，JS 网络层按既有 `LGUI-RT-101` 报告；外链图片走已有失败回调，上层图片绑定使用既有错误处理和占位图；音频记录一次 `LGUI-RT-161` 并结束。宿主停止后不再派发旧代请求的回调；图片的一次回调触发宿主关闭时，也不会继续派发剩余旧回调。框架不会为此重试、修改网络策略或系统代理。专用验证工程的 HTTP 放行配置不代表普通 Player 配置。
 - **无图工程。** `ui/assets/` 里没有任何图片资源、`placeholder` 设为 `null`（如 `lgui init --code-only` 建的工程，界面只用图形、文字和控制器，没用 `icon://` 代码图标）时，`lgui unity export` 照常生成 `<包名>_fui.bytes`（没有 `_atlas0.png`），Unity 后端正常加载显示。
 - **代码图标。** `icon://<名字>`（`lgui.app({ icons })`、`lgui.registerIcons`）只在网页端和 `lgui test` 提供。工程里用了代码图标时，`lgui unity export` 直接报 `LGUI-CLI-144` 并拒绝导出，不改写 Unity 工程和 `.lgui/project.json`；Unity 运行时遇到也报 `LGUI-RT-072`，不会静默空白。要导出到 Unity 的工程改用 `ui/` 包里登记的 PNG 图片。
+- **网页静态包命令区分。** `lgui build` 只打普通网页静态包（默认输出到 `dist/`），Unity 工程交付仍用 `lgui unity export --to <Unity 工程路径>`。
 - **网页宿主（`host/main.ts`）。** `host/` 只装网页专属的三维渲染（如 `three.js`）和浏览器平台适配；`lgui unity export` 只打包跨端的 `src/`，检测到 `host/main.ts` 时明确跳过并在导出摘要里提示——Unity 里的三维场景、相机以及 `lgui.events.inputModeChange` 与场景输入的衔接由 Unity 工程侧自行管理。
 
 正常流程与预期失败用例分别记录：保留原始错误码和堆栈，并核对有没有额外的未预期错误。不要把一次构建成功、Node 边界测试或图片 URL 可访问，写成 Player 的功能、像素或内存验收通过。

@@ -24,7 +24,7 @@ const liveReload = `<script>
 </script>
 `;
 const shell = fs.readFileSync(fileURLToPath(new URL('./shell.html', import.meta.url)), 'utf8').replace('</body>', `${liveReload}</body>`);
-const types = {'.js': 'text/javascript; charset=utf-8', '.map': 'application/json', '.json': 'application/json', '.png': 'image/png', '.jpg': 'image/jpeg', '.xml': 'application/octet-stream', '.mp3': 'audio/mpeg'};
+const types = {'.js': 'text/javascript; charset=utf-8', '.map': 'application/json', '.json': 'application/json; charset=utf-8', '.png': 'image/png', '.jpg': 'image/jpeg', '.woff2': 'font/woff2', '.mp3': 'audio/mpeg'};
 
 /** 返回 base（命令自己的生成目录，比如 .lgui/build/dev/）下的生成物（/ui/ 是界面包）；只读，不在里面就 404。 */
 export function serveBuilt(base, url, res) {
@@ -62,7 +62,7 @@ export async function startDev(root, project, {port = project.devPort, log = () 
     translations();
     await fonts();
   };
-  const translations = () => generateTranslations(root, readUiModel(uiProjectPath(root)), project.languages, path.join(site, 'i18n'), project.defaultLanguage);
+  const translations = () => generateTranslations(root, readUiModel(uiProjectPath(root)), project.languages, path.join(site, 'i18n'), project.defaultLanguage, {format: 'json'});
   let context = null;
   const bundle = async () => {
     translations();

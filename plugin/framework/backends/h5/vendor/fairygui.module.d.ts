@@ -255,5 +255,6 @@ export class XML {
 }
 
 export class TranslationHelper {
+  static strings: Record<string, Record<string, string>> | null;
   static loadFromXML(source: XML): void;
 }
