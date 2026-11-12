@@ -1,5 +1,12 @@
 # 更新记录
 
+## 0.4.8（2026-11-12）
+
+**无字体文件工程与系统字体回退**
+
+- 网页端（`h5`）：`ui/fonts/` 为空、`defaultFont` 为 `null` 时，启动时把 `UIConfig.defaultFont` 和宿主页面样式统一设为跨平台无衬线系统字体栈（`system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif`），修复此前 `UIConfig.defaultFont` 为 `undefined` 导致舞台样式表拼出 `font-family: undefined` 并回退到浏览器衬线默认字体的问题；普通文字、输入框和 `autoSize="shrink"` 量宽口径一致，不生成字体子集文件，`lgui check` 不报 `LGUI-CLI-141`。
+- Unity 6 端：`defaultFont` 为 `null` 且无项目字体时（导出不额外写入 `TMP Essential Resources`），若 Unity 工程已具备 `TMP Settings`，`LGUI.Platform.RegisterSystemDefaultFont()` 将当前设备的候选系统字体（苹方 / Noto Sans CJK / 微软雅黑等）注册为动态 SDF `ProjectTMPFont`（保留描边、投影设计像素换算）；若没有 `TMP Settings`，则将 `UIConfig.defaultFont` 设为逗号分隔的系统字体列表走 `Font.CreateDynamicFontFromOSFont`，避开 Unity 6 已移除内置 `Arial.ttf` 导致的加载异常。
+
 ## 0.4.7（2026-11-12）
 
 **三维画布与网页宿主（`host/main.ts`、`lgui/host`）**

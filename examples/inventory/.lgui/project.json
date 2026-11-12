@@ -1,6 +1,6 @@
 {
   "name": "inventory",
-  "lguiVersion": "0.4.7",
+  "lguiVersion": "0.4.8",
   "designSize": {"landscape": {"width": 1920, "height": 1080}, "portrait": {"width": 1080, "height": 1920}},
   "orientation": "both",
   "verifySizes": [
