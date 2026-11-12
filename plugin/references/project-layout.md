@@ -1,6 +1,6 @@
 # 用户工程目录
 
-用户对 Agent 说"帮我建一个 UI 工程"，Agent 执行 `lgui init`，得到下面的目录。文档里的 `lgui xxx` 都指 `node <插件目录>/tools/lgui.mjs xxx`。
+用户对 Agent 说"帮我建一个 UI 工程"，Agent 执行 `lgui init`（包里不带任何图片文件的纯代码工程加 `--code-only`），得到下面的目录。文档里的 `lgui xxx` 都指 `node <插件目录>/tools/lgui.mjs xxx`。
 
 ```
 MyGame/
@@ -11,19 +11,23 @@ MyGame/
 │   └── art-src/               #   AI 生成的原始大图：只作来源，界面不引用，不进游戏包
 ├── src/                       # 游戏代码，按 MVC 开发规范写
 │   ├── main.ts                #   入口：选后端（默认 h5），启动游戏
+│   ├── icons.ts               #   代码图标定义（可选，见 UI 开发规范第 5.2 节）
 │   └── modules/               #   一个功能一个文件夹
 │       └── bag/
 │           ├── BagModel.ts    #     数据和规则
 │           ├── BagView.ts     #     对应 ui/ 里的一个组件，只负责显示和转发事件
 │           └── BagController.ts #   处理事件、改数据、调服务
+├── host/                      # 网页端宿主（可选，比如挂载 three.js 三维画布与 Web Audio，见 MVC 规范第 17 节）
+│   └── main.ts                #   defineWebHost({ mount(stage), audio?, services? })；不进 lgui test 和 Unity 导出
 ├── tests/                     # 单元测试：用测试后端在 Node 里跑，不需要浏览器
 ├── i18n/                      # 文本表：每种语言一个 <语言>.json
 ├── .lgui/                     # LGUI 自己的东西，用户不用管
 │   ├── project.json           #   工程配置（字段见下）
 │   ├── framework/             #   建工程时从插件复制一份框架进来，锁定版本
 │   └── build/                 #   生成物，不手改，不进 git：预览文件、控件类型（types/）、本地连接文件
+├── dist/                      # 正式网页构建输出（lgui build 生成，不进 git）
 ├── package.json               # 只有工程名称等少量字段，不需要 npm install
-└── .gitignore                 # 忽略 .lgui/build/、node_modules/
+└── .gitignore                 # 忽略 .lgui/build/、dist/、node_modules/
 ```
 
 ## `.lgui/project.json` 的字段
@@ -43,11 +47,11 @@ MyGame/
 | `uiCache` | `{ keepClosedViews: 非负整数 }` | `{ keepClosedViews: 0 }` | 最近关掉的几个界面不销毁，再打开时直接复用 |
 | `requestErrorToast` | 布尔值 | `true` | `lgui.request` 失败时，统一弹出提示 |
 | `requestTimeoutMs` | 正整数（毫秒） | `10000` | `lgui.request` 的超时时间 |
-| `placeholder` | `ui://` 开头的图片地址 | `"ui://Common/placeholder"` | 默认占位图 |
-| `sounds` | `{ click: 音效地址 \| null }` | `{ click: null }` | 按钮的默认点击音效（`ui://<包>/<声音名>`）：`ui/` 里按钮没写音效时用；`null` 表示不放 |
+| `placeholder` | `ui://` 或 `icon://` 开头的图片地址 \| `null` | `"ui://Common/placeholder"` | 默认占位图；`null` 表示不显示占位图（`lgui init --code-only` 默认为 `null`） |
+| `sounds` | `{ click: 音效地址 \| null }` | `{ click: null }` | 按钮的默认点击音效（`ui://<包>/<声音名>` 或代码合成声音 `synth://<名字>`）：`ui/` 里按钮没写音效时用；`null` 表示不放 |
 | `defaultFont` | 字体名 \| `null` | `null` | 默认字体：写 `ui/fonts/` 里某个字体的名字（文件名去掉扩展名）；`null` 表示用系统默认字体。写了 `ui/fonts/` 里没有的名字（包括系统字体名）报 `LGUI-CLI-142` |
 | `devPort` | 端口号 1–65535 | `4173` | `lgui dev` 的端口 |
-| `devWatch` | 路径数组 | `[]` | `lgui dev` 除了 `ui/`、`src/`、`i18n/` 以外还要监视的目录或文件，相对工程根目录（比如宿主代码、仓库根的 `["../Config"]`），改了就重新打包、刷新页面（不监视 `.lgui/build/`，写成工程根目录也不会自己触发自己）。路径不存在时报 `LGUI-CLI-116` |
+| `devWatch` | 路径数组 | `[]` | `lgui dev` 除了 `ui/`、`src/`、`host/`（存在时）、`i18n/` 以外还要监视的目录或文件，相对工程根目录（比如仓库根的 `["../Config"]`），改了就重新打包、刷新页面（不监视 `.lgui/build/`，写成工程根目录也不会自己触发自己）。路径不存在时报 `LGUI-CLI-116` |
 | `editorPort` | 端口号 1–65535 | `4174` | `lgui editor` 的端口。浏览器按地址（含端口）记住授权过的 `ui/` 文件夹，所以端口固定；改了端口要在编辑器里重新授权。被占用时报 `LGUI-CLI-110` |
 | `backend` | `"h5"` | `"h5"` | 默认后端 |
 | `unityProject` | 路径 \| `null` | `null` | 导出过的 Unity 工程路径，由 `lgui unity export` 写入 |
@@ -72,13 +76,24 @@ MyGame/
 - **框架复制进工程，不走 npm 安装。** 离线可用，版本固定，同一工程在谁的机器上跑都一样。插件和工程的版本不一致时，命令会直接报错，提示运行 `lgui upgrade`。
 - **游戏代码的写法。** `src/main.ts` 里 `import` 的是 `lgui`，指向 `.lgui/framework/`；需要的配置由 `lgui init` 生成。游戏代码不出现 `document`、`window`、`CS.` 这类引擎或平台的 API，这一条由 `lgui check` 检查。
 - **`src/modules/` 里的细节以 MVC 开发规范为准。** 比如文件怎么命名、服务放在哪里。本节只定到"一个功能一个文件夹"。
-- **日常命令。** 预览用 `lgui dev`（打开浏览器，改动后自动刷新），改界面用 `lgui editor`（打开编辑器；在编辑器里授权过 `ui/` 文件夹，保存就写回 `ui/`），检查用 `lgui check`，测试用 `lgui test`。
+- **日常命令。** 预览用 `lgui dev`（打开浏览器，改动后自动刷新），改界面用 `lgui editor`（打开编辑器；在编辑器里授权过 `ui/` 文件夹，保存就写回 `ui/`），检查用 `lgui check`，测试用 `lgui test`，出正式网页包用 `lgui build`。
 - **队友和 CI。** 也要装插件，才能运行 `lgui` 命令。
 
 ## `import 'lgui'` 怎么生效
 
 全工程只用这一种办法，不需要 `node_modules`，也不需要 import map：
 
-- **类型检查：** `tsconfig.json` 的 `paths` 把 `lgui` 指向 `.lgui/framework/index.ts`，`lgui/ui` 指向 `.lgui/build/types/index.d.ts`（由 `ui/` 生成的控件类型）。
-- **网页预览、测试、导出 Unity：** 全部由随插件带的 esbuild 打包，用 esbuild 的 `alias` 把 `lgui` 指向 `.lgui/framework/index.ts`；`lgui/ui` 只有类型，打包时会被去掉。
+- **类型检查：** `tsconfig.json` 的 `paths` 把 `lgui` 指向 `.lgui/framework/index.ts`，`lgui/host` 指向 `.lgui/framework/host.ts`（供可选的 `host/main.ts` 使用），`lgui/ui` 指向 `.lgui/build/types/index.d.ts`（由 `ui/` 生成的控件类型）。`src/` 和 `tests/` 不开 DOM 类型库；`host/` 由 `lgui check` 带 DOM 类型库单独做严格类型检查。
+- **网页预览、正式构建、测试、导出 Unity：** 全部由随插件带的 esbuild 打包，用 esbuild 的 `alias` 把 `lgui` 指向 `.lgui/framework/index.ts`、`lgui/host` 指向 `.lgui/framework/host.ts`；`lgui/ui` 只有类型，打包时会被去掉。
 - 测试文件里可以 `import` 的 Node 模块只有 `node:test` 和 `node:assert/strict`，它们的类型在 `.lgui/framework/env.d.ts`。
+
+## 正式网页构建（`lgui build`）
+
+```bash
+lgui build [--out 目录] [--no-minify]
+```
+
+- **默认输出到 `<工程>/dist/`**（构建成功后整目录替换；`--out` 不能指向工程根、上级目录、源码/管理目录或符号链接，否则报 `LGUI-CLI-150`）。页面内全部资源地址按相对路径引用，放在根路径或子路径（如 GitHub Pages 的 `/MyGame/`）下都能直接用静态服务打开。
+- **正式模式打包：** `LGUI_DEV = false`，不带自动刷新脚本和 sourcemap，默认开启代码压缩（排查问题时可加 `--no-minify`），`index.html` 对 `app.js` 附加内容哈希防旧缓存。
+- **输出目录结构：** `index.html`、`app.js`、`ui/<包>/package.json`、`ui/manifest.json`、`i18n/<语言>.json`（有项目图片、mp3、字体时附带散图、mp3 和 `ui/fonts/*.woff2`；不带图片、音频、字体文件的纯代码工程不会报错，输出目录里只有 `.html`、`.js`、`.css`、`.json` 文件，不含任何二进制媒体或 `.xml`、`.svg` 文件）。
+- **体积账：** 命令结束时打印未压缩总字节数、`app.js` 字节数以及其中 **LGUI 运行时**（`.lgui/framework/` 含框架与 FairyGUI-dom）所占的字节数（`--json` 输出里的 `totalBytes`、`appJsBytes`、`lguiRuntimeBytes`）。

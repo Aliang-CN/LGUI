@@ -10,7 +10,7 @@
 4. `lgui dev` 打开预览看效果。地址是 `http://127.0.0.1:<端口>/`：开发服务只监听、也只认 `127.0.0.1`，用 `localhost` 打不开（设计如此，挡住 DNS 重绑定）。改 `ui/`、`src/`、`i18n/` 会自动刷新；工程用到的别的目录（宿主代码、仓库根的 `Config/` 等）写进工程配置 `devWatch`（相对工程根目录，比如 `["../Config"]`），改了也会刷新。`devWatch` 写成工程根目录（`.`）或它的上级时不监视 `.lgui/build/`（生成物在这里，监视它会自己触发自己）。
 5. `lgui verify` 按标准尺寸横竖截图（同一个画面只截一次，按尺寸模拟刘海），逐张看一遍。只截一个界面写 `--view <View 名>`；它要参数就再写 `--params '<JSON 对象>'`（字段见这个 View 的 `static params`，比如 `--view ShopView --params '{"tab":"gift"}'`）。
 
-`lgui dev`、`lgui verify`、`lgui test` 各用各的生成目录（`.lgui/build/<命令>/`），`lgui dev` 开着时照样可以跑另外两个。
+`lgui dev`、`lgui verify`、`lgui test`、`lgui build` 各用各的中间目录（`.lgui/build/<命令>/`），`lgui dev` 开着时照样可以跑另外几个。
 
 编辑器开着时不要直接改 XML：同一时间只有一方修改 `ui/`。
 
@@ -84,7 +84,7 @@ ui/
 - 每个组件 XML 和图片都要登记；登记的文件必须存在，存在的文件也都要登记。
 - **九宫格：** 在图片上写 `scale="9grid"` 和 `scale9grid="左,上,宽,高"`（中间可拉伸区域），区域不能超出图片。边距按图片真实的边框像素取，不要统一取边长的四分之一。
 - **图集：** 生成时按包自动打图集，一般不用管。每张图不能比所在包的图集上限大。全局上限是 `ui/settings/Publish.json` 里的 `atlasSetting.maxSize`（编辑器「发布设置」里改的就是它），没写是 4096×4096；超了生成时报 `LGUI-CLI-113`，写明是哪张图、上限是从哪来的。某个包确实要更大的图，在它的 `package.xml` 已有的 `<publish name="包名">` 上加 `maxAtlasSize="8192"`（`lgui init`、`lgui new` 建的包都已经有一个空的 `<publish>`，再加第二个不生效；没有才在 `</resources>` 后面写 `<publish name="包名" maxAtlasSize="8192"/>`）。多数手机支持到 4096，更大先确认目标设备。
-- **声音：** mp3，登记成 `<sound>` 并导出（`exported="true"`）。代码和 View 的 `static music` 里写 `ui://<包名>/<声音名>`（`ui://Bag/coin`）；按钮的 `sound` 属性和别的资源引用一样写 `ui://<包ID><资源ID>`（`ui://bag00001coin0001`）。用法见 MVC 开发规范第 15 节。
+- **声音：** 有 mp3 文件时登记成 `<sound>` 并导出（`exported="true"`）：代码和 View 的 `static music` 里写 `ui://<包名>/<声音名>`（`ui://Bag/coin`），按钮的 `sound` 属性写 `ui://<包ID><资源ID>`（`ui://bag00001coin0001`）或 `ui://<包名>/<声音名>`。不带 mp3 文件、由自定义声音出口用代码实时合成声音时，地址写 `synth://<名字>`（比如 `synth://click`、`synth://bgm/menu`），不需要在 `package.xml` 里登记 `<sound>`。用法见 [MVC 开发规范](mvc-spec.md) 第 15 节。
 - `lgui art split`、`lgui art cut` 拆出来的小图会自动登记。
 
 **AI 出的图集拆成小图：**
@@ -128,6 +128,17 @@ ui/
 7. 平铺图（`tile`）左右两端要能无缝接上（`LGUI-CLI-086`）。
 8. 图里不画文字（第 8 节）。
 
+### 5.2 代码图标（`icon://`）
+
+包里不带图片文件时，图标的形状可以直接写在代码里（不是在 `ui/` 里放单独的 `.svg` 文件），运行时画出来。注册方法见 [MVC 开发规范](mvc-spec.md) 第 4 节（`lgui.app({ icons })` 或 `lgui.registerIcons`），注册后地址写成 `icon://<名字>`（名字由字母、数字和 `.`、`_`、`-`、`/` 组成，比如 `icon://play`、`icon://hud/shield`）：
+
+- **两种定义写法：**
+  - `shapes`：矢量图元数组（`path`、`circle`、`rect`、`polygon`、`line`），可设 `viewBox` 和设计宽高（默认 64×64），网页端转成缓存的 SVG 渲染，任意缩放都清晰；
+  - `draw(g, width, height)`：过程式 2D 绘制函数（`IconCanvas`，不含浏览器 DOM 类型），网页端按屏幕像素比在离屏画布上画一次并缓存。
+- **能用的地方：** 所有填图片地址的地方都能写 `icon://<名字>`——`<loader url="icon://play"/>`、按钮实例或按钮组件根的 `<Button icon="icon://play" selectedIcon="icon://pause"/>`、标签的 `<Label icon="icon://star"/>`、下拉框的 `<ComboBox icon="icon://mode"/>`、`gearIcon`、工程配置 `placeholder`、绑定表的 `icon` / `placeholder` / `dragIcon`。装载器的对齐、缩放（`fill`）、着色（`color`）、变灰、裁剪填充（`fillMethod` / `fillAmount`）照常生效。
+- **按钮、标签、下拉框要有 `icon` 子控件：** 给按钮、标签、下拉框写了图标（不论是 `ui://` 还是 `icon://`，写在 XML 实例上还是绑定表里），组件里都要有一个名为 `icon` 的装载器子控件，否则网页上显示不出来，`lgui check` 报 `LGUI-UI-066`。
+- **检查与后端边界：** `lgui check` 检查 XML、工程配置和代码里的静态 `'icon://…'` 都已注册（未注册或名字不合法报 `LGUI-UI-009`）；运行时未注册或定义不合法报 `LGUI-RT-072`。代码图标只在网页端（`h5`）和 `lgui test`（`headless`）提供；Unity 后端不支持，`lgui unity export` 检测到工程用了代码图标直接报 `LGUI-CLI-144` 并拒绝导出，Unity 运行时遇到也报 `LGUI-RT-072`。
+
 ## 6. 最小写法模板
 
 组件文件的根节点：
@@ -160,7 +171,7 @@ ui/
 
 <!-- 按钮：引用一个 extention="Button" 的组件（按钮组件本身可以写 <Button mode="Check"/> 或 "Radio"，让它保持选中，见第 12 节） -->
 <component id="n4" name="sellButton" src="btn00001" xy="20,250" size="160,56">
-  <Button title="出售" sound="ui://bag00001coin0001" volume="80"/>   <!-- 点击音效和音量（百分比），都可以不写 -->
+  <Button title="出售" sound="ui://bag00001coin0001" volume="80"/>   <!-- 点击音效（也可写 synth://click）和音量（百分比），都可以不写 -->
 </component>
 
 <!-- 子组件 -->
@@ -208,7 +219,7 @@ ui/
 <text id="n1" name="gold" xy="20,20" size="200,48" fontSize="32" color="#ffd84a" bold="true" strokeColor="#3a1f00" strokeSize="1" shadowColor="#80000000" shadowOffset="0,1" align="center" vAlign="middle" autoSize="shrink" singleLine="true" text="1436"/>
 ```
 
-**按钮组件**（`extention="Button"`，标题和图标控件名固定为 `title`、`icon`：实例上的 `<Button title>`、绑定表的 `text` 只写进名为 `title` 的子控件，按钮组件里有文字却没有 `title` 时网页上显示不出来，`lgui check` 报 `LGUI-UI-066`；标签、下拉框也一样）：
+**按钮组件**（`extention="Button"`，标题和图标控件名固定为 `title`、`icon`：实例上的 `<Button title>`、绑定表的 `text` 只写进名为 `title` 的子控件，实例上的 `<Button icon>` / `selectedIcon`、绑定表的 `icon` 只写进名为 `icon` 的子控件；组件里缺对应的子控件时网页上显示不出来，`lgui check` 报 `LGUI-UI-066`；标签、下拉框也一样）：
 
 ```xml
 <component size="160,56" extention="Button">
@@ -403,8 +414,9 @@ ui/
 
 ## 8. 文字
 
-- **字体**：项目自带的字体文件放 `ui/fonts/<名字>.ttf` 或 `.otf`，文件名（去掉扩展名）就是字体名，以大写字母开头、只用字母和数字（比如 `NotoSansSC.otf`、`TitleBold.ttf`），不能和 CSS 的通用字体名或关键字同名（`Serif`、`Monospace`、`Cursive`、`Fantasy`、`Math`、`Emoji`、`Fangsong`、`Inherit`、`Initial`、`Unset`、`Default`、`Revert`，不分大小写；网页上会按系统字体画）。默认字体在工程配置 `defaultFont` 里写这个名字；某一处要用别的字体，XML 写 `font="<名字>"`，富文本写 `[font=<名字>]…[/font]`。`font` 只能写 `ui/fonts/` 里有的名字，系统字体名（各平台不一样）、包里的 `ui://` 字体资源都报 `LGUI-UI-080`。`defaultFont` 是 `null` 时用系统默认字体。
-  - **自动精简**：`lgui dev`、`verify`、`test --browser`、`unity export` 按项目实际用到的字做子集（网页 WOFF2，Unity 原格式）：ASCII 可见字符、`ui/` 里写的文字、`i18n/` 全部语言的文案、框架自己显示的字（`format.compact` 的「万」「亿」等）。几 MB 的中文字体一般只剩几十 KB。
+- **字体**：项目自带的字体文件放 `ui/fonts/<名字>.ttf` 或 `.otf`，文件名（去掉扩展名）就是字体名，以大写字母开头、只用字母和数字（比如 `NotoSansSC.otf`、`TitleBold.ttf`），不能和 CSS 的通用字体名或关键字同名（`Serif`、`Monospace`、`Cursive`、`Fantasy`、`Math`、`Emoji`、`Fangsong`、`Inherit`、`Initial`、`Unset`、`Default`、`Revert`，不分大小写；网页上会按系统字体画）。默认字体在工程配置 `defaultFont` 里写这个名字；某一处要用别的字体，XML 写 `font="<名字>"`，富文本写 `[font=<名字>]…[/font]`。`font` 只能写 `ui/fonts/` 里有的名字，系统字体名（各平台不一样）、包里的 `ui://` 字体资源都报 `LGUI-UI-080`。
+  - **不带字体文件（`ui/fonts/` 为空、`defaultFont` 为 `null`）**：工程可以完全不放字体文件（`lgui init` 和 `lgui init --code-only` 默认就是这样）。`lgui check` 不查缺字（不报 `LGUI-CLI-141`），生成命令不产出字体子集文件。网页端统一使用跨平台无衬线系统字体栈（`system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif`），普通文字、输入框和 `autoSize="shrink"` 量宽口径一致；Unity 6 端在已导入 `TMP Settings` 时将设备系统字体（苹方 / Noto Sans CJK / 微软雅黑等）注册为动态 SDF `ProjectTMPFont`（保留描边、投影像素换算），未导入 `TMP Settings` 时按系统字体列表走 `Font.CreateDynamicFontFromOSFont`（避开 Unity 6 已移除的内置 `Arial.ttf`；注意 Unity 出微信小游戏或 WebGL 时沙箱读不到系统字体，仍要在 `ui/fonts/` 里带字体文件）。
+  - **自动精简**：`lgui dev`、`build`、`verify`、`test --browser`、`unity export` 按项目实际用到的字做子集（网页 WOFF2，Unity 原格式）：ASCII 可见字符、`ui/` 里写的文字、`i18n/` 全部语言的文案、框架自己显示的字（`format.compact` 的「万」「亿」等）。几 MB 的中文字体一般只剩几十 KB。
   - **缺字报错**（`lgui check` 和上面这些命令都报 `LGUI-CLI-141`，写明是哪个字、在哪里）：`ui/` 里的每段固定文字按显示它的那个文字控件的字体查。文字控件看自己的 `font`；按钮、标签、下拉框、列表项的标题（`title`、`selectedTitle`、下拉框的选项、`<item title>`）看那个组件里名为 `title` 的文字控件的 `font`；`gearText` 的值跟着它所在的控件；没写 `font` 的是默认字体。`i18n/` 里和 `ui/` 文字同一个键的翻译跟着那个控件的字体，其余文案和框架自己显示的字查默认字体。表情符号这类字体里没有的字改用图片或 ArtText。
   - **多语言工程的默认字体要覆盖所有语言**：所有字体用同一个字集，`i18n/` 里全部语言的文案都按上面的规则查（代码里 `lgui.t` 用的文案查默认字体）。比如中文加韩文的工程，默认字体要同时有中文和韩文，否则报 `LGUI-CLI-141`。
   - **运行时才知道的文字**（玩家名、服务器下发的数据、输入框里打的字）不在子集里的字，按字换成系统字体显示，不报错。网页上由浏览器换；Unity 上每个项目字体后面挂一个系统字体做的 TMP 回退字体（iOS、macOS 用苹方，Android 用系统自带的 Noto Sans CJK 等，Windows 用微软雅黑）。这只对 iOS、Android、电脑的原生包有效：Unity 出微信小游戏或 WebGL 时读不到系统字体，子集外的字会显示成方框，到时要在 `ui/fonts/` 里带一个常用字字体。设备上一个候选的系统字体都没找到时，Unity 只记一次 `LGUI-RT-182` 错误日志，游戏照常运行，缺的字显示方框。
@@ -455,7 +467,7 @@ ui/
 | `Common/RedDot` | 红点 | `count`（文字，显示数字时用） |
 | `Common/HoldProgress` | 长按进度 | 本身是一个进度条组件（`extention="ProgressBar"`） |
 | `Common/ArtText` | 美术字的空容器（第 11 节） | 无 |
-| `Common/placeholder`（图片） | 默认占位图 | — |
+| `Common/placeholder`（图片，可选） | 默认占位图（`lgui init --code-only` 无图工程不带它，`placeholder` 设为 `null`） | — |
 
 **操作提示栏：** 框架把 `Common/ActionHintBar` 放在最上面的 toast 层（不收输入），贴着屏幕底部，宽度铺满。它列出激活界面里带 `hint` 的按键动作，每一项用 `Common/ActionHint` 显示按键名（`key`，比如 Esc、Enter）和提示文字（`label`）；返回键默认显示文本键 `lgui.back`（「返回」）。触屏上没有按键，输入类型是触摸时提示栏隐藏。提示栏高 64 设计像素，全屏界面底部要给它留位置（第 7.3 节）。
 
@@ -498,7 +510,7 @@ ui/
 - 框架默认开虚拟列表，只创建看得见的子项，数据多也不卡。所以子项组件的尺寸要固定。
 - **显示选中项：** 子项组件做成按钮（`extention="Button"`，带 `button` 控制器），根节点下写 `<Button mode="Radio"/>`；选中时 `button` 控制器在 `down` 页（鼠标悬停时是 `selectedOver`），用 `<gearDisplay controller="button" pages="1,3"/>` 挂一个选中框。普通模式（不写 `mode`）的按钮不保持选中，列表选了也看不出来。`lgui new view --pattern split|grid` 生成的子项已经这样写好了。
 - 列表里不要放手写的子项，子项都由代码给数据生成。
-- **拖放的格子：** 拖起时跟手的图标默认用被拖控件自己的图片，所以子项里放一个加载器（比如叫 `icon`），代码把 `dragData`、`drop` 写在它上面；格子本身不动，拖放以后由数据重新生成。
+- **拖放的格子：** 拖起时跟手的图标默认用被拖控件自己的图片（装载器的图片，或按钮、标签的图标），所以子项里放一个加载器（比如叫 `icon`），或者直接把 `dragData`、`drop` 写在带图标的按钮、标签上；格子本身不动，拖放以后由数据重新生成。
 - **树：** 列表写 `treeView="true"` 就是树，每个节点用 `defaultItem` 的组件显示（做成 Radio 模式的按钮就能显示选中，和列表一样）。绑定表和列表用同样的词，节点的子节点放在数据的 `children` 字段里，`key` 必须写。节点默认展开；`clickToExpand="1"` 时单击有子节点的节点展开或收起，`"2"` 时双击；选中一个收起的节点里的子节点时，框架先展开它的父节点。树不是虚拟列表，节点多（几百个以上）时用列表。
 
 ## 13. 检查规则表
@@ -514,7 +526,7 @@ ui/
 | `LGUI-UI-005` | 控件、控制器、动效不能重名 | 控制器 `tabs`，控件 `tabBar` | 控制器 `tabs`，控件也叫 `tabs`；动效叫 `title`，控件也叫 `title` |
 | `LGUI-UI-006` | 包名、组件名是大写开头的驼峰；后缀只能是 `@portrait`（组件）或 `@<语言>`（图片） | `BagPanel@portrait.xml` | `bagPanel.xml`、`BagPanel_portrait.xml` |
 | `LGUI-UI-007` | 横竖两版的控件名、类型、控制器和页名完全一致 | 两版都有 `sellButton`（按钮） | 竖版少了 `sellButton`，或者竖版里它是文字 |
-| `LGUI-UI-009` | 引用的资源存在；跨包引用的资源（子组件、图片）已导出 | `src="sword001"`（存在）；`<image pkg="cmn00001" src="placehd1">`（Common 里导出了） | 引用了已删掉的资源；引用别的包里没导出的图片 |
+| `LGUI-UI-009` | 引用的资源存在；跨包引用的资源（子组件、图片）已导出；工程配置 `placeholder` 为 `ui://` 时指向的图片存在且已导出；`icon://<名字>` 格式正确且已在代码里注册 | `src="sword001"`（存在）；`<image pkg="cmn00001" src="placehd1">`（Common 里导出了）；无图工程写 `"placeholder": null`；`url="icon://play"`（已注册） | 引用了已删掉的资源；删了 `placeholder.png` 却没把 `placeholder` 改成 `null`；引用别的包里没导出的图片；`icon://` 名字没注册 |
 | `LGUI-UI-010` | 文字控件写了超长处理（`autoSize` 是 `shrink`、`height`、`ellipsis`、`both` 之一） | `autoSize="ellipsis" singleLine="true"` | 不写 `autoSize`，或写 `none` |
 | `LGUI-UI-011` | 字号不小于 20；没写 `fontSize` 按 FairyGUI 默认的 12 号算 | `fontSize="22"` | `fontSize="14"`、不写 `fontSize` |
 | `LGUI-UI-012` | 绑定了 `redDot` 的控件里有名为 `redDot` 的子控件 | 按钮里放了 `redDot` | 绑了 `redDot`，按钮里没有这个子控件 |
@@ -534,11 +546,12 @@ ui/
 | `LGUI-UI-062`（警告） | 别的语言的翻译和默认语言的原文不一样（一字不差多半是还没翻；不含文字的值不算） | `"Main/MainView/button": "Tap me"` | `en.json` 里写 `"点我"` |
 | `LGUI-UI-063`（警告） | 横竖两版同一个控件的固定文字一样 | 两版都是 `text="背包"` | 竖版写 `text="我的背包"` |
 | `LGUI-UI-064` | 全屏界面（`static fullScreen = true`）的组件，横竖两版都有名为 `safe` 的直接子控件 | 见第 7.3 节 | 全屏界面没有 `safe` |
-| `LGUI-UI-065` | 音效（按钮的 `sound`、工程配置的 `sounds.click`）指向存在、已登记的 mp3；`sound=""` 表示不出声 | `<Button sound="ui://Bag/click"/>`，`click.mp3` 登记在 Bag 包里 | 没登记、文件不存在、`click.wav` |
-| `LGUI-UI-066` | 给按钮、标签写了标题（实例上的 `<Button title>`、`<Label title>`，绑定表的 `text`），给下拉框写了选项（实例上的 `<item title>`，绑定表的 `items`），组件里就要有名为 `title` 的子控件 | 组件里的文字叫 `title` | 文字叫 `text`、`label`，绑定表还给它写 `text` / `items` |
+| `LGUI-UI-065` | 音效（按钮的 `sound`、工程配置的 `sounds.click`、代码 `lgui.sound.play` 的 `synth://` 地址）指向存在、已登记的 mp3，或是写法合法的 `synth://<名字>`（且工程在 `lgui.app({ platform: { audio } })` 或 `host/main.ts` 的 `defineWebHost({ audio })` 里提供了自定义声音出口）；`sound=""` 表示不出声 | `<Button sound="ui://Bag/click"/>`（`click.mp3` 已登记）；`<Button sound="synth://click"/>`（已配自定义 `audio`） | 没登记、文件不存在、`click.wav`；写了 `synth://` 但没配自定义 `audio` |
+| `LGUI-UI-066` | 给按钮、标签写了标题（实例上的 `<Button title>`、`<Label title>`，绑定表的 `text`），给下拉框写了选项（实例上的 `<item title>`，绑定表的 `items`），组件里就要有名为 `title` 的子控件；给按钮、标签、下拉框写了图标（实例上的 `icon` / `selectedIcon`，绑定表的 `icon`），组件里就要有名为 `icon` 的子控件 | 组件里的文字叫 `title`、装载器叫 `icon` | 文字叫 `label` 还给它写 `text`；没有 `icon` 子控件还给按钮写 `icon="icon://play"` |
 | `LGUI-UI-067` | 动效里旋转、缩放的控件设了轴心 | `pivot="0.5,0.5"`（要绕左上角写 `pivot="0,0"`） | 不写 `pivot` 就做 `Rotation` / `Scale` |
 | `LGUI-UI-068` | `shrink`、`ellipsis` 的文字，框只放得下一行时写 `singleLine="true"` | `size="300,40" fontSize="28" autoSize="shrink" singleLine="true"` | `size="300,40" fontSize="28" autoSize="shrink"` |
 | `LGUI-UI-069` | 动效的目标不是普通组（普通组只在编辑时有，生成界面包时会被去掉，动效动不了它） | 要动整组就用高级组 `<group … advanced="true"/>`，或者让动效直接动组里的控件 | `<group id="n8" …/>` + `<item type="XY" target="n8" …/>` |
+| `LGUI-UI-070` | 工程有网页宿主 `host/main.ts` 时，`inputMode` 为 `'game'` 或 `'all'` 的界面（如 `hud` 层界面）对应的横竖两版根 `<component>` 写了 `opaque="false"`，空白处透给底层三维画布 | `<component size="1920,1080" opaque="false">` | 有 `host/main.ts` 且 `HudView` 用 `inputMode: 'game'`，但 `Hud.xml` 的 `<component>` 没写 `opaque="false"` |
 | `LGUI-UI-080` | XML 的 `font`、富文本的 `[font=…]`（也查 `i18n/` 的文案）只写 `ui/fonts/` 里的字体名 | `font="NotoSansSC"` | `font="Microsoft YaHei"`、`font="ui://bag00001font0001"` |
 | `LGUI-UI-081` | 描边粗细加投影偏移不超过字号的 7.5%（`strokeSize` + 投影 x、y 绝对值大的那个 ≤ `fontSize` × 0.075；没写 `strokeSize` 按 1，没写 `shadowOffset` 按 `1,1`） | `fontSize="32" strokeColor="#000000" strokeSize="1" shadowColor="#80000000" shadowOffset="0,1"` | `fontSize="32" strokeSize="2" shadowOffset="0,2"`（共 4，上限 2.4） |
 | `LGUI-UI-082` | 不写斜体：`italic="true"`、富文本 `[i]`（也查 `i18n/` 的文案） | 换颜色、`bold="true"`，或者另放一个斜体字体文件 | `italic="true"`、`[i]重要[/i]` |

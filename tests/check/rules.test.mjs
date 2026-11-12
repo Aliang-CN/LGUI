@@ -364,3 +364,116 @@ test('跨包图片：<image pkg="…" src="…"> 引用别的包里导出的图�
   const json = JSON.parse((await run(['check', '--json'], root)).stdout);
   assert.ok(json.data.findings.some(f => f.code === 'LGUI-UI-009' && /没导出的图片 Common\/placeholder/.test(f.message)), JSON.stringify(json.data.findings));
 });
+
+test('代码图标检查：src/icons.ts 允许存在；未注册的 icon:// 在 XML、工程配置、代码里都报 LGUI-UI-009，注册后通过；按钮写了图标但无 icon 子控件报 LGUI-UI-066', async () => {
+  const root = await fresh();
+  // Common/Button 没有 icon 子控件：给按钮写 icon 先触发 LGUI-UI-066 + 未注册的 LGUI-UI-009
+  edit(root, MAIN_XML, '<Button title="点我"/>', '<Button title="点我" icon="icon://play"/>');
+  edit(root, '.lgui/project.json', '"placeholder": "ui://Common/placeholder"', '"placeholder": "icon://fallback"');
+  const before = await findings(root);
+  assert.ok(before.some(f => f.code === 'LGUI-UI-066' && /按钮 button 写了图标.*没有名为 icon 的子控件/.test(f.message)), JSON.stringify(before));
+  assert.ok(before.some(f => f.code === 'LGUI-UI-009' && f.file === MAIN_XML && /icon:\/\/play/.test(f.message)), JSON.stringify(before));
+  assert.ok(before.some(f => f.code === 'LGUI-UI-009' && f.file === '.lgui/project.json' && /icon:\/\/fallback/.test(f.message)), JSON.stringify(before));
+
+  // 给 Common/Button 补上名为 icon 的装载器，并在 src/icons.ts 注册 play + fallback，通过 lgui.app({ icons }) 挂载
+  edit(root, 'ui/assets/Common/Button.xml', '<displayList>', '<displayList>\n    <loader id="n9" name="icon" xy="16,12" size="48,48" fill="scale"/>');
+  write(root, 'src/icons.ts', [
+    "import type { IconDef } from 'lgui';",
+    'export const icons: Record<string, IconDef> = {',
+    "  play: { shapes: [{ type: 'polygon', points: [[16, 12], [16, 52], [50, 32]], fill: '#ffffff' }] },",
+    '  fallback: { width: 32, height: 32, draw(g, w, h) { g.fillStyle = "#667788"; g.fillRect(0, 0, w, h); } },',
+    '};',
+    ''
+  ].join('\n'));
+  edit(root, 'src/main.ts', "import { MainView } from './modules/main/MainView';", "import { MainView } from './modules/main/MainView';\nimport { icons } from './icons';");
+  edit(root, 'src/main.ts', "backend: 'h5',", "backend: 'h5',\n  icons,");
+  assert.deepEqual(await codes(root), []);
+
+  // 代码绑定表里写错成未注册的 'icon://paly'，即使 icons 声明了 Record<string, IconDef> 也照样拦住报 LGUI-UI-009
+  edit(root, VIEW, 'button: { click: () => mainController.click() },', "button: { icon: 'icon://paly', click: () => mainController.click() },");
+  const typo = await findings(root);
+  assert.ok(typo.some(f => f.code === 'LGUI-UI-009' && f.file === VIEW && /icon:\/\/paly/.test(f.message)), JSON.stringify(typo));
+});
+
+test('无图工程检查：手动删掉 placeholder.png 却没改 project.json 时报 LGUI-UI-009；把 placeholder 设为 null 后检查全过', async () => {
+  const root = await fresh();
+  fs.rmSync(path.join(root, 'ui/assets/Common/placeholder.png'));
+  edit(root, 'ui/assets/Common/package.xml', /^\s*<image id="placehd1"[^>]*\/>\r?\n/m, '');
+  const before = await findings(root);
+  assert.equal(before.length, 1, JSON.stringify(before));
+  assert.equal(before[0].code, 'LGUI-UI-009');
+  assert.equal(before[0].file, '.lgui/project.json');
+  assert.match(before[0].message, /placeholder 指向的图片 ui:\/\/Common\/placeholder 不存在/);
+
+  edit(root, '.lgui/project.json', '"placeholder": "ui://Common/placeholder"', '"placeholder": null');
+  assert.deepEqual(await findings(root), []);
+});
+
+test('代码合成声音 synth://：没配自定义 platform.audio 时报 LGUI-UI-065 / LGUI-MVC-004；配好后按钮、sounds.click、static music 和 lgui.sound.play 全过；非法名字报错', async () => {
+  const root = await fresh();
+  edit(root, MAIN_XML, '<Button title="点我"/>', '<Button title="点我" sound="synth://laser"/>');
+  edit(root, '.lgui/project.json', '"click": null', '"click": "synth://click"');
+  edit(root, VIEW, '  static fullScreen = true;', "  static fullScreen = true;\n  static music = 'synth://bgm/menu';");
+  edit(root, CTRL, "import { Controller } from 'lgui';", "import { Controller, lgui } from 'lgui';");
+  edit(root, CTRL, 'click() { mainModel.addClick(); }', "click() { mainModel.addClick(); lgui.sound.play('synth://hit'); }");
+
+  const withoutAudio = await findings(root);
+  assert.ok(withoutAudio.some(f => f.code === 'LGUI-UI-065' && f.file === MAIN_XML && /platform.*audio/.test(f.message)), JSON.stringify(withoutAudio));
+  assert.ok(withoutAudio.some(f => f.code === 'LGUI-UI-065' && f.file === '.lgui/project.json' && /platform.*audio/.test(f.message)), JSON.stringify(withoutAudio));
+  assert.ok(withoutAudio.some(f => f.code === 'LGUI-MVC-004' && f.file === VIEW && /platform.*audio/.test(f.message)), JSON.stringify(withoutAudio));
+  assert.ok(withoutAudio.some(f => f.code === 'LGUI-UI-065' && f.file === CTRL && /platform.*audio/.test(f.message)), JSON.stringify(withoutAudio));
+
+  // 在 src/main.ts 里提供自定义 platform.audio（变量简写写法也认）
+  edit(root, 'src/main.ts', "import { lgui } from 'lgui';", "import { lgui, type AudioService } from 'lgui';\nconst audio: AudioService = { play() {}, music() {}, setPaused() {} };");
+  edit(root, 'src/main.ts', "backend: 'h5',", "backend: 'h5',\n  platform: { audio },");
+  assert.deepEqual(await findings(root), []);
+
+  // 非法 synth:// 名字报 LGUI-UI-065 / LGUI-MVC-004
+  edit(root, CTRL, "lgui.sound.play('synth://hit')", "lgui.sound.play('synth://')");
+  edit(root, VIEW, "static music = 'synth://bgm/menu';", "static music = 'synth://bad space';");
+  const bad = await findings(root);
+  assert.ok(bad.some(f => f.code === 'LGUI-UI-065' && f.file === CTRL), JSON.stringify(bad));
+  assert.ok(bad.some(f => f.code === 'LGUI-MVC-004' && f.file === VIEW), JSON.stringify(bad));
+});
+
+test('网页宿主 host/main.ts 与 LGUI-UI-070：无 host 时不查 opaque；有 host 时查 host 类型、认 defineWebHost({ audio })、要求 game/all 界面写 opaque="false"，src/ 不能 import lgui/host', async () => {
+  const root = await fresh();
+  // 把 MainView 改成 hud 层（默认 inputMode: 'game'），但没有 host/main.ts：2D 工程不报 LGUI-UI-070
+  edit(root, VIEW, "static layer = 'page' as const;", "static layer = 'hud' as const;");
+  assert.deepEqual(await findings(root), []);
+
+  // 加 host/main.ts（同时用 synth:// 声音，且只在 host/main.ts 里提供 audio）：
+  // 此时 MainView 和 MainView@portrait 没写 opaque="false"，应报两条 LGUI-UI-070，且 synth:// 不报错
+  edit(root, MAIN_XML, '<Button title="点我"/>', '<Button title="点我" sound="synth://tap"/>');
+  write(root, 'host/main.ts', [
+    "import { defineWebHost } from 'lgui/host';",
+    'export default defineWebHost({',
+    '  audio: { play() {}, music() {}, setPaused() {} },',
+    '  mount(stage) {',
+    "    const ctx = stage.canvas.getContext('2d');",
+    '    void ctx;',
+    '  },',
+    '});',
+    ''
+  ].join('\n'));
+  const missingOpaque = await findings(root);
+  assert.deepEqual(missingOpaque.map(f => f.code), ['LGUI-UI-070', 'LGUI-UI-070'], JSON.stringify(missingOpaque));
+  assert.ok(missingOpaque.some(f => f.file === MAIN_XML), JSON.stringify(missingOpaque));
+  assert.ok(missingOpaque.some(f => f.file === 'ui/assets/Main/MainView@portrait.xml'), JSON.stringify(missingOpaque));
+
+  // 横竖两版都补上 opaque="false"（并去掉铺满全屏的不透明 bg 或保留透明布局）后通过检查
+  edit(root, MAIN_XML, '<component size="1920,1080">', '<component size="1920,1080" opaque="false">');
+  edit(root, 'ui/assets/Main/MainView@portrait.xml', '<component size="1080,1920">', '<component size="1080,1920" opaque="false">');
+  assert.deepEqual(await findings(root), []);
+
+  // host/main.ts 里的类型错误会被 lgui check 报出（TSxxxx）
+  write(root, 'host/bad.ts', "import { defineWebHost } from 'lgui/host';\nconst x: number = 'not-a-number';\nexport { defineWebHost, x };\n");
+  const tsErr = await findings(root);
+  assert.ok(tsErr.some(f => f.file === 'host/bad.ts' && /^TS\d+$/.test(f.code)), JSON.stringify(tsErr));
+  fs.rmSync(path.join(root, 'host/bad.ts'));
+
+  // src/ 里试图 import 'lgui/host' 报 LGUI-MVC-001
+  edit(root, CTRL, "import { Controller } from 'lgui';", "import { Controller } from 'lgui';\nimport { defineWebHost } from 'lgui/host';\nvoid defineWebHost;");
+  const mvcErr = await findings(root);
+  assert.ok(mvcErr.some(f => f.code === 'LGUI-MVC-001' && f.file === CTRL), JSON.stringify(mvcErr));
+});

@@ -1,6 +1,6 @@
 // Unity 平台服务：原始输入来自 FairyGUI Stage，其余能力调用 LGUI.Platform。
 import type {Insets, KeyInput, LogLevel, Logger, NetResponse, Platform, PointerInput, Rect, Unsubscribe, WheelInput} from '../../../core/index';
-import {LgRuntimeError, notImplemented} from '../../../core/index';
+import {LgRuntimeError, defaultAudioSynthError, invalidSynthUrlError, isIconUrl, isSynthUrl, isValidSynthUrl, notImplemented, unityIconError} from '../../../core/index';
 import type {NativeEventContext, NativeLoader} from './native-ui';
 import type {NativePlatformHost, UnityPlatformOptions} from './native-platform';
 
@@ -64,7 +64,7 @@ export function unityLogger(host: NativePlatformHost, alive: () => void, categor
   };
 }
 
-const unregistered = (url: string): LgRuntimeError => new LgRuntimeError('LGUI-RT-170', `声音 ${url} 没有登记在 ui/ 的包里。`, '把 mp3 放进包目录，在 package.xml 里登记成 <sound … exported="true"/>，地址写成 ui://包名/声音名。');
+const unregistered = (url: string): LgRuntimeError => new LgRuntimeError('LGUI-RT-170', `声音 ${url} 没有登记在 ui/ 的包里。`, '把 mp3 放进包目录，在 package.xml 里登记成 <sound … exported="true"/>，地址写成 ui://包名/声音名；或者用代码合成声音 synth://名字。');
 const imageError = (url: string, detail = ''): LgRuntimeError => new LgRuntimeError('LGUI-RT-025', `图片 ${url} 加载失败。${detail}`, '确认地址对、资源存在；远程图片需要可访问的 HTTP(S) 地址。');
 const requestError = (url: string, detail: string): LgRuntimeError => new LgRuntimeError('LGUI-RT-101', `HTTP 请求 ${url} 失败：${detail}`, '确认服务器地址、网络连接和请求参数。');
 const clipboardError = (what: string, detail: string): LgRuntimeError => new LgRuntimeError('LGUI-RT-241', `剪贴板${what}失败：${detail}`, 'Unity 由 LGUI.Platform.ClipboardGet / ClipboardSet 读写系统剪贴板（GUIUtility.systemCopyBuffer）；确认 Unity 包是这一版的 LGUI，目标平台支持系统剪贴板。');
@@ -158,6 +158,7 @@ export function createUnityPlatform(options: UnityPlatformOptions): {platform: P
       hasPackage(name) { alive(); return fgui.UIPackage.GetByName(name) !== null; },
       async loadImage(url) {
         alive();
+        if (isIconUrl(url)) throw unityIconError(url);
         if (url.startsWith('ui://')) {
           try { if (!fgui.UIPackage.GetItemAssetByURL(url)) throw imageError(url); }
           catch (error) { throw error instanceof LgRuntimeError ? error : imageError(url, String(error)); }
@@ -209,18 +210,21 @@ export function createUnityPlatform(options: UnityPlatformOptions): {platform: P
         return rect;
       }
     },
-    // 声音由 LGUI.Platform 自己的 AudioSource 放；没登记的 ui:// 地址先在这里报 LGUI-RT-170（和 h5 一样），网络声音下载失败由 C# 记 warn。
+    // 声音由 LGUI.Platform 自己的 AudioSource 放；没登记的 ui:// 地址和落到默认出口的 synth:// 地址先在这里报 LGUI-RT-170（和 h5 一样），网络声音下载失败由 C# 记 warn。
     audio: {
       play(url, volume, onError) {
         alive();
+        if (isSynthUrl(url)) { onError(isValidSynthUrl(url) ? defaultAudioSynthError(url) : invalidSynthUrlError(url)); return; }
         if (url.startsWith('ui://') && !fgui.UIPackage.GetItemByURL(url)) { onError(unregistered(url)); return; }
         try { host.PlayAudio(url, volume); } catch (error) { onError(error); }
       },
       music(url, volume, fadeMs, onError) {
         alive();
-        const missing = url !== null && url.startsWith('ui://') && !fgui.UIPackage.GetItemByURL(url);
-        try { host.PlayMusic(url === null || missing ? '' : url, volume, fadeMs); } catch (error) { onError(error); return; }
-        if (missing) onError(unregistered(url));
+        const bad = url !== null && isSynthUrl(url)
+          ? (isValidSynthUrl(url) ? defaultAudioSynthError(url) : invalidSynthUrlError(url))
+          : (url !== null && url.startsWith('ui://') && !fgui.UIPackage.GetItemByURL(url) ? unregistered(url) : null);
+        try { host.PlayMusic(url === null || bad ? '' : url, volume, fadeMs); } catch (error) { onError(error); return; }
+        if (bad) onError(bad);
       },
       setPaused(paused) { alive(); host.SetAudioPaused(paused); }
     },

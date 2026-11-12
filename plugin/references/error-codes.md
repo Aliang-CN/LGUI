@@ -29,7 +29,7 @@ LGUI 的每条报错都带错误码，并写明：哪个文件哪一行（如果
 | `LGUI-CLI-032` | 打包 `src/` 失败（语法错误、找不到 import 的文件等），带文件和行号 | 按提示改代码 |
 | `LGUI-CLI-040` | `tests/` 里没有测试文件（`*.test.ts`） | 在 `tests/` 下写测试，写法见 mvc-spec.md 第 12 节 |
 | `LGUI-CLI-041` | 测试没通过（报错里附上测试结束时的界面状态快照） | 看测试输出，按断言改代码或测试 |
-| `LGUI-CLI-050` | `lgui check` 读不了 `tsconfig.json` | 用 `lgui init` 生成的 `tsconfig.json`，不要改它 |
+| `LGUI-CLI-050` | `lgui check` 读不了 `tsconfig.json` 或 `host/tsconfig.json` | 用 `lgui init` 生成的 `tsconfig.json`，或者修正/删除 `host/tsconfig.json` |
 | `LGUI-CLI-051` | Unity 工程缺少 embedded 的 PuerTS Core/V8 3.0.3 本地包、使用了目录链接或包缓存，或者 C++ 补丁目标摘要不可信 | 将官方 Core/V8 压缩包解压到工程的 `Packages/com.tencent.puerts.core/` 和 `Packages/com.tencent.puerts.v8/`；保留自己的修改后恢复官方原文件再导出 |
 | `LGUI-CLI-052` | 导出目标不是 Unity 6000.6.x 工程、管理路径使用了文件/目录链接，或目标条目的文件/目录类型不对 | 使用 Unity 6000.6 创建的工程根目录；管理路径使用实际目录和文件，移走同名的错误类型条目 |
 | `TSxxxx` | `lgui check` 报的 TypeScript 类型错误（错误码是 TypeScript 自己的） | 按提示改；控件名和类型以 `lgui ui list` 为准 |
@@ -69,9 +69,11 @@ LGUI 的每条报错都带错误码，并写明：哪个文件哪一行（如果
 | `LGUI-CLI-131` | `lgui test --name` 一个测试也没匹配到 | `--name` 按测试名（和所在 `describe` 的名字）里的一段文字筛选，区分大小写；不写就跑全部 |
 | `LGUI-CLI-132` | `lgui test --browser` 没找到 Chrome 或 Edge | 装一个 Chrome 或 Edge；或者先不加 `--browser`，用 headless 跑 |
 | `LGUI-CLI-140` | `ui/fonts/` 里的字体文件用不了：文件名不能当字体名（要大写字母开头、只用字母和数字，不能和 CSS 的通用字体名或关键字同名，比如 `Serif`、`Default`）、两个文件同名、格式不支持（TTC、WOFF、WOFF2）、内容不是 TTF / OTF（包括空文件、被截断的文件）、读不出字符表、是可变字体，或者做子集失败。不带 `--browser` 的 `lgui test` 也会报（启动入口要列出字体名） | 换成单字重的 TTF / OTF，按报错改文件名；许可说明之类的别的文件可以放着 |
-| `LGUI-CLI-141` | 静态文字里有字体没有的字（报错里列出是哪些字、在哪个文件或文本键）：`ui/` 里的固定文字按显示它的文字控件的字体查（按钮、标签、下拉框、列表项的标题看组件里名为 `title` 的文字控件；`gearText` 的值跟着所在控件），`i18n/` 里同键的翻译跟着那个控件，其余文案和框架自己显示的字（`format.compact` 的单位，按工程 `languages`）查默认字体 | 换一个有这些字的字体；表情符号这类字体里没有的字改用图片或 ArtText；写错的字改掉 |
+| `LGUI-CLI-141` | 静态文字里有项目字体没有的字（报错里列出是哪些字、在哪个文件或文本键）：`ui/` 里的固定文字按显示它的文字控件的字体查（按钮、标签、下拉框、列表项的标题看组件里名为 `title` 的文字控件；`gearText` 的值跟着所在控件），`i18n/` 里同键的翻译跟着那个控件，其余文案和框架自己显示的字（`format.compact` 的单位，按工程 `languages`）查默认字体；`defaultFont` 为 `null`（用系统字体）且控件没指定项目字体时不查缺字 | 换一个有这些字的字体，或删掉项目字体并把 `defaultFont` 设为 `null` 用系统字体；表情符号这类字体里没有的字改用图片或 ArtText；写错的字改掉 |
 | `LGUI-CLI-142` | 工程配置的 `defaultFont` 不是 `ui/fonts/` 里的字体（系统字体名也不行，各平台不一样） | 把字体文件放进 `ui/fonts/<名字>.ttf`，或者把 `defaultFont` 改成 `ui/fonts/` 里的名字，或者改成 `null`（用系统默认字体） |
 | `LGUI-CLI-143` | `lgui unity export`：工程用了项目字体（Unity 上是 TextMesh Pro 字体），Unity 工程里没有 TMP Settings，导出要从 `com.unity.ugui` 自带的 TMP Essential Resources 资源包导入，但找不到资源包（报错里列出找过的位置：工程的 `Library/PackageCache/com.unity.ugui@…/`、`Packages/com.unity.ugui/`、Unity Hub 默认安装位置或 Windows `%LOCALAPPDATA%\Programs\Unity\<版本>` 用户安装位置里这个版本的内置包），或者资源包读不了、里面没有 TMP Settings、写入失败。什么都不写 | 用这个版本的 Unity 打开一次工程再导出；Unity 装在这些候选位置之外时，在 Unity 里点 Window → TextMeshPro → Import TMP Essential Resources 导入一次，再导出 |
+| `LGUI-CLI-144` | `lgui unity export`：工程使用了代码图标（`icon://…`、`lgui.app({ icons })` 或 `lgui.registerIcons`），Unity 后端不支持代码图标；什么都不写 | 要导出到 Unity 就把图标换成 `ui/` 包里登记的 PNG 图片，删掉代码图标定义和 `icon://` 引用；只出网页包的工程不用跑 `unity export` |
+| `LGUI-CLI-150` | `lgui build` 的输出目录（`--out`）不安全：为空、指向文件系统根目录、工程根目录或其上级目录、与 `src/` / `host/` / `ui/` / `i18n/` / `tests/` / `.lgui/framework/` / `.git/` / `node_modules/` 重叠、目标已存在但不是文件夹，或者路径经过符号链接（构建成功后会整目录替换输出目录） | 用默认的 `dist/`，或者把 `--out` 指向独立的真实文件夹（如 `--out dist`、`--out build/web`） |
 | `LGUI-CLI-999` | 命令行内部错误（LGUI 自己的缺陷） | 把输出报告给维护者 |
 
 ## LGUI-RT-xxx
@@ -83,8 +85,8 @@ LGUI 的每条报错都带错误码，并写明：哪个文件哪一行（如果
 | `LGUI-RT-001` | 当前后端或框架还没实现这项功能（开发中） | 换到已经实现的后端，或者先不用这项功能 |
 | `LGUI-RT-002` | 创建界面时它所在的界面包还没加载 | 先加载这个包（UIManager 打开界面时会自动加载） |
 | `LGUI-RT-003` | 界面包里没有这个组件 | 用 `lgui ui list` 查看有哪些组件 |
-| `LGUI-RT-010` | 网页端的散图映射 `manifest.json` 格式不对，或者里面没有某个包、某张图片 | 重新运行 `lgui dev` 生成界面包 |
-| `LGUI-RT-011` | 后端加载界面包失败（地址不对或文件不存在） | 确认包名对；网页重新运行 `lgui dev`，Unity 重新导出并确认 `Resources/UI/` 的文件存在 |
+| `LGUI-RT-010` | 网页端的散图映射 `manifest.json` 格式不对，或者里面没有某个包、某张图片 | 重新运行 `lgui dev` 或 `lgui build` 生成界面包 |
+| `LGUI-RT-011` | 后端加载界面包失败（地址不对、文件不存在，或网页端 `package.json` 格式不对） | 确认包名对；网页重新运行 `lgui dev` 或 `lgui build`，Unity 重新导出并确认 `Resources/UI/` 的文件存在 |
 | `LGUI-RT-020` | 颜色的格式不对 | 写成 `#rrggbb` |
 | `LGUI-RT-021` | 列表设成虚拟列表以后又想改回去 | 在第一次给数据之前决定要不要虚拟列表 |
 | `LGUI-RT-022` | 控制器没有这个页名 | 看报错里列出的页名 |
@@ -105,6 +107,7 @@ LGUI 的每条报错都带错误码，并写明：哪个文件哪一行（如果
 | `LGUI-RT-065` | 界面还没打开或已经关闭时用了 `this.ui` | 只在生命周期钩子里用 `this.ui` |
 | `LGUI-RT-070` | 网络图片加载失败，显示占位图（外部失败，记 `warn`） | 确认图片地址对、能访问 |
 | `LGUI-RT-071` | 加载器要显示 `ui://包名/图片名`，但那个包没有加载（不是这个界面依赖的包）；写错了，开发和测试里抛错 | 让界面用到那个包的组件（比如列表的 `defaultItem`，或者用那个包里的按钮组件、给它的 `icon` 赋值），打开界面时就会一起加载 |
+| `LGUI-RT-072` | 代码图标定义不合法（注册名带了 `icon://` 前缀或含非法字符、`shapes` 为空、图元类型未知、宽高或 `viewBox` 不是正数）、引用了未注册的 `icon://<名字>`，或者在 Unity 后端上使用了代码图标 | 按 ui-spec.md 第 5.2 节和 mvc-spec.md 第 4 节检查图标名字和定义，在 `lgui.app({ icons })` 或 `lgui.registerIcons` 里注册；Unity 工程改用 `ui://` 图片资源 |
 | `LGUI-RT-080` | 打开界面失败（界面包加载失败、组件不存在、绑定出错等），不会显示打开了一半的界面 | 按报错里的原因改 |
 | `LGUI-RT-081` | 界面在打开的过程中（或在 modal 队列里排队时）被关闭了，这次打开已取消 | 一般不需要处理 |
 | `LGUI-RT-082` | 关闭一个没有打开的界面（只记 `info` 日志，不算错误） | 不需要处理 |
@@ -120,17 +123,17 @@ LGUI 的每条报错都带错误码，并写明：哪个文件哪一行（如果
 | `LGUI-RT-120` | 红点路径写法不对 | 写成用「.」分隔的英文名，比如 `bag.newItem` |
 | `LGUI-RT-130` | ArtText 要显示的字符没有对应的图片（报错里写明是哪个字符）；正式构建里跳过这个字符 | 在字体目录下加上这个字符的图片，登记进 `package.xml` 并导出 |
 | `LGUI-RT-140` | 切换到工程不支持的语言 | 在 `.lgui/project.json` 的 `languages` 里加上它，并新建 `i18n/<语言>.json` |
-| `LGUI-RT-141` | 后端读不到这种语言的翻译文件，或翻译 XML 无法解析 | 网页重新运行 `lgui dev`；Unity 重新导出并确认 `Resources/UI/i18n/` 下有对应语言的 XML |
+| `LGUI-RT-141` | 后端读不到这种语言的翻译文件，或翻译文件内容无法解析（网页端 `<语言>.json`、Unity 端 `<语言>.xml`） | 网页重新运行 `lgui dev` 或 `lgui build`；Unity 重新导出并确认 `Resources/UI/i18n/` 下有对应语言的 XML |
 | `LGUI-RT-150` | 测试里的改值操作用错了控件：`t.type` 只能用在输入框上，`t.setValue` 只能用在滑动条上，`t.choose` 只能用在下拉框上 | 换成对应控件的路径（`lgui ui list` 里能看到控件类型） |
 | `LGUI-RT-151` | `t.choose` 的序号超出了下拉框的项数 | 序号从 0 开始；先确认下拉框的 `items` 已经给好 |
 | `LGUI-RT-152` | 树的绑定没写 `key`，或者树里有两个节点的 key 一样 | 写上 `key`（比如 `key: (n: TreeNode) => n.id`），key 在整棵树里要唯一 |
 | `LGUI-RT-210` | 动效只写了 `done`，但它不会自动播放，也没写 `playing` 或 `play`，永远放不完 | 加上 `playing` 或 `play`，或者在 `ui/` 里给它勾上自动播放 |
 | `LGUI-RT-211` | 动效同时写了 `playing` 和 `play`，或者在 `ItemView` 里写了 `play` | 二选一；`ItemView` 里用 `playing: it => …` |
-| `LGUI-RT-220` | 写了 `dragData` 的控件不是加载器或按钮，又没写 `dragIcon`，拖起时没有图标 | 加上 `dragIcon`，或者把 `dragData` 写在加载器、按钮上 |
+| `LGUI-RT-220` | 写了 `dragData` 的控件不是加载器、按钮或标签，又没写 `dragIcon`，拖起时没有图标 | 加上 `dragIcon`，或者把 `dragData` 写在加载器、按钮或标签上 |
 | `LGUI-RT-221` | 写了 `dragIcon` 但没写 `dragData` | 加上 `dragData`，或者去掉 `dragIcon` |
 | `LGUI-RT-230` | 网页端启动时 FairyGUI-dom 补丁装不上：上游没有要挂钩子的方法、属性或字段了（升级了上游，或者改了框架副本里的 `vendor/fairygui.module.js`）。错误里写着补丁编号 | 用户工程：不要改 `.lgui/framework/`，运行 `lgui upgrade` 换回插件带的框架。维护 LGUI：对照 `framework/backends/h5/vendor/PATCHES.md` 里那个编号重看补丁 |
 | `LGUI-RT-231` | 网页端启动时 FairyGUI-dom 补丁要加的方法，上游已经有同名的了 | 同 `LGUI-RT-230`；维护 LGUI 时判断上游是否已经实现了同样的功能，决定改用上游的还是去掉这个补丁 |
-| `LGUI-RT-232` | 网页端量 `autoSize="shrink"` 文字的宽度时浏览器给不出 Canvas 2D | 换一个支持 Canvas 2D 的浏览器或 WebView |
+| `LGUI-RT-232` | 网页端量 `autoSize="shrink"` 文字的宽度、或光栅化 `draw` 代码图标时浏览器给不出 Canvas 2D | 换一个支持 Canvas 2D 的浏览器或 WebView（代码图标也可改用 `shapes` 矢量图元写法） |
 | `LGUI-RT-240` | 对已经打开（或正在打开）的界面再 `open`，这次的参数和打开时的不同（不会生效，不静默丢掉） | 同一个界面同时只开一个：先用 `lgui.ui.isOpen` 判断，要换内容就改它绑定的 Model；要依次显示好几份（比如几份奖励），在 Controller 里排队，前一个关了再开下一个 |
 | `LGUI-RT-241` | 剪贴板读写失败（外部失败）：网页不是 https 或 localhost、浏览器拒绝；Unity 读写系统剪贴板出错，或者 Unity 包不是这一版（`LGUI.Platform` 没有 `ClipboardGet` / `ClipboardSet`） | 网页用 https 或 localhost；写入放在点击动作里直接调用；用 `lgui.request` 包一层，失败时拿到 `{ ok: false }` 并记 `warn` |
 | `LGUI-RT-242` | `selected` 绑在普通按钮（Common 模式）上，显示不出选中（绑定时就报） | 在 `ui/` 里把按钮组件的模式改成 Check（开关）或 Radio（单选），或者去掉 `selected` |
@@ -148,14 +151,14 @@ LGUI 的每条报错都带错误码，并写明：哪个文件哪一行（如果
 | `LGUI-RT-027` | 后端还没启动就开始用 | 先调用 `backend.init(config)`（框架启动时会自动调用） |
 | `LGUI-RT-160` | Unity 启动脚本或 Resources 文本缺失、PuerTS 启动失败、每帧回调或宿主驱动、退出清理失败 | 每帧回调出错时按堆栈修正该回调，其他回调和后续帧继续运行；宿主启动失败时核对导出文件、PuerTS 3.0.3 本地包后重新启动场景 |
 | `LGUI-RT-161` | Unity 平台存储、HTTP、音频等服务失败 | 按日志检查存储权限、请求参数、资源地址或本地 PuerTS 环境 |
-| `LGUI-RT-170` | 声音地址 `ui://…` 没有登记在 `ui/` 的包里 | 把 mp3 放进包目录，在 `package.xml` 里登记成 `<sound … exported="true"/>`，地址写成 `ui://包名/声音名` |
+| `LGUI-RT-170` | 声音地址 `ui://…` 没有登记在 `ui/` 的包里；或者 `synth://…` 写法不对、落到了未替换的默认声音出口 | `ui://` 声音把 mp3 放进包目录并在 `package.xml` 里登记导出；`synth://<名字>` 代码合成声音在 `lgui.app({ platform: { audio } })` 或网页端 `host/main.ts` 的 `defineWebHost({ audio })` 里提供自定义的 `AudioService` |
 | `LGUI-RT-171` | ArtText 用的字体所在的包没有加载 | 把 ArtText 放在字体所在包的组件里，或者让界面用到那个包的组件 |
 | `LGUI-RT-172` | 没有 Common 包或 `Common/ActionHintBar`，建不了操作提示栏（开发和测试里启动就报；正式构建里不显示提示栏） | 用 `lgui init` 自带的 Common 包，不要删掉 `ActionHintBar` |
 | `LGUI-RT-173` | 网页端没配 `i18nBase` 就切换语言 | `backend.init` 时传 `i18nBase`（`lgui dev` 生成的启动入口传的是 `./i18n`） |
 | `LGUI-RT-174` | `lgui.sound` 的参数不对：声道不是 `music` / `sfx`，音量不在 0–1，静音不是布尔值，地址是空的 | 照 mvc-spec.md 第 15 节写 |
 | `LGUI-RT-175` | 本地存储里的声音设置读不出来，用默认值（外部失败，记 `warn`） | 不需要处理；玩家下次改音量时会重新存 |
 | `LGUI-RT-176` | `lgui test` 里这个测试记了 `error` 级的日志（报错里写明是哪条） | 按日志改代码或界面 |
-| `LGUI-RT-180` | 网页端启动时项目字体加载失败（报错里写明地址和原因：HTTP 状态、浏览器解不开、浏览器没有 FontFace）。启动就停下，不悄悄换成系统字体 | 重新运行生成它的命令（`lgui dev`、`verify`、`test --browser`）；部署网页时 `ui/fonts/` 要和界面包一起发布 |
+| `LGUI-RT-180` | 网页端启动时项目字体加载失败（报错里写明地址和原因：HTTP 状态、浏览器解不开、浏览器没有 FontFace）。启动就停下，不悄悄换成系统字体 | 重新运行生成它的命令（`lgui dev`、`build`、`verify`、`test --browser`）；部署网页时 `ui/fonts/` 要和界面包一起发布 |
 | `LGUI-RT-181` | Unity 启动时注册不了项目字体：工程里没有 TextMesh Pro 的设置资源（TMP Settings，没导入 TMP Essential Resources；以前这里是空引用）；`Resources/UI/fonts/<名字>` 没有、没被导入成字体，或者 TextMesh Pro 用它建不成字体；或者工程里的 LGUI Unity 包是旧版（没有 `LGUI.Platform.RegisterFont` / `TmpSettingsFound`） | 重新 `lgui unity export`（缺 TMP Settings 时它会导入 TMP Essential Resources），或者在 Unity 里点 Window → TextMeshPro → Import TMP Essential Resources；回到 Unity 等导入完成再点 Play；字体的导入设置要勾「Include Font Data」（默认勾着）；旧版包先 `lgui upgrade` |
 | `LGUI-RT-182` | Unity 上一个候选的系统字体都没找到，项目字体后面没挂上系统回退字体（报错里列出试过的字体）。只记一次 `error` 日志、不抛错，游戏照常运行；项目字体里没有的字（聊天、玩家名）显示成方框 | iOS、Android、电脑原生包上一般都找得到；微信小游戏、WebGL 读不到系统字体，要在 `ui/fonts/` 里带一个常用字字体 |
 | `LGUI-RT-183` | Unity 上一段文字的描边粗细加投影偏移超出了项目字体（TextMesh Pro SDF）在这个字号下画得出来的范围，一般是 `autoSize="shrink"` 把字缩小了（`lgui check` 的 `LGUI-UI-081` 按没缩的字号查）。报错里写明字体、字号、描边、投影和大约能画多少；同一组值只记一次 `error` 日志，不抛错，描边和投影画得比写的细、近 | 改小 `strokeSize`、`shadowOffset`，或者把字号、文字框放大，让缩完的字号也在上限内（字号的 7.5%，见 UI 开发规范第 8 节） |

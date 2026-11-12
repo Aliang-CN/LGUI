@@ -1,6 +1,6 @@
 // 启动（后端已经 init 过）：设置运行时（换上 app.platform 给的日志、声音出口）、建 UIManager、注册服务，然后调用 app.start()。lgui dev、lgui test、Unity 导出都走这里。
 import type {Backend} from '../core/index';
-import {LgRuntimeError} from '../core/index';
+import {LgRuntimeError, hasRegisteredIcons, setAppIcons, setIconFaultReporter, unityIconError} from '../core/index';
 import type {AppDefinition} from './lgui';
 import {runtime, setRuntime} from './runtime';
 import type {PlatformOverrides, RuntimeConfig} from './runtime';
@@ -25,6 +25,9 @@ export async function switchBackendLanguage(backend: Backend, language: string):
 /** platform：换掉哪些平台服务（不写就用 app.platform；lgui test 传 {}，日志和声音总是记进 headless）。 */
 export async function boot(backend: Backend, app: AppDefinition, config: RuntimeConfig, deps: Record<string, string[]>, options: {wallBase?: number; start?: boolean; texts?: Record<string, TextTable>; language?: string; services?: Record<string, () => object>; platform?: PlatformOverrides} = {}): Promise<UIManager> {
   setRuntime(backend, config, options.wallBase ?? Date.now(), deps, options.platform ?? app.platform ?? {});
+  setIconFaultReporter((error, data) => fault(error, data));
+  setAppIcons(app.icons);
+  if (backend.name === 'unity' && hasRegisteredIcons()) fault(unityIconError());
   const language = options.language ?? pickLanguage(backend.platform.locale.systemLanguages(), config.languages, config.defaultLanguage);
   setTexts(options.texts ?? {}, language);
   // 界面包里本来就是默认语言的文字，默认语言不用加载翻译。

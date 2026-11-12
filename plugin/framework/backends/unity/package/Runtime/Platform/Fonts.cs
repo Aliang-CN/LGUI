@@ -74,6 +74,22 @@ namespace LGUI
             return true;
         }
 
+        /// <summary>
+        /// Registers the device's system fallback font as a dynamic SDF <see cref="ProjectTMPFont"/> when the project has no
+        /// bundled fonts in ui/fonts/ (defaultFont is null). Returns the registered family name, or empty when no candidate
+        /// OS font is found on this device.
+        /// </summary>
+        public static string RegisterSystemDefaultFont()
+        {
+            FindFallback();
+            if (_fallback == null) return "";
+            var tmp = new ProjectTMPFont();
+            tmp.name = _fallbackName;
+            tmp.fontAsset = _fallback;
+            FontManager.RegisterFont(tmp, _fallbackName);
+            return _fallbackName;
+        }
+
         // FairyGUI's TMPFont asks TMP for glyphs of weight Medium by default (TMPFont.cs:51) and Bold for bold text
         // (TMPFont.cs:316). The font assets built above have no typefaces in their font weight table, and for a weight other
         // than Regular TMP looks only for an alternative typeface and does not add the glyph from the font file: the glyph is

@@ -1,5 +1,71 @@
 # 更新记录
 
+## 0.5.0（2026-11-12）
+
+**正式网页构建命令（`lgui build`）与纯代码网页产物**
+
+- 新增 `lgui build [--out 目录] [--no-minify]`：打正式网页静态包（默认输出到 `dist/`，`LGUI_DEV = false`，不带 sourcemap 和自动刷新脚本，默认开启代码压缩，`index.html` 带项目标题、默认语言和 `app.js` 内容哈希防缓存），放在根路径或子路径下均可直接打开；打印未压缩总字节数、`app.js` 字节数以及其中 LGUI 运行时（`.lgui/framework/` 含框架与 FairyGUI-dom）所占的字节数，并在 `--json` 输出里提供结构化明细。工程没有图片、音频、字体文件时正常出包不报错；模板 `.gitignore` 默认忽略 `dist/`。
+- 网页端包描述与多语言文件统一改为 `.json`：网页界面包由 `package.xml`（二进制 `.fui`）改为 `package.json`（`{ fui: "<base64>" }`，FairyGUI-dom 补丁 6 同步解码），网页组件翻译文件由 `<语言>.xml` 改为 `<语言>.json`（Unity 导出仍保持 `_fui.bytes` 与 `<语言>.xml` 不变），使纯代码工程打出的网页目录里只含 `.html`、`.js`、`.css`、`.json` 文件。
+- 正式模式打包（`writeWebBootstrap` `dev: false`）不再在顶层全量导入所有 View 模块或挂载调试对象，便于 tree-shaking。
+
+**新错误码**
+
+- `LGUI-CLI-150`：`lgui build` 的 `--out` 输出路径不安全（为空、指向文件系统根目录、工程根目录或其上级目录、与源码/管理目录重叠、目标不是文件夹，或经过符号链接）。
+
+## 0.4.8（2026-11-12）
+
+**无字体文件工程与系统字体回退**
+
+- 网页端（`h5`）：`ui/fonts/` 为空、`defaultFont` 为 `null` 时，启动时把 `UIConfig.defaultFont` 和宿主页面样式统一设为跨平台无衬线系统字体栈（`system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif`），修复此前 `UIConfig.defaultFont` 为 `undefined` 导致舞台样式表拼出 `font-family: undefined` 并回退到浏览器衬线默认字体的问题；普通文字、输入框和 `autoSize="shrink"` 量宽口径一致，不生成字体子集文件，`lgui check` 不报 `LGUI-CLI-141`。
+- Unity 6 端：`defaultFont` 为 `null` 且无项目字体时（导出不额外写入 `TMP Essential Resources`），若 Unity 工程已具备 `TMP Settings`，`LGUI.Platform.RegisterSystemDefaultFont()` 将当前设备的候选系统字体（苹方 / Noto Sans CJK / 微软雅黑等）注册为动态 SDF `ProjectTMPFont`（保留描边、投影设计像素换算）；若没有 `TMP Settings`，则将 `UIConfig.defaultFont` 设为逗号分隔的系统字体列表走 `Font.CreateDynamicFontFromOSFont`，避开 Unity 6 已移除内置 `Arial.ttf` 导致的加载异常。
+
+## 0.4.7（2026-11-12）
+
+**三维画布与网页宿主（`host/main.ts`、`lgui/host`）**
+
+- 网页三维画布与界面共存：工程根目录下新增可选的 `host/main.ts`（`import { defineWebHost } from 'lgui/host'`），用于挂载 `three.js` 等三维渲染和网页端平台服务；`src/` 里的跨端游戏代码继续保持无 DOM / 无引擎依赖（`LGUI-MVC-001` 不变）。
+- 框架托管画布与叠放顺序：H5 后端把 `<fgui-stage>`（`z-index: 1`）与各层容器设为 `opaque = false`；存在 `host/main.ts` 时，框架自动创建全屏 `<canvas class="lgui-canvas">`（`z-index: 0`）垫在界面正下方，并通过 `stage.canvas`、`stage.size()`、`stage.safeArea()`、`stage.onResize()`、`stage.onFrame()` 交给 `mount(stage)`，`src/` 与 `host/main.ts` 都不必直接访问 `document`。
+- 按激活界面 `inputMode` 分流输入（`stage.input`）：支持按 `pointerId` 逐触点独立分流（`'game'` 模式下左手点界面摇杆/按钮、右手同时拖三维画布互不干扰；切入 `'ui'` 模式或窗口失焦时自动向进行中的场景触点补发 `cancel`、向按住的场景键补发 `up`），并按同一规则分流滚轮（`onWheel`）与键盘（`onKey`，跳过聚焦输入框、输入法组字和已被界面 `keys` 消费的按键）；修好关闭最后一个打开的界面后 `inputMode` 未回到 `'game'` 的问题。
+- FairyGUI-dom 补丁 14：修好 `opaque = false` 容器在 `touchable = false`（如 HUD 被 `modal` 弹窗压住）时子孙控件仍保持 `pointer-events: auto`、能被点穿的问题。
+- 命令与检查：`lgui dev` 打包并热更新监视 `host/`；`lgui test`（含 `--browser`）不加载 `host/main.ts`，无三维画布时界面测试照常运行；`lgui verify` 默认连同三维画布一起截图，新增 `--no-host` 可只截纯界面；`lgui check` 带 DOM 类型库严格检查 `host/`、识别 `defineWebHost({ audio })` 供 `synth://` 校验，并新增 `LGUI-UI-070`（有 `host/main.ts` 时，有效 `inputMode` 为 `'game'` 或 `'all'` 的界面横竖两版根 `<component>` 必须写 `opaque="false"`）；`lgui unity export` 明确跳过 `host/` 并在摘要提示。
+
+**新错误码**
+
+- `LGUI-UI-070`：工程有 `host/main.ts` 时，`inputMode` 为 `'game'` 或 `'all'` 的界面组件根 `<component>` 未写 `opaque="false"`。
+
+## 0.4.6（2026-11-12）
+
+**框架、检查与后端**
+
+- 代码合成声音（`synth://<名字>`）：包里不放 mp3 文件时，按钮的 `<Button sound="synth://…"/>`、工程配置 `sounds.click`、View 的 `static music = 'synth://…'` 和 Controller 里的 `lgui.sound.play('synth://…')` 都可以直接写 `synth://<名字>`，交由 `lgui.app({ platform: { audio } })` 提供的自定义 `AudioService` 实时合成播放；声道音量、静音、背景音乐选曲和切后台暂停与 `ui://` 声音一致。
+- `lgui check`（`LGUI-UI-065`、`LGUI-MVC-004`）：检查 `synth://<名字>` 格式正确，且工程在 `lgui.app({ platform: { audio } })` 里提供了自定义的声音出口；未提供或名字不合法时报错。
+- 后端与测试：网页（`h5`）和 Unity 后端都支持通过自定义 `platform.audio` 播放 `synth://`（Unity 导出时自动把按钮在 `ui/` 里写的 `synth://` 地址带入启动参数）；`synth://` 若落到未替换的默认声音出口报 `LGUI-RT-170`，不静默无声。`lgui test`（`headless` 与 `--browser`）照常把 `synth://<名字>` 记进 `t.sounds()` 和 `t.music()`。
+
+## 0.4.5（2026-11-12）
+
+**命令行与无图工程**
+
+- `lgui init --code-only`：新建不带任何图片文件的工程——不写入 `ui/assets/Common/placeholder.png`，`Common/package.xml` 不登记 `<image>`，`.lgui/project.json` 的 `placeholder` 设为 `null`。默认 `lgui init` 行为不变。
+- `.lgui/project.json` 的 `placeholder` 和加载器绑定的 `placeholder` 支持写成 `null`（不显示占位图）。无图工程通过 `lgui check`、`lgui test`、`lgui test --browser`、`lgui verify` 和 `lgui unity export`（未使用 `icon://` 时导出 `<包名>_fui.bytes`，无图集 PNG）。
+- `lgui check`（`LGUI-UI-009`）：检查 `.lgui/project.json` 里 `ui://` 开头的 `placeholder` 指向的图片是否存在且已导出；手动删除 `placeholder.png` 而未把 `placeholder` 改为 `null` 时给出明确改法。
+
+## 0.4.4（2026-11-12）
+
+**框架与界面**
+
+- 代码图标（`icon://<名字>`）：包里不放图片文件（也不放单独的 `.svg` 文件）时，图标形状可写在代码里（可选的 `src/icons.ts`），通过 `lgui.app({ icons })` 或 `lgui.registerIcons(icons)` 注册。支持 `shapes`（`path`、`circle`、`rect`、`polygon`、`line` 五种矢量图元，网页端序列化为缓存的 SVG 渲染）和 `draw(g, width, height)`（过程式 2D 绘制函数，`IconCanvas` 不含浏览器 DOM 类型，网页端按屏幕像素比在离屏画布上光栅化并缓存）。
+- 所有填图片地址的地方都能写 `icon://<名字>`：`<loader url="icon://…">`、`<Button icon="…" selectedIcon="…"/>`、`<Label icon="…"/>`、`<ComboBox icon="…"/>`、`gearIcon`、工程配置 `placeholder`、绑定表的 `icon` / `placeholder` / `dragIcon`。代码图标同步就绪，绑定切换时不先闪 `placeholder`；装载器的缩放、对齐、着色、变灰、裁剪填充照常生效；标签（`UILabel`）和加载器、按钮一样支持绑定 `icon` 和充当 `dragData` 的默认跟手图标。
+- `lgui check`：`LGUI-MVC-017` 允许 `src/icons.ts`；`LGUI-UI-009` 检查 XML、工程配置和代码里的静态 `icon://…` 格式正确且已在代码里注册；`LGUI-UI-066` 增查给按钮、标签、下拉框写了图标（实例上的 `icon` / `selectedIcon`、绑定表的 `icon`）但组件里没有名为 `icon` 的子控件的情况。
+
+**Unity 边界**
+
+- 代码图标只在网页端（`h5`）和 `lgui test`（`headless`）提供。`lgui unity export` 检测到工程使用了代码图标时直接报 `LGUI-CLI-144` 并拒绝导出（不改写 Unity 工程和 `.lgui/project.json`）；Unity 后端运行时遇到代码图标报 `LGUI-RT-072`，不静默空白。
+
+**新错误码**
+
+- `LGUI-CLI-144`：`lgui unity export` 拒绝导出使用了代码图标的工程。
+- `LGUI-RT-072`：代码图标定义不合法、引用了未注册的 `icon://<名字>`，或在 Unity 后端上使用代码图标。
+
 ## 0.4.3（2026-11-09）
 
 **和 0.4.2 不兼容的地方**

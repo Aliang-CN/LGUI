@@ -41,6 +41,7 @@ test('C#：项目字体建动态多图集的 TMP 字体、包成 TMPFont 按名�
   assert.match(cs, /TMP_FontAsset\.CreateFontAsset\(candidate\[0\], candidate\[1\], SamplingPointSize\)/);
   assert.match(cs, /asset\.fallbackFontAssetTable = new List<TMP_FontAsset> \{ _fallback \}/);
   assert.match(cs, /FontManager\.RegisterFont\(tmp, name\)/);
+  assert.match(cs, /public static string RegisterSystemDefaultFont\(\)/);
   // 缺 TMP Settings 时 TMP 建字体会空引用：先查，直接按名字从 Resources 读（不经 TMP_Settings.instance，它在编辑器里会弹导入窗口）
   assert.match(cs, /public static bool TmpSettingsFound\s*\{\s*get \{ return Resources\.Load<TMP_Settings>\("TMP Settings"\) != null; \}/);
   for (const family of ['PingFang SC', 'Noto Sans CJK SC', 'Microsoft YaHei']) assert.ok(cs.includes(`"${family}"`), family);

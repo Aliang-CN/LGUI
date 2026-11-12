@@ -7,7 +7,7 @@
 **[在线试玩](https://lumiogames.github.io/LGUI/)** &nbsp;·&nbsp; **[LumioTemplate](https://github.com/LumioGames/LumioTemplate)** &nbsp;·&nbsp; **[Lumio SDK](https://github.com/LumioGames/LumioSDK)** &nbsp;·&nbsp; [English](README.en.md) &nbsp;·&nbsp; 简体中文
 
 [![LumioGames 出品](https://img.shields.io/badge/LumioGames-%E5%87%BA%E5%93%81-6659DB?style=flat-square&labelColor=171C34&logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMDAgMTAwIiB3aWR0aD0iOTYiIGhlaWdodD0iOTYiPjxkZWZzPjxsaW5lYXJHcmFkaWVudCBpZD0iZyIgeDE9IjAiIHkxPSIwIiB4Mj0iMSIgeTI9IjEiPjxzdG9wIG9mZnNldD0iMCIgc3RvcC1jb2xvcj0iIzY2NTlkYiIvPjxzdG9wIG9mZnNldD0iMSIgc3RvcC1jb2xvcj0iIzlhYTZmZiIvPjwvbGluZWFyR3JhZGllbnQ%2BPC9kZWZzPjxyZWN0IHdpZHRoPSIxMDAiIGhlaWdodD0iMTAwIiByeD0iMjkiIGZpbGw9InVybCgjZykiLz48cmVjdCB4PSIyNSIgeT0iMjIiIHdpZHRoPSIxNiIgaGVpZ2h0PSIxNiIgcng9IjQiIGZpbGw9IiNmZmYiLz48cmVjdCB4PSIyNSIgeT0iNDIiIHdpZHRoPSIxNiIgaGVpZ2h0PSIxNiIgcng9IjQiIGZpbGw9IiNmZmYiLz48cmVjdCB4PSIyNSIgeT0iNjIiIHdpZHRoPSIxNiIgaGVpZ2h0PSIxNiIgcng9IjQiIGZpbGw9IiNmZmYiLz48cmVjdCB4PSI0NSIgeT0iNjIiIHdpZHRoPSIxNiIgaGVpZ2h0PSIxNiIgcng9IjQiIGZpbGw9IiNmZmYiIGZpbGwtb3BhY2l0eT0iLjYiLz48cmVjdCB4PSI2NSIgeT0iNjIiIHdpZHRoPSIxNiIgaGVpZ2h0PSIxNiIgcng9IjQiIGZpbGw9IiM1ZGUyYzYiLz48cGF0aCBkPSJNNzAgMTlDNzEuNTYgMjguMSA3My45IDMwLjQ0IDgzIDMyQzczLjkgMzMuNTYgNzEuNTYgMzUuOSA3MCA0NUM2OC40NCAzNS45IDY2LjEgMzMuNTYgNTcgMzJDNjYuMSAzMC40NCA2OC40NCAyOC4xIDcwIDE5WiIgZmlsbD0iI2ZmZiIvPjwvc3ZnPgo%3D)](https://lumio.games/studio/)
-[![version](https://img.shields.io/badge/version-0.4.3-6659DB?style=flat-square&labelColor=171C34)](CHANGELOG.md)
+[![version](https://img.shields.io/badge/version-0.5.0-6659DB?style=flat-square&labelColor=171C34)](CHANGELOG.md)
 [![node](https://img.shields.io/badge/node-%E2%89%A524-5DE2C6?style=flat-square&labelColor=171C34)](package.json)
 [![Claude Code](https://img.shields.io/badge/Claude%20Code-plugin-9AA6FF?style=flat-square&labelColor=171C34)](https://docs.anthropic.com/en/docs/claude-code)
 [![Codex](https://img.shields.io/badge/Codex-plugin-9AA6FF?style=flat-square&labelColor=171C34)](https://github.com/openai/codex)
@@ -124,10 +124,11 @@ LGUI 是 [LumioGames](https://lumio.games/) 出品的游戏 UI 框架，给 AI A
 | 调试快照 | 预览里按 F8 看当前界面树，代码里用 `lgui.debug.snapshot()` |
 | 给 Agent 读 | 所有命令都支持 `--json`；错误码统一编号，见[错误码](plugin/references/error-codes.md) |
 
-### 导出到引擎
+### 构建与导出
 
 | 命令 | 说明 |
 | :-- | :-- |
+| `lgui build` | 打正式网页静态包（默认输出到 `dist/`），打印总体积与 LGUI 运行时占用的字节数；不含图片、音频、字体文件的纯代码工程只输出 `.html`、`.js`、`.css`、`.json` |
 | `lgui unity export` | 把同一份 `ui/`、`src/`、`i18n/` 导出到 Unity 工程：界面包、图集、翻译、脚本和启动场景 |
 | `lgui upgrade` | 把插件里的新版框架和 Unity 包同步进工程 |
 

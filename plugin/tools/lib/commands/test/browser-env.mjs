@@ -146,14 +146,26 @@ export function installBrowserEnv({createH5Backend, stage, config, deps, texts, 
       const platform = backend.platform;
       platform.log = recorder(platform.log, state.logs, 'game', {});
       const audio = platform.audio;
-      // 没登记的 ui:// 声音不记（真实的出口会报 LGUI-RT-170），和 headless 一样。
-      const name = url => (url.startsWith('ui://') ? sounds[url] ?? null : url);
+      const SYNTH_URL_RE = /^synth:\/\/([A-Za-z0-9][A-Za-z0-9._/-]*)$/;
+      // 没登记的 ui:// 声音和写法不对的 synth:// 声音不记（真实的出口会报 LGUI-RT-170），和 headless 一样。
+      // 写法合法的 synth:// 声音在测试里记入 state.sounds / state.music，不交给默认 Web Audio 去 fetch（lgui test 忽略自定义 platform）。
+      const name = url => (url.startsWith('ui://') ? sounds[url] ?? null : url.startsWith('synth://') ? (SYNTH_URL_RE.test(url) ? url : null) : url);
       platform.audio = {
-        play(url, volume, onError) { const n = name(url); if (n) state.sounds.push({url: n, volume}); audio.play(url, volume, onError); },
+        play(url, volume, onError) {
+          const n = name(url);
+          if (n) state.sounds.push({url: n, volume});
+          if (!SYNTH_URL_RE.test(url)) audio.play(url, volume, onError);
+        },
         music(url, volume, fadeMs, onError) {
-          if (url === null) state.music = null;
-          else { const n = name(url); if (n) state.music = {url: n, volume}; }
-          audio.music(url, volume, fadeMs, onError);
+          if (url === null) {
+            state.music = null;
+            audio.music(null, volume, fadeMs, onError);
+            return;
+          }
+          const n = name(url);
+          if (n) state.music = {url: n, volume};
+          if (SYNTH_URL_RE.test(url)) audio.music(null, 0, fadeMs, onError);
+          else audio.music(url, volume, fadeMs, onError);
         },
         setPaused(paused) { audio.setPaused(paused); }
       };

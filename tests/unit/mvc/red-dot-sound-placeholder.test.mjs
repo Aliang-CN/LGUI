@@ -65,3 +65,20 @@ test('图片占位：打不开的地址 → 显示占位图（不写就用工程
     HeadlessLoader.failExternal = false;
   }
 });
+
+test('图片占位：placeholder 设为 null 时，加载失败保持空字符串而不写入 "null"', async () => {
+  const {fw, backend} = await started({config: {placeholder: null}});
+  const {lgui, View, ItemView, HeadlessLoader} = fw;
+  class SlotView extends ItemView { static component = 'Bag/ItemSlot'; bind = {icon: {icon: it => it.url}}; }
+  class BagView extends View { static component = 'Bag/BagPanel'; static layer = 'page'; bind = {list: {items: [{url: 'https://x/missing.png'}], item: SlotView}}; }
+  HeadlessLoader.failExternal = true;
+  try {
+    const view = await lgui.ui.open(BagView);
+    await new Promise(r => setTimeout(r, 0));
+    assert.equal(view.__component.child('list').itemAt(0).child('icon').url, '');
+    const warning = backend.state.logs.find(l => l.event === 'lgui_rt_070');
+    assert.ok(warning && warning.level === 'warn');
+  } finally {
+    HeadlessLoader.failExternal = false;
+  }
+});

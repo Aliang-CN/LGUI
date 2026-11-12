@@ -59,9 +59,10 @@ function props(child, model) {
   if (child.kind === 'loader' && a.autoSize === 'true') p.autoSize = 'true';
   if (child.kind === 'button') {
     const button = child.children.find(node => node.tag === 'Button')?.attrs ?? {};
-    // 没写 title 时显示按钮组件里 title 子控件自己的文字（和 FairyGUI 一样），所以不写就不放。
+    // 没写 title / icon 时保留按钮组件里 title / icon 子控件自己的初始值（和 FairyGUI 一样），所以不写就不放。
     if (button.title !== undefined) p.title = button.title;
-    p.icon = button.icon ?? '';
+    if (button.icon !== undefined) p.icon = button.icon;
+    if (button.selectedIcon !== undefined) p.selectedIcon = button.selectedIcon;
     p.selected = button.checked === 'true';
     Object.assign(p, buttonSound(model, button));
   }
@@ -72,10 +73,10 @@ function props(child, model) {
   }
   if (child.kind === 'graph') p.color = a.fillColor ?? '#ffffff';
   if (child.kind === 'label') {
-    // 没写 title 时显示标签组件里 title 文字自己的内容（和 FairyGUI 一样）。
+    // 没写 title / icon 时保留标签组件里 title / icon 子控件自己的初始值（和 FairyGUI 一样）。
     const label = child.children.find(node => node.tag === 'Label')?.attrs ?? {};
     if (label.title !== undefined) p.title = label.title;
-    p.icon = label.icon ?? '';
+    if (label.icon !== undefined) p.icon = label.icon;
   }
   if (child.kind === 'slider') {
     const slider = child.children.find(node => node.tag === 'Slider')?.attrs ?? {};

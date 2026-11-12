@@ -15,5 +15,5 @@ test('inventory acceptance uses one real application module graph and isolated p
   assert.ok(fs.existsSync(path.join(context.root, 'conformance/cases/inventory.ts')));
   assert.ok(fs.existsSync(path.join(context.root, 'conformance/cases/memory.ts')));
   assert.ok(fs.existsSync(path.join(context.root, 'conformance/cases/format.ts')));
-  assert.ok(fs.existsSync(path.join(context.root, '.lgui/build/web/ui/Bag/package.xml')));
+  assert.ok(fs.existsSync(path.join(context.root, '.lgui/build/web/ui/Bag/package.json')));
 });

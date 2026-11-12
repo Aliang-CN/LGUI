@@ -216,6 +216,8 @@ export function validateViewClass(cls: object & {name: string; prototype: object
   if (!isItemOrPart) {
     if (!layers.includes(cls.layer as Layer)) throw new LgRuntimeError('LGUI-RT-060', `${cls.name} 缺少必填的 static layer，或者不是 5 层之一。`, `写成 static layer = 'page' as const;（能用：${layers.join('、')}）`);
     if (cls.inputMode !== undefined && !['ui', 'game', 'all'].includes(cls.inputMode as string)) throw new LgRuntimeError('LGUI-RT-060', `${cls.name} 的 static inputMode 只能是 ui、game、all。`, '改成其中一个，或者不写。');
-    if (cls.music !== undefined && (typeof cls.music !== 'string' || !/^ui:\/\/[A-Z][A-Za-z0-9]*\/[^/\s]+$/.test(cls.music))) throw new LgRuntimeError('LGUI-RT-060', `${cls.name} 的 static music 写法不对（${String(cls.music)}）。`, "写成 static music = 'ui://Common/bgm';（ui/ 包里登记的声音），或者不写。");
+    if (cls.music !== undefined && (typeof cls.music !== 'string' || (!/^ui:\/\/[A-Z][A-Za-z0-9]*\/[^/\s]+$/.test(cls.music) && !/^synth:\/\/([A-Za-z0-9][A-Za-z0-9._/-]*)$/.test(cls.music)))) {
+      throw new LgRuntimeError('LGUI-RT-060', `${cls.name} 的 static music 写法不对（${String(cls.music)}）。`, "写成 static music = 'ui://Common/bgm';（ui/ 包里登记的声音）或 'synth://bgm'（代码合成声音），或者不写。");
+    }
   }
 }

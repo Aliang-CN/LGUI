@@ -326,3 +326,98 @@ export interface UIKinds {
 
 /** 控件类型名。 */
 export type UIKind = keyof UIKinds;
+
+/** 代码图标的矢量图元（与引擎无关，不含 DOM 类型）。 */
+export type IconShape =
+  | {type: 'path'; d: string; fill?: string; stroke?: string; strokeWidth?: number; strokeLinecap?: 'butt' | 'round' | 'square'; strokeLinejoin?: 'miter' | 'round' | 'bevel'; opacity?: number}
+  | {type: 'circle'; cx: number; cy: number; r: number; fill?: string; stroke?: string; strokeWidth?: number; opacity?: number}
+  | {type: 'rect'; x: number; y: number; width: number; height: number; rx?: number; fill?: string; stroke?: string; strokeWidth?: number; opacity?: number}
+  | {type: 'polygon'; points: readonly (readonly [number, number])[] | string; fill?: string; stroke?: string; strokeWidth?: number; strokeLinejoin?: 'miter' | 'round' | 'bevel'; opacity?: number}
+  | {type: 'line'; x1: number; y1: number; x2: number; y2: number; stroke: string; strokeWidth?: number; strokeLinecap?: 'butt' | 'round' | 'square'; opacity?: number};
+
+/** 线性或径向渐变（与引擎无关，不含 DOM 类型）。 */
+export interface IconGradient {
+  /** 添加一个渐变色标（offset 在 0–1 之间）。 */
+  addColorStop(offset: number, color: string): void;
+}
+
+/** 过程式代码图标用到的 2D 画笔接口（CanvasRenderingContext2D 的无 DOM 子集，src/ 里不引入浏览器全局类型）。 */
+export interface IconCanvas {
+  /** 读取当前填充样式。 */
+  get fillStyle(): string | IconGradient | object;
+  /** 设置填充色或渐变。 */
+  set fillStyle(value: string | IconGradient);
+  /** 读取当前描边样式。 */
+  get strokeStyle(): string | IconGradient | object;
+  /** 设置描边色或渐变。 */
+  set strokeStyle(value: string | IconGradient);
+  /** 线宽（像素）。 */
+  lineWidth: number;
+  /** 线端样式。 */
+  lineCap: 'butt' | 'round' | 'square';
+  /** 折角连接样式。 */
+  lineJoin: 'miter' | 'round' | 'bevel';
+  /** 整体不透明度 0–1。 */
+  globalAlpha: number;
+  /** 保存画笔状态。 */
+  save(): void;
+  /** 恢复画笔状态。 */
+  restore(): void;
+  /** 平移坐标系。 */
+  translate(x: number, y: number): void;
+  /** 旋转坐标系（弧度）。 */
+  rotate(angle: number): void;
+  /** 缩放坐标系。 */
+  scale(x: number, y: number): void;
+  /** 开始一条新路径。 */
+  beginPath(): void;
+  /** 闭合当前子路径。 */
+  closePath(): void;
+  /** 移动画笔到指定坐标。 */
+  moveTo(x: number, y: number): void;
+  /** 连线到指定坐标。 */
+  lineTo(x: number, y: number): void;
+  /** 二次贝塞尔曲线。 */
+  quadraticCurveTo(cpx: number, cpy: number, x: number, y: number): void;
+  /** 三次贝塞尔曲线。 */
+  bezierCurveTo(cp1x: number, cp1y: number, cp2x: number, cp2y: number, x: number, y: number): void;
+  /** 画圆弧。 */
+  arc(x: number, y: number, radius: number, startAngle: number, endAngle: number, counterclockwise?: boolean): void;
+  /** 添加矩形子路径。 */
+  rect(x: number, y: number, w: number, h: number): void;
+  /** 填充当前路径。 */
+  fill(): void;
+  /** 描边当前路径。 */
+  stroke(): void;
+  /** 直接填充矩形。 */
+  fillRect(x: number, y: number, w: number, h: number): void;
+  /** 直接描边矩形。 */
+  strokeRect(x: number, y: number, w: number, h: number): void;
+  /** 擦除矩形区域。 */
+  clearRect(x: number, y: number, w: number, h: number): void;
+  /** 创建线性渐变。 */
+  createLinearGradient(x0: number, y0: number, x1: number, y1: number): IconGradient;
+  /** 创建径向渐变。 */
+  createRadialGradient(x0: number, y0: number, r0: number, x1: number, y1: number, r1: number): IconGradient;
+}
+
+/** 一个代码图标的定义（矢量形状数组，或过程式 2D 绘制函数）。注册后地址写成 icon://<名字>。 */
+export type IconDef =
+  | {
+      /** 图标的设计宽（像素，正数）；不写且有 viewBox 时取 viewBox[2]，否则默认 64。 */
+      width?: number;
+      /** 图标的设计高（像素，正数）；不写且有 viewBox 时取 viewBox[3]，否则默认 64。 */
+      height?: number;
+      /** 矢量坐标系 [minX, minY, width, height]；不写默认 [0, 0, width, height]。 */
+      viewBox?: readonly [number, number, number, number];
+      /** 矢量图元列表，按顺序从下往上画。 */
+      shapes: readonly IconShape[];
+    }
+  | {
+      /** 画布宽（像素，正数）。 */
+      width: number;
+      /** 画布高（像素，正数）。 */
+      height: number;
+      /** 运行时过程式绘制函数（网页端在离屏 Canvas 2D 上画一次并缓存；headless 不执行绘制、只记尺寸）。 */
+      draw(g: IconCanvas, width: number, height: number): void;
+    };

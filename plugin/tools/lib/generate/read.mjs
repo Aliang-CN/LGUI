@@ -1,9 +1,42 @@
 // 读取 ui/ 里的 FairyGUI 工程：先用 OpenFairyGUI 校验，再读成 Document。
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import {openFairyGUI} from '../vendor.mjs';
 import {LgCliError, LgCliErrors} from '../errors.mjs';
 import {readUiModel} from './model.mjs';
+
+const SYNTH_SOUND_TEST = /\b(?:sound|showSound|hideSound)="synth:\/\/[A-Za-z0-9][A-Za-z0-9._/-]*"/;
+const SYNTH_SOUND_REPLACE = /\b(sound|showSound|hideSound)="synth:\/\/[A-Za-z0-9][A-Za-z0-9._/-]*"/g;
+
+function hasSynthSoundInUi(uiDir) {
+  const assets = path.join(uiDir, 'assets');
+  if (!fs.existsSync(assets)) return false;
+  const walk = dir => fs.readdirSync(dir, {withFileTypes: true}).some(e =>
+    e.isDirectory() ? walk(path.join(dir, e.name)) : e.name.endsWith('.xml') && SYNTH_SOUND_TEST.test(fs.readFileSync(path.join(dir, e.name), 'utf8'))
+  );
+  return walk(assets);
+}
+
+function mirrorUiWithoutSynthSound(uiDir, tmpUi) {
+  const copyTree = (from, to) => {
+    fs.mkdirSync(to, {recursive: true});
+    for (const entry of fs.readdirSync(from, {withFileTypes: true})) {
+      const src = path.join(from, entry.name);
+      const dst = path.join(to, entry.name);
+      if (entry.isDirectory()) {
+        if (entry.name === 'art-src' || entry.name === 'fonts') continue;
+        copyTree(src, dst);
+      } else if (entry.name.endsWith('.xml')) {
+        const content = fs.readFileSync(src, 'utf8');
+        fs.writeFileSync(dst, content.replace(SYNTH_SOUND_REPLACE, '$1=""'));
+      } else {
+        fs.copyFileSync(src, dst);
+      }
+    }
+  };
+  copyTree(uiDir, tmpUi);
+}
 
 // OpenFairyGUI 生成时会往控制台打日志；收集起来放进结果，不让它混进 --json 输出。
 export async function quiet(run) {
@@ -46,7 +79,27 @@ export async function readUiProject(fairyPath) {
     throw new LgCliError('LGUI-CLI-020', `找不到界面工程文件 ${projectFile(fairyPath, fairyPath)}。`, {file: projectFile(fairyPath, fairyPath), fix: '确认工程里有 ui/UI.fairy；没有就用 lgui init 新建工程。'});
   }
   const {coreNode, functions} = openFairyGUI();
-  const {value: report} = await quiet(() => functions.validateProjectNode(fairyPath));
+  let {value: report} = await quiet(() => functions.validateProjectNode(fairyPath));
+  if (report.status !== 'valid') {
+    const uiDir = path.dirname(fairyPath);
+    if (hasSynthSoundInUi(uiDir)) {
+      const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'lgui-uam-'));
+      const tmpUi = path.join(tmpRoot, 'ui');
+      try {
+        mirrorUiWithoutSynthSound(uiDir, tmpUi);
+        const tmpFairy = path.join(tmpUi, path.basename(fairyPath));
+        const retried = await quiet(() => functions.validateProjectNode(tmpFairy));
+        report = {
+          ...retried.value,
+          diagnostics: (retried.value.diagnostics ?? []).map(d => d.sourcePath
+            ? {...d, sourcePath: path.join(uiDir, path.relative(tmpUi, path.resolve(d.sourcePath)))}
+            : d)
+        };
+      } finally {
+        fs.rmSync(tmpRoot, {recursive: true, force: true});
+      }
+    }
+  }
   if (report.status !== 'valid') {
     const issues = report.diagnostics.length ? report.diagnostics : [{message: `校验结果是 ${report.status}`}];
     throw new LgCliErrors(issues.map(issue => {

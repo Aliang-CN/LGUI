@@ -24,7 +24,7 @@ const liveReload = `<script>
 </script>
 `;
 const shell = fs.readFileSync(fileURLToPath(new URL('./shell.html', import.meta.url)), 'utf8').replace('</body>', `${liveReload}</body>`);
-const types = {'.js': 'text/javascript; charset=utf-8', '.map': 'application/json', '.json': 'application/json', '.png': 'image/png', '.jpg': 'image/jpeg', '.xml': 'application/octet-stream', '.mp3': 'audio/mpeg'};
+const types = {'.js': 'text/javascript; charset=utf-8', '.map': 'application/json', '.json': 'application/json; charset=utf-8', '.png': 'image/png', '.jpg': 'image/jpeg', '.woff2': 'font/woff2', '.mp3': 'audio/mpeg'};
 
 /** 返回 base（命令自己的生成目录，比如 .lgui/build/dev/）下的生成物（/ui/ 是界面包）；只读，不在里面就 404。 */
 export function serveBuilt(base, url, res) {
@@ -62,7 +62,7 @@ export async function startDev(root, project, {port = project.devPort, log = () 
     translations();
     await fonts();
   };
-  const translations = () => generateTranslations(root, readUiModel(uiProjectPath(root)), project.languages, path.join(site, 'i18n'), project.defaultLanguage);
+  const translations = () => generateTranslations(root, readUiModel(uiProjectPath(root)), project.languages, path.join(site, 'i18n'), project.defaultLanguage, {format: 'json'});
   let context = null;
   const bundle = async () => {
     translations();
@@ -158,6 +158,7 @@ export async function startDev(root, project, {port = project.devPort, log = () 
   };
   watch(path.join(root, 'ui'), 'ui');
   watch(path.join(root, 'src'), 'code');
+  watch(path.join(root, 'host'), 'code');
   watch(path.join(root, 'i18n'), 'text');
   for (const e of extra) watch(e.dir, 'code');
 
@@ -186,7 +187,8 @@ export async function dev({projectRoot, project, flags}) {
   }
   const server = await startDev(projectRoot, project, {port, log: line => process.stderr.write(line + '\n')});
   const opened = flags['no-open'] ? false : openInBrowser(server.url);
-  const summary = [`预览地址：${server.url}`, opened ? '已经用 Chrome / Edge 打开。' : (flags['no-open'] ? '没有自动打开浏览器（--no-open）。' : '没找到 Chrome 或 Edge，请手动打开上面的地址。'), `改 ${['ui/', 'src/', 'i18n/', ...project.devWatch].join('、')} 会自动刷新；按 Ctrl+C 停止。`];
+  const watched = ['ui/', 'src/', ...(fs.existsSync(path.join(projectRoot, 'host')) ? ['host/'] : []), 'i18n/', ...project.devWatch];
+  const summary = [`预览地址：${server.url}`, opened ? '已经用 Chrome / Edge 打开。' : (flags['no-open'] ? '没有自动打开浏览器（--no-open）。' : '没找到 Chrome 或 Edge，请手动打开上面的地址。'), `改 ${watched.join('、')} 会自动刷新；按 Ctrl+C 停止。`];
   const errors = server.errors();
   if (errors.length) summary.push(`现在有 ${errors.length} 个错误，页面上也会显示。`);
   // 命令一直运行到 Ctrl+C；摘要先打印出来。

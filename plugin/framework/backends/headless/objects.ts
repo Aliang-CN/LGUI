@@ -6,7 +6,7 @@ import type {
   PointerInput, Rect, UIObject, UIComponent, UIText, UIInput, UIButton, UIImage, UILoader, UIList, UIController, UITransition, UIProgress, UIGraph, UIKind, Unsubscribe,
   UILabel, UISlider, UIComboBox, UIMovieClip, UITree, UITreeNode, WheelInput, TweenProp, TransitionTouch
 } from '../../core/index';
-import {LgRuntimeError} from '../../core/index';
+import {LgRuntimeError, hasIcon, isIconUrl, missingIconError, reportIconFault} from '../../core/index';
 import type {ChildDescriptor, ComponentDescriptor, GearsDescriptor, LayoutDescriptor, PropGear} from './descriptor';
 
 // 一组回调。
@@ -247,6 +247,18 @@ function setDisplayText(o: HeadlessObject, value: string): void {
   else if (o instanceof HeadlessLabel || o instanceof HeadlessButton) o.title = value;
 }
 
+// 按钮、标签的图标显示在名为 icon 的子控件里（加载器写 url，标签、按钮写 icon）。
+export function iconChild(component: HeadlessComponent): HeadlessObject | null { return component.children.find(c => c.name === 'icon') ?? null; }
+function displayIcon(o: HeadlessObject): string {
+  if (o instanceof HeadlessLoader) return o.url;
+  if (o instanceof HeadlessLabel || o instanceof HeadlessButton) return o.icon;
+  return '';
+}
+function setDisplayIcon(o: HeadlessObject, value: string): void {
+  if (o instanceof HeadlessLoader) o.url = value;
+  else if (o instanceof HeadlessLabel || o instanceof HeadlessButton) o.icon = value;
+}
+
 // 标签：和 FairyGUI 一样，title 就是 title 子控件的文字；没有 title 子控件时读到空字符串，写了也不显示。
 // 标签自己的 gearText 改的也是 title 子控件的文字；title 子控件自己有 gearText 时，读它的文字报不支持。
 class HeadlessLabel extends HeadlessComponent implements UILabel {
@@ -256,7 +268,24 @@ class HeadlessLabel extends HeadlessComponent implements UILabel {
   setProp(prop: TweenProp, value: number): void { if (titleSupports(this, prop)) (titleChild(this) as HeadlessText).setProp(prop, value); else super.setProp(prop, value); }
   ownerOf(prop: TweenProp | 'text'): string | null { return super.ownerOf(prop) ?? (prop === 'text' || titleSupports(this, prop) ? (titleChild(this) as HeadlessObject | null)?.ownerOf(prop) ?? null : null); }
   get icon(): string { this.checkProp('icon', '图标'); return this.image; }
-  set icon(value: string) { this.image = value; this.knownProp('icon'); }
+  set icon(value: string) {
+    this.knownProp('icon');
+    const ic = iconChild(this);
+    if (isIconUrl(value) && !hasIcon(value)) {
+      this.image = '';
+      if (ic) setDisplayIcon(ic, '');
+      reportIconFault(missingIconError(value), {url: value});
+      return;
+    }
+    this.image = value;
+    if (ic) setDisplayIcon(ic, value);
+  }
+  adoptIcon(): void {
+    const ic = iconChild(this);
+    if (!ic) return;
+    if (ic.unknownProps.icon) this.unknownProps.icon = `icon 子控件上的${ic.unknownProps.icon}`;
+    else this.image = displayIcon(ic);
+  }
   get title(): string { this.checkProp('text', '文字'); const t = titleChild(this); return t ? displayText(t) : ''; }
   set title(value: string) { this.knownProp('text'); const t = titleChild(this); if (t) setDisplayText(t, value); }
 }
@@ -312,6 +341,7 @@ class HeadlessMovieClip extends HeadlessObject implements UIMovieClip {
 class HeadlessButton extends HeadlessComponent implements UIButton {
   private label = '';
   private image = '';
+  private selectedImage = '';
   sound = '';
   soundVolume = 1;
   mode = 'Common';
@@ -324,7 +354,36 @@ class HeadlessButton extends HeadlessComponent implements UIButton {
   setProp(prop: TweenProp, value: number): void { if (titleSupports(this, prop)) (titleChild(this) as HeadlessText).setProp(prop, value); else super.setProp(prop, value); }
   ownerOf(prop: TweenProp | 'text'): string | null { return super.ownerOf(prop) ?? (prop === 'text' || titleSupports(this, prop) ? (titleChild(this) as HeadlessObject | null)?.ownerOf(prop) ?? null : null); }
   get icon(): string { this.checkProp('icon', '图标'); return this.image; }
-  set icon(value: string) { this.image = value; this.knownProp('icon'); }
+  set icon(value: string) {
+    this.knownProp('icon');
+    const ic = iconChild(this);
+    if (isIconUrl(value) && !hasIcon(value)) {
+      this.image = '';
+      if (ic) setDisplayIcon(ic, (this.isSelected && this.selectedImage) ? this.selectedImage : '');
+      reportIconFault(missingIconError(value), {url: value});
+      return;
+    }
+    this.image = value;
+    if (ic) setDisplayIcon(ic, (this.isSelected && this.selectedImage) ? this.selectedImage : value);
+  }
+  get selectedIcon(): string { return this.selectedImage; }
+  set selectedIcon(value: string) {
+    const ic = iconChild(this);
+    if (isIconUrl(value) && !hasIcon(value)) {
+      this.selectedImage = '';
+      if (ic && this.isSelected) setDisplayIcon(ic, this.image);
+      reportIconFault(missingIconError(value), {url: value});
+      return;
+    }
+    this.selectedImage = value;
+    if (ic) setDisplayIcon(ic, (this.isSelected && value) ? value : this.image);
+  }
+  adoptIcon(): void {
+    const ic = iconChild(this);
+    if (!ic) return;
+    if (ic.unknownProps.icon) this.unknownProps.icon = `icon 子控件上的${ic.unknownProps.icon}`;
+    else this.image = displayIcon(ic);
+  }
   get title(): string { this.checkProp('text', '文字'); return this.label; }
   set title(value: string) { this.label = value; this.knownProp('text'); const t = titleChild(this); if (t) setDisplayText(t, value); }
   /** 内部用：实例没写 title 时，和 FairyGUI 一样记下 title 子控件自己的文字（不写回去）；那段文字由齿轮决定时，按钮的 title 也不知道。 */
@@ -342,6 +401,10 @@ class HeadlessButton extends HeadlessComponent implements UIButton {
     this.isSelected = value;
     const controller = this.controllers.get('button');
     if (controller && controller.pages.includes('down') && controller.pages.includes('up')) controller.selectedPage = value ? 'down' : 'up';
+    if (this.selectedImage) {
+      const ic = iconChild(this);
+      if (ic) setDisplayIcon(ic, value ? this.selectedImage : this.image);
+    }
   }
   /** 内部用：用户点了这个按钮。和 FairyGUI 一样：Check 模式切换选中，Radio 模式没选中时选中（列表、树的子项由列表管，不走这里）。 */
   clicked(): void {
@@ -381,9 +444,19 @@ class HeadlessLoader extends HeadlessObject implements UILoader {
   // gearIcon 改的就是加载器的地址。
   get url(): string { this.checkProp('icon', '地址（图标）'); return this.current; }
   set url(value: string) {
-    this.current = value;
     this.knownProp('icon');
+    if (isIconUrl(value) && !hasIcon(value)) {
+      this.current = '';
+      this.errors.emit(value);
+      reportIconFault(missingIconError(value), {url: value});
+      return;
+    }
+    this.current = value;
     if (!value) return;
+    if (isIconUrl(value)) {
+      this.loads.emit();
+      return;
+    }
     // 图片在下一个微任务里「加载完成」，和真实后端一样是异步的。
     void Promise.resolve().then(() => {
       if (this.current !== value) return;
@@ -717,7 +790,6 @@ export function buildComponent(descriptor: ComponentDescriptor, lookup: Lookup, 
   const extension = descriptor.extension;
   if (kind === 'button' || extension === 'Button') {
     const button = new HeadlessButton(name, descriptor.name, 'button');
-    button.icon = props?.icon ?? '';
     button.mode = descriptor.buttonMode ?? 'Common';
     if (descriptor.downEffect) button.downEffect = {...descriptor.downEffect};
     // 和 FairyGUI 一样：实例上写的音效、音量各自优先，其次是按钮组件的。
@@ -730,9 +802,7 @@ export function buildComponent(descriptor: ComponentDescriptor, lookup: Lookup, 
     bar.max = props?.max ?? 100;
     component = bar;
   } else if (kind === 'label' || extension === 'Label') {
-    const label = new HeadlessLabel(name, descriptor.name, 'label');
-    label.icon = props?.icon ?? '';
-    component = label;
+    component = new HeadlessLabel(name, descriptor.name, 'label');
   } else if (kind === 'slider' || extension === 'Slider') {
     const slider = new HeadlessSlider(name, descriptor.name, 'slider');
     slider.value = props?.value ?? 50;
@@ -780,12 +850,19 @@ export function buildComponent(descriptor: ComponentDescriptor, lookup: Lookup, 
     markPropGears(object, child.gears, component);
     component.addChild(object);
   }
-  // 按钮、标签没写 title 时显示 title 子控件自己的文字（和 FairyGUI 一样，子控件建好以后再写）；下拉框的项也在子控件建好以后再给（选中项的文字要写进 title）。
+  // 按钮、标签没写 title / icon 时显示 title / icon 子控件自己的初始值（和 FairyGUI 一样，子控件建好以后再写）；下拉框的项也在子控件建好以后再给（选中项的文字要写进 title）。
   if (component instanceof HeadlessButton) {
     if (props?.title !== undefined) component.title = props.title;
     else component.adoptTitle();
+    if (props?.icon !== undefined) component.icon = props.icon;
+    else component.adoptIcon();
+    if (props?.selectedIcon !== undefined) component.selectedIcon = props.selectedIcon;
   }
-  if (component instanceof HeadlessLabel && props?.title !== undefined) component.title = props.title;
+  if (component instanceof HeadlessLabel) {
+    if (props?.title !== undefined) component.title = props.title;
+    if (props?.icon !== undefined) component.icon = props.icon;
+    else component.adoptIcon();
+  }
   if (component instanceof HeadlessComboBox) { component.items = props?.items ?? []; component.selectedIndex = props?.selectedIndex ?? -1; }
   return component;
 }

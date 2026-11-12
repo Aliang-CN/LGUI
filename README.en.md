@@ -7,7 +7,7 @@
 **[Live demo](https://lumiogames.github.io/LGUI/)** &nbsp;·&nbsp; **[LumioTemplate](https://github.com/LumioGames/LumioTemplate)** &nbsp;·&nbsp; **[Lumio SDK](https://github.com/LumioGames/LumioSDK)** &nbsp;·&nbsp; English &nbsp;·&nbsp; [简体中文](README.md)
 
 [![Made by LumioGames](https://img.shields.io/badge/made%20by-LumioGames-6659DB?style=flat-square&labelColor=171C34&logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMDAgMTAwIiB3aWR0aD0iOTYiIGhlaWdodD0iOTYiPjxkZWZzPjxsaW5lYXJHcmFkaWVudCBpZD0iZyIgeDE9IjAiIHkxPSIwIiB4Mj0iMSIgeTI9IjEiPjxzdG9wIG9mZnNldD0iMCIgc3RvcC1jb2xvcj0iIzY2NTlkYiIvPjxzdG9wIG9mZnNldD0iMSIgc3RvcC1jb2xvcj0iIzlhYTZmZiIvPjwvbGluZWFyR3JhZGllbnQ%2BPC9kZWZzPjxyZWN0IHdpZHRoPSIxMDAiIGhlaWdodD0iMTAwIiByeD0iMjkiIGZpbGw9InVybCgjZykiLz48cmVjdCB4PSIyNSIgeT0iMjIiIHdpZHRoPSIxNiIgaGVpZ2h0PSIxNiIgcng9IjQiIGZpbGw9IiNmZmYiLz48cmVjdCB4PSIyNSIgeT0iNDIiIHdpZHRoPSIxNiIgaGVpZ2h0PSIxNiIgcng9IjQiIGZpbGw9IiNmZmYiLz48cmVjdCB4PSIyNSIgeT0iNjIiIHdpZHRoPSIxNiIgaGVpZ2h0PSIxNiIgcng9IjQiIGZpbGw9IiNmZmYiLz48cmVjdCB4PSI0NSIgeT0iNjIiIHdpZHRoPSIxNiIgaGVpZ2h0PSIxNiIgcng9IjQiIGZpbGw9IiNmZmYiIGZpbGwtb3BhY2l0eT0iLjYiLz48cmVjdCB4PSI2NSIgeT0iNjIiIHdpZHRoPSIxNiIgaGVpZ2h0PSIxNiIgcng9IjQiIGZpbGw9IiM1ZGUyYzYiLz48cGF0aCBkPSJNNzAgMTlDNzEuNTYgMjguMSA3My45IDMwLjQ0IDgzIDMyQzczLjkgMzMuNTYgNzEuNTYgMzUuOSA3MCA0NUM2OC40NCAzNS45IDY2LjEgMzMuNTYgNTcgMzJDNjYuMSAzMC40NCA2OC40NCAyOC4xIDcwIDE5WiIgZmlsbD0iI2ZmZiIvPjwvc3ZnPgo%3D)](https://lumio.games/studio/)
-[![version](https://img.shields.io/badge/version-0.4.3-6659DB?style=flat-square&labelColor=171C34)](CHANGELOG.md)
+[![version](https://img.shields.io/badge/version-0.5.0-6659DB?style=flat-square&labelColor=171C34)](CHANGELOG.md)
 [![node](https://img.shields.io/badge/node-%E2%89%A524-5DE2C6?style=flat-square&labelColor=171C34)](package.json)
 [![Claude Code](https://img.shields.io/badge/Claude%20Code-plugin-9AA6FF?style=flat-square&labelColor=171C34)](https://docs.anthropic.com/en/docs/claude-code)
 [![Codex](https://img.shields.io/badge/Codex-plugin-9AA6FF?style=flat-square&labelColor=171C34)](https://github.com/openai/codex)
@@ -124,10 +124,11 @@ Once it is installed, open a new session and try "use LGUI to build a shop scree
 | Debug snapshot | Press F8 in the preview to see the current view tree; call `lgui.debug.snapshot()` from code |
 | For agents | Every command supports `--json`; error codes are listed in [error codes](plugin/references/error-codes.md) |
 
-### Exporting to an engine
+### Building and exporting
 
 | Command | What it does |
 | :-- | :-- |
+| `lgui build` | Builds a production static web bundle (to `dist/` by default) and prints the total size and LGUI runtime byte count; code-only projects with no images, audio or fonts emit only `.html`, `.js`, `.css` and `.json` |
 | `lgui unity export` | Exports the same `ui/`, `src/` and `i18n/` to a Unity project: UI packages, atlases, translations, scripts and a boot scene |
 | `lgui upgrade` | Copies the plugin's newer framework and Unity package into the project |
 

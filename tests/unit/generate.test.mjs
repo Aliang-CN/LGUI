@@ -14,14 +14,15 @@ const projects = {
 const temp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'lgui-gen-'));
 
 for (const [label, fairy] of Object.entries(projects)) {
-  test(`${label}：网页界面包有 package.xml、散图和 manifest.json，manifest 里的图片都在`, async () => {
+  test(`${label}：网页界面包有 package.json、散图和 manifest.json，manifest 里的图片都在`, async () => {
     const out = temp();
     const result = await generateWeb(fairy, out);
     const manifest = JSON.parse(fs.readFileSync(path.join(out, 'manifest.json'), 'utf8'));
     assert.equal(manifest.schemaVersion, 1);
     assert.ok(Object.keys(manifest.packages).length > 0);
     for (const {name, images} of Object.values(manifest.packages)) {
-      const binary = fs.readFileSync(path.join(out, name, 'package.xml'));
+      const pkgJson = JSON.parse(fs.readFileSync(path.join(out, name, 'package.json'), 'utf8'));
+      const binary = Buffer.from(pkgJson.fui, 'base64');
       assert.equal(binary.subarray(0, 4).toString(), 'FGUI');
       for (const file of Object.values(images)) assert.ok(fs.existsSync(path.join(out, name, file)), `${name}/${file}`);
     }

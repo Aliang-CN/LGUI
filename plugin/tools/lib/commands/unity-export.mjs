@@ -6,12 +6,14 @@ import {createHash} from 'node:crypto';
 import {LgCliError} from '../errors.mjs';
 import {frameworkDir} from '../paths.mjs';
 import {pluginVersion} from '../version.mjs';
-import {esbuild} from '../vendor.mjs';
+import {esbuild, typescript} from '../vendor.mjs';
 import {generateUnity, generateProjectTypes, uiProjectPath} from '../generate/index.mjs';
 import {generateTranslations} from '../generate/i18n.mjs';
 import {fontNames, generateFonts} from '../generate/fonts.mjs';
-import {runtimeConfig, readTexts, bundleErrors, webBuildOptions} from '../dev/bundle.mjs';
+import {runtimeConfig, readTexts, bundleErrors, webBuildOptions, hasWebHost} from '../dev/bundle.mjs';
 import {readUnityPackage, writeUnityPackage} from '../unitypackage.mjs';
+import {collectUiIconUrls} from '../check/ui-rules.mjs';
+import {objectProps} from '../check/program.mjs';
 
 const originalHash = '318425f7f5eb857b5fc1f664e77b68ff569a99a62641c02ae4819261b0f03aaf';
 const patchedHash = '3e3b479159fdd56c94ed08f4a7e756dbbfa36b9b4c714e99a40e5fc8f6ec9b83';
@@ -161,9 +163,25 @@ function bootScene(guid) {
     '--- !u!1660057539 &9223372036854775807\nSceneRoots:\n  m_ObjectHideFlags: 0\n  m_Roots:\n  - {fileID: 100001}\n';
 }
 
-function writeBootstrap(root, stage, project, deps, texts) {
+function collectButtonSounds(model) {
+  const out = {};
+  for (const pkg of model.packages) {
+    for (const component of pkg.components) {
+      const ownSound = component.root?.children.find(n => n.tag === 'Button')?.attrs.sound;
+      if (ownSound && !ownSound.startsWith('ui://')) out[component.fullName] = ownSound;
+      for (const child of component.children) {
+        const instSound = child.children.find(n => n.tag === 'Button')?.attrs.sound;
+        if (instSound && !instSound.startsWith('ui://') && child.name) out[`${component.fullName}#${child.name}`] = instSound;
+      }
+    }
+  }
+  return out;
+}
+
+function writeBootstrap(root, stage, project, deps, texts, buttonSounds) {
   const fw = relative => codePath(path.join(root, '.lgui/framework', relative));
   const entry = path.join(stage, 'boot.ts');
+  const extraSounds = Object.keys(buttonSounds).length ? ', buttonSounds: ' + JSON.stringify(buttonSounds) : '';
   fs.writeFileSync(entry, '// 由 lgui unity export 生成，不要手改。\n' +
     'import app from ' + codePath(path.join(root, 'src/main.ts')) + ';\n' +
     'import {createUnityBackend} from ' + fw('backends/unity/adapter/index.ts') + ';\n' +
@@ -172,13 +190,55 @@ function writeBootstrap(root, stage, project, deps, texts) {
     'const globals = globalThis as unknown as {__lguiStart: () => Promise<void>; __lguiReady?: boolean; __lguiDispose?: () => void};\n' +
     'globals.__lguiStart = async () => {\n  try {\n' +
     '    const backend = createUnityBackend();\n' +
-    '    await backend.init({projectName: ' + JSON.stringify(project.name) + ', defaultFont: ' + JSON.stringify(project.defaultFont) + ', fonts: ' + JSON.stringify(fontNames(root)) + ', uiBase: "UI", i18nBase: "UI/i18n"});\n' +
+    '    await backend.init({projectName: ' + JSON.stringify(project.name) + ', defaultFont: ' + JSON.stringify(project.defaultFont) + ', fonts: ' + JSON.stringify(fontNames(root)) + ', uiBase: "UI", i18nBase: "UI/i18n"' + extraSounds + '});\n' +
     '    await boot(backend, app, ' + JSON.stringify(runtimeConfig(project)) + ', ' + JSON.stringify(deps) + ', {texts: ' + JSON.stringify(texts) + '});\n' +
     '    globals.__lguiReady = true;\n' +
     '  } catch (error) {\n    const e = error as {code?: string; message?: string};\n' +
     '    CS.LGUI.Platform.Log("error", (e.code ?? "LGUI-RT-160") + " Unity start failed: " + String(e.message ?? error) + " → Run lgui unity export and check the generated resources.");\n' +
     '    globals.__lguiDispose?.();\n  }\n};\n');
   return entry;
+}
+
+const unityIconFix = '代码图标（icon://、lgui.app({ icons })、lgui.registerIcons）只在网页后端和 lgui test 支持；要导出到 Unity 请把图标改成登记在 package.xml 里的图片（ui://包名/图片名）。';
+
+function assertNoCodeIcons(projectRoot, project, model) {
+  const uiIcons = collectUiIconUrls(projectRoot, model, project.placeholder);
+  if (uiIcons.length) {
+    const first = uiIcons[0];
+    throw error('LGUI-CLI-144', `Unity 后端不支持代码图标：${first.where}用了 ${first.url}。`, path.join(projectRoot, first.file), unityIconFix);
+  }
+  const srcDir = path.join(projectRoot, 'src');
+  if (!fs.existsSync(srcDir)) return;
+  const ts = typescript();
+  const walk = dir => fs.readdirSync(dir, {withFileTypes: true}).sort((a, b) => a.name.localeCompare(b.name)).flatMap(e => e.isDirectory() ? walk(path.join(dir, e.name)) : e.name.endsWith('.ts') ? [path.join(dir, e.name)] : []);
+  for (const file of walk(srcDir)) {
+    const sf = ts.createSourceFile(file, fs.readFileSync(file, 'utf8'), ts.ScriptTarget.Latest, true);
+    let found = null;
+    const visit = node => {
+      if (found) return;
+      if (ts.isCallExpression(node)) {
+        const callee = node.expression.getText(sf);
+        const first = node.arguments[0];
+        if (callee === 'lgui.registerIcons') { found = '代码里调用了 lgui.registerIcons(...)'; return; }
+        if (callee === 'lgui.app' && first) {
+          const iconsProp = (objectProps(ts, first) ?? []).find(p => p.key === 'icons');
+          const isUndefined = iconsProp?.value && ts.isIdentifier(iconsProp.value) && iconsProp.value.text === 'undefined';
+          if (iconsProp && !isUndefined) { found = 'lgui.app({ icons }) 注册了代码图标'; return; }
+        }
+      }
+      if ((ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) && node.text.startsWith('icon://')) {
+        found = `代码里用了 ${node.text}`;
+        return;
+      }
+      if (ts.isTemplateExpression(node) && node.head.text.startsWith('icon://')) {
+        found = `代码里用了 ${node.getText(sf)}`;
+        return;
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(sf);
+    if (found) throw error('LGUI-CLI-144', `Unity 后端不支持代码图标：${found}。`, file, unityIconFix);
+  }
 }
 
 export async function unityExport({args, flags, cwd, projectRoot, project}) {
@@ -239,10 +299,11 @@ export async function unityExport({args, flags, cwd, projectRoot, project}) {
   generateTranslations(projectRoot, model, project.languages, path.join(stageUi, 'i18n'), project.defaultLanguage);
   await generateFonts(projectRoot, project, model, path.join(stageUi, 'fonts'), 'sfnt'); // Unity 导入成动态字体，适配层按 UI/fonts/<名字> 注册
   fs.mkdirSync(stageGame, {recursive: true});
-  const entry = writeBootstrap(projectRoot, stage, project, deps, texts);
+  const entry = writeBootstrap(projectRoot, stage, project, deps, texts, collectButtonSounds(model));
   try {
     await esbuild().build({...webBuildOptions(projectRoot, entry, {dev: false, outfile: path.join(stageGame, 'game.js.txt')}), format: 'iife', platform: 'neutral', sourcemap: false});
   } catch (cause) { throw bundleErrors(cause, projectRoot); }
+  assertNoCodeIcons(projectRoot, project, model);
   for (const directory of [stageUi, stageGame]) fs.writeFileSync(path.join(directory, 'README.txt'), generatedNotice);
 
   // 只替换两个明确归属 LGUI 的生成物目录；用户场景和其余 Assets 不覆盖。
@@ -266,13 +327,16 @@ export async function unityExport({args, flags, cwd, projectRoot, project}) {
   const raw = JSON.parse(fs.readFileSync(configFile, 'utf8'));
   raw.unityProject = path.relative(projectRoot, target).split(path.sep).join('/') || '.';
   fs.writeFileSync(configFile, JSON.stringify(raw, null, 2) + '\n');
+  const webHostSkipped = hasWebHost(projectRoot);
   return {
     data: {unityProject: target, package: packageDir, installed: !installed, patch: patch.status, scene, sceneCreated, ui, game: path.join(game, 'game.js.txt'), linker: link,
+      webHostSkipped,
       tmpEssentials: tmpResult ? {imported: tmpResult.written, kept: tmpResult.kept, from: tmp.file} : null},
     summary: [
       (!installed ? '已安装' : '已核对') + ' Unity 包 ' + packageName + ' ' + pluginVersion() + '。',
       patch.bytes ? '已对本地 PuerTS 3.0.3 应用四处 Unity 6.6 兼容补丁。' : 'PuerTS 四处补丁已经应用，明确跳过，文件不变。',
       '已生成 Unity 界面包、翻译和游戏脚本：' + target,
+      ...(webHostSkipped ? ['检测到网页端宿主 host/main.ts：Unity 导出已跳过 host/（三维场景由 Unity 工程自己管理；若在 host/main.ts 配了平台服务，Unity 侧请通过 src/main.ts 的 platform 或 C# 接入）。'] : []),
       sceneCreated ? '已生成启动场景 Assets/LGUI/LGUIBoot.unity。' : '已有启动场景保持不变。',
       ...(tmpResult ? ['已从 com.unity.ugui 自带的资源包导入 TMP Essential Resources（' + tmpResult.written + ' 个文件，没联网；工程里已有的 ' + tmpResult.kept + ' 个没动）：' + tmp.file] : []),
       '已复制 Assets/LGUI/link.xml 保留动态调用需要的程序集；在 Unity 打开启动场景并点 Play。'

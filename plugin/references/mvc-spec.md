@@ -14,7 +14,8 @@
 
 ```
 src/
-├── main.ts                       # 入口：选后端、注册服务、打开第一个界面
+├── main.ts                       # 入口：选后端、注册服务和代码图标、打开第一个界面
+├── icons.ts                      # 代码图标定义（可选，第 4 节）
 └── modules/
     └── bag/                      # 一个功能一个文件夹，小写
         ├── BagModel.ts           # 数据和规则
@@ -57,6 +58,39 @@ export default lgui.app({
 ```
 
 要把日志、声音交给宿主（比如 Lumio 引擎）时，加一项 `platform`，见第 14.3 节。
+
+包里不带图片文件时，图标形状可以写在 `src/icons.ts` 里，通过 `lgui.app({ icons })`（或启动前 / 运行时的 `lgui.registerIcons(icons)`）注册，界面和绑定表里写 `'icon://<名字>'`（见 [UI 开发规范](ui-spec.md) 第 5.2 节）：
+
+```ts
+// src/icons.ts
+import type { IconDef } from 'lgui';
+
+export const icons: Record<string, IconDef> = {
+  // 矢量图元：网页端序列化为缓存的 SVG 渲染，缩放不糊
+  play: {
+    viewBox: [0, 0, 64, 64],
+    shapes: [
+      { type: 'circle', cx: 32, cy: 32, r: 28, fill: '#264466', stroke: '#6aa7ff', strokeWidth: 3 },
+      { type: 'polygon', points: [[26, 20], [26, 44], [46, 32]], fill: '#ffffff' },
+    ],
+  },
+  // 过程式 2D 绘制（IconCanvas 不含浏览器 DOM 类型，不触发 LGUI-MVC-001）
+  spark: {
+    width: 64,
+    height: 64,
+    draw(g, w, h) {
+      g.strokeStyle = '#ffd84a';
+      g.lineWidth = 4;
+      g.beginPath();
+      g.arc(w / 2, h / 2, 20, 0, Math.PI * 2);
+      g.stroke();
+    },
+  },
+};
+```
+
+- 代码图标同步就绪，绑定表里切 `'icon://…'` 时直接换上，不会先闪一下 `placeholder`；引用未注册的名字或定义不合法时报 `LGUI-RT-072`（静态字符串先由 `lgui check` 报 `LGUI-UI-009`）。
+- 代码图标只在网页端（`h5`）和 `lgui test`（`headless`）提供；Unity 导出时报 `LGUI-CLI-144`，Unity 运行时报 `LGUI-RT-072`。
 
 ## 5. Model
 
@@ -143,9 +177,9 @@ export class BagView extends View<BagPanelUI> {
 | `fullScreen` | 否 | `false` | 是不是全屏 |
 | `params` | 否 | 不收参数 | 打开时能传的参数，写成带默认值的对象 |
 | `result` | 否 | 不交回 | 关闭时可以顺带交回什么，只写类型：`static result: { itemId: string };` |
-| `inputMode` | 否 | `hud` 层是 `'game'`，其余是 `'ui'` | `'ui'`：只有界面收输入；`'game'`：只有游戏场景收；`'all'`：两边都收 |
+| `inputMode` | 否 | `hud` 层是 `'game'`，其余是 `'ui'` | `'ui'`：只有界面收输入（切入时正在拖场景的触点和按住的场景键自动取消）；`'game'`：落在界面控件外的触点、滚轮和没被激活界面 `keys` 消费的按键送给底层场景；`'all'`：两边都收。网页三维画布分流见第 17 节 |
 | `bothOrientations` | 否 | `false` | 全屏界面没有竖版时写 `true`，表示两种方向共用这一版 |
-| `music` | 否 | 不放 | 背景音乐 `'ui://<包>/<声音名>'`，见第 15.1 节 |
+| `music` | 否 | 不放 | 背景音乐 `'ui://<包>/<声音名>'` 或代码合成声音 `'synth://<名字>'`，见第 15.1 节 |
 
 写了表外的 static，`lgui check` 报 `LGUI-MVC-003`。
 
@@ -163,7 +197,7 @@ export class BagView extends View<BagPanelUI> {
 | `text` | 文字、按钮和标签的标题、输入框、`ArtText` | `pick`（不写固定字符串：固定文字放在 `ui/` 里）；输入框显示 Model 的值，`input` 跑完后框里写回这个值（Model 截断了，框里也截断） | `text: pick(bagModel, s => s.gold, format.number)` |
 | `visible` | 任意控件 | 布尔 | `visible: pick(bagModel, s => s.items.length === 0)` |
 | `enabled` | 任意控件 | 布尔；`false` 时变灰、不可点 | `enabled: pick(bagModel, s => s.selectedId !== null)` |
-| `icon` | 加载器、按钮和标签的图标 | 图片地址 | `icon: it => it.iconUrl` |
+| `icon` | 加载器、按钮和标签的图标 | 图片地址（`ui://…`、`icon://…` 或网络图片） | `icon: it => it.iconUrl`、`icon: 'icon://play'` |
 | `progress` | 进度条 | 0–100 | `progress: pick(taskModel, s => s.percent)` |
 | `value` | 滑动条 | 数字，滑动条自己的单位（在 `ui/` 里写的 min 和 max 之间） | `value: pick(settingsModel, s => s.volume)` |
 | `playing` | 序列帧动画 | 布尔：真就播，假就停 | `playing: pick(fxModel, s => s.spinning)` |
@@ -182,12 +216,12 @@ export class BagView extends View<BagPanelUI> {
 | `select` | 列表、树、下拉框 | 用户点选时调用。列表、树：参数是 key；下拉框：参数是序号 | `select: id => bagController.select(id)` |
 | `lockWhilePending` | 有 `click` 的控件 | `true`：动作返回的 Promise 结束前保持锁住；结束前界面关了就不再碰控件，动作照常跑完，失败照常报出来 | `lockWhilePending: true` |
 | `visibleOn` | 任意控件 | 只在这些输入类型下显示 | `visibleOn: ['keyboardMouse']` |
-| `placeholder` | 加载器 | 加载中和失败时显示的图，不写用工程配置的默认占位图 | `placeholder: 'ui://Bag/iconLoading'` |
+| `placeholder` | 加载器 | 加载中和失败时显示的图（`ui://…` 或 `icon://…`），写 `null` 表示不显示占位图，不写用工程配置的默认占位图 | `placeholder: 'ui://Bag/iconLoading'`、`placeholder: null` |
 | `playing` | 动效 | 布尔；为真就播（按 `ui/` 里的播放次数，`-1` 一直循环），为假就停 | `glow: { playing: pick(bagModel, s => s.hasNew) }` |
 | `play` | 动效 | 值每变一次播一遍（打开时的值不播），比如一个递增的计数；不能和 `playing` 一起写，不能写在 `ItemView` 里 | `levelUp: { play: pick(heroModel, s => s.levelUps) }` |
 | `done` | 动效 | 一次播放放完时调用，调用 Controller 方法（被停掉、重播、界面关闭时不调用） | `done: () => heroController.levelUpShown()` |
 | `dragData` | 任意控件 | 能拖起来；值是松手时交给 `drop` 的数据，`null` 时拖不起来（比如空格子） | `dragData: it => it.id` |
-| `dragIcon` | 写了 `dragData` 的控件 | 拖起时跟手的图标（图片地址），不写用加载器自己的图片或按钮的图标 | `dragIcon: it => it.iconUrl` |
+| `dragIcon` | 写了 `dragData` 的控件 | 拖起时跟手的图标（图片地址），不写用加载器自己的图片，或按钮、标签的图标 | `dragIcon: it => it.iconUrl` |
 | `drop` | 任意控件 | 别的控件拖到这里松手时调用，参数是那边的 `dragData`；写在 `ItemView` 里时第二个参数是这一项的数据 | `drop: id => bagController.equip(id)` |
 | `roll` | 配 `text`（数字文字）或 `progress`（进度条） | `{ duration, ease? }`（毫秒，缓动默认 `'Quad.Out'`）：值从旧值平滑滚到新值。`text` 的 `pick` 取出的必须是数字，格式化函数每帧对滚动中的数字调用一次，结果变了才写；两端都是整数时每帧取整。打开时直接显示当前值，不滚；滚动中值又变了，从现在显示的数接着滚、重新计时。不能写在 `ItemView` 里 | `gold: { text: pick(walletModel, s => s.gold, format.number), roll: { duration: 500 } }` |
 | `tick` | 有显示词的任意一项 | 毫秒（正数）：每隔这么久重新算一遍这一项的显示值（`pick` 的取值和格式化、`ItemView` 里的函数），结果变了才写。被全屏界面盖住时不算，露出来马上算一次 | `eventTimer: { text: pick(eventModel, s => s.endsAt, t => format.duration(t - lgui.time.now())), tick: 1000 }` |
@@ -352,6 +386,7 @@ keys: Keys = {
 | `lgui.log.info('bag_opened', { count })` | 写日志（第 14.2 节） |
 | `await lgui.platform.clipboard.writeText(uid)`、`readText()` | 剪贴板（只在 Controller 里用）：放进文字、读出文字。读写不了时 Promise 失败（`LGUI-RT-241`，比如网页不是 https、浏览器拒绝），用 `lgui.request` 包一层拿 `{ ok }`；网页里写入放在点击动作里直接调用，不要先 `await` 别的 |
 | `lgui.sound.play(…)`、`setVolume`、`setMuted`、`settings` | 声音（第 15 节） |
+| `lgui.registerIcons(icons)` | 追加注册代码图标（第 4 节；固定图标优先写在 `lgui.app({ icons })` 里） |
 
 **文本表 `i18n/<语言>.json`：** 扁平的「键 → 文字」，键名是可读的点号键。要按数量变化的文字，值写成按复数形式分开的对象，用参数 `count` 选（形式名和 `Intl.PluralRules` 一致；中文、日文、韩文只写 `other`）：
 
@@ -481,7 +516,7 @@ beforeEach(() => bagModel.reset());
 | `LGUI-MVC-001` | 游戏代码只 import `lgui`、`lgui/ui` 和工程内的相对路径；不用 `document`、`window`、`globalThis`、`CS`、`localStorage`、`fetch` 等平台全局对象（工程里自己声明的同名变量、参数不算） | `lgui.platform.net.fetch(…)` | `fetch(…)`、`document.body` |
 | `LGUI-MVC-002` | View 写了必填的 `component` 和 `layer` | `static layer = 'page'` | 没写 `layer` |
 | `LGUI-MVC-003` | View 只写 6.2 表里列出的 static；`ItemView`、`PartView` 只写 `component` | — | `static cache = true` |
-| `LGUI-MVC-004` | static 的值合法：`layer` 是 5 层之一，`component` 是存在的导出组件，`inputMode` 是 `ui`/`game`/`all`，`music` 是登记在 `ui/` 里的 mp3 音效（`ui://包名/音效名`） | `static layer = 'popup'`、`static music = 'ui://Bag/bgm'` | `static layer = 'dialog'`、`static music = 'bgm.mp3'` |
+| `LGUI-MVC-004` | static 的值合法：`layer` 是 5 层之一，`component` 是存在的导出组件，`inputMode` 是 `ui`/`game`/`all`，`music` 是登记在 `ui/` 里的 mp3 音效（`ui://包名/音效名`）或写法合法的 `synth://<名字>`（需在 `lgui.app({ platform: { audio } })` 或 `host/main.ts` 的 `defineWebHost({ audio })` 配自定义音频出口） | `static layer = 'popup'`、`static music = 'ui://Bag/bgm'`、`static music = 'synth://bgm'` | `static layer = 'dialog'`、`static music = 'bgm.mp3'` |
 | `LGUI-MVC-005` | 绑定表的键是组件里真实存在的控件、控制器、动效或点号路径 | `'header.count'` | `'header.cnt'` |
 | `LGUI-MVC-006` | 绑定表只用词表里的词；控制器只用 `page`、`change`；动效只用 `playing`、`play`、`done` | `{ text: … }` | `{ label: … }`、控制器上写 `visible` |
 | `LGUI-MVC-007` | View 里显示类的值是固定值或 `pick(…)`；`ItemView` 里是函数 | `pick(bagModel, s => s.gold)` | `bagModel.get().gold` |
@@ -494,7 +529,7 @@ beforeEach(() => bagModel.reset());
 | `LGUI-MVC-014` | 不写死用户能看到的文字：绑定表的 `text` 不写固定字符串（固定文字放在 `ui/` 里，动态文字用 `pick(…, lgui.t(键))`）；`lgui.toast` / `lgui.confirm` 的参数是文本键 | `lgui.toast('bag.sold')`、`text: pick(bagModel, s => lgui.t('bag.gold', { n: s.gold }))` | `lgui.toast('已售出')`、`text: '金币'`、`text: 'bag.title'` |
 | `LGUI-MVC-015` | 代码里不写坐标和尺寸 | 在 `ui/` 里用关联 | `this.ui.list.width = 800` |
 | `LGUI-MVC-016` | 全屏界面要么有 `@portrait` 竖版，要么写 `static bothOrientations = true` | 有 `BagPanel@portrait` | 全屏、没竖版、也没写 `bothOrientations` |
-| `LGUI-MVC-017` | 文件位置和命名照第 2 节；一个文件只写一个 View | `src/modules/bag/BagView.ts` | 一个文件里写两个 View |
+| `LGUI-MVC-017` | 文件位置和命名照第 2 节（`src/main.ts`、可选的 `src/icons.ts`、`src/modules/<模块>/*.ts`）；一个文件只写一个 View | `src/modules/bag/BagView.ts`、`src/icons.ts` | 一个文件里写两个 View |
 | `LGUI-MVC-018`（警告） | 不跨界面修改控件 | 改 Model | `lgui.ui.get(ShopView)` 之后改它的控件 |
 | `LGUI-MVC-019` | `keys` 表：`back` 是 `'close'`、`'none'` 或函数；其他动作是 `{ do, hint? }`，`hint` 是文本键 | `confirm: { do: …, hint: 'bag.sell' }` | `confirm: 'sell'` |
 | `LGUI-MVC-020`（警告） | View 里不直接改控件属性（坐标尺寸归 `LGUI-MVC-015`）：旋转、换语言重建组件后改的值就没了 | 绑定表 `title: { visible: pick(…) }` | 钩子里写 `this.ui.title.visible = false` |
@@ -507,7 +542,7 @@ TypeScript 自己的类型错误也一起报出来（带 TS 的错误码）。�
 
 | 类 | 什么情况 | 框架怎么做 | 例子 |
 |---|---|---|---|
-| ① 写错了 | 代码或界面写错了 | 抛 `LgRuntimeError`，并记一条 `error` 日志 | 缺文本键 `LGUI-RT-090`、加载器的图片所在的包没加载 `LGUI-RT-071`、ArtText 缺字符 `LGUI-RT-130`、字体的包没加载 `LGUI-RT-171`、没有 `Common/ActionHintBar` `LGUI-RT-172`、没配 `i18nBase` 就换语言 `LGUI-RT-173`、声音没登记 `LGUI-RT-170`、`lgui.sound` 参数不对 `LGUI-RT-174` |
+| ① 写错了 | 代码或界面写错了 | 抛 `LgRuntimeError`，并记一条 `error` 日志 | 缺文本键 `LGUI-RT-090`、加载器的图片所在的包没加载 `LGUI-RT-071`、代码图标未注册或写法不对 `LGUI-RT-072`、ArtText 缺字符 `LGUI-RT-130`、字体的包没加载 `LGUI-RT-171`、没有 `Common/ActionHintBar` `LGUI-RT-172`、没配 `i18nBase` 就换语言 `LGUI-RT-173`、声音没登记 `LGUI-RT-170`、`lgui.sound` 参数不对 `LGUI-RT-174` |
 | ② 外部失败 | 网络、加载这类外部的东西失败了 | 不抛错，把失败交回给代码；记一条 `warn` 日志 | 请求失败 `LGUI-RT-100` / `101`（`run` 返回 `{ ok: false }`）、网络图片加载失败 `LGUI-RT-070`（留着占位图）、声音加载失败 `LGUI-RT-026`、存着的声音设置读不出来 `LGUI-RT-175`、剪贴板读写不了 `LGUI-RT-241`（用 `lgui.request` 包着时） |
 | ③ 正常的先后顺序 | 不是错，只是先后顺序 | 记一条 `info` 日志 | `await` 之后要关的界面已经关了 `LGUI-RT-082` |
 
@@ -553,14 +588,19 @@ export default lgui.app({
 | 服务 | 后端自带的 |
 |---|---|
 | `log`（`Logger`：`enabled`、`debug`、`info`、`warn`、`error`、`child`） | h5：浏览器控制台；headless：记进测试状态，`error` 级的让测试失败 |
-| `audio`（`AudioService`：`play`、`music`、`setPaused`） | h5：浏览器的 Web Audio；headless：记下放过的音效和当前的背景音乐 |
+| `audio`（`AudioService`：`play`、`music`、`setPaused`） | h5：浏览器的 Web Audio（播登记的 mp3）；Unity：`LGUI.Platform` 的 AudioSource；headless：记下放过的音效和当前的背景音乐。用 `synth://` 代码合成声音时，必须在这里交入自定义的 `AudioService` |
 | `clipboard`（`ClipboardService`：`writeText`、`readText`） | h5：浏览器的 `navigator.clipboard`（只有 https 或 localhost 的页面能用）；Unity：系统剪贴板（Unity 包里 `LGUI.Platform` 的 `ClipboardGet` / `ClipboardSet`）；headless：存在内存里，测试里 `lgui.platform.clipboard.readText()` 读得到 |
 
 LGUI 不依赖 Lumio 引擎，只是日志接口照抄了引擎 `Logger` 的形状。`lgui test` 里 `platform` 不生效。
 
 ## 15. 界面声音
 
-声音文件是 mp3，登记在 `ui/` 的包里（UI 开发规范第 5 节），地址写成 `ui://<包>/<声音名>`。分两个声道：背景音乐 `music`、音效 `sfx`（按钮音和 `lgui.sound.play`）。
+声音地址支持两种写法：
+
+- **mp3 文件（`ui://<包>/<声音名>`）：** 登记在 `ui/` 的包里（UI 开发规范第 5 节），由后端自带的声音出口加载播放。
+- **代码合成声音（`synth://<名字>`）：** 名字以字母或数字开头，由字母、数字和 `.`、`_`、`-`、`/` 组成（比如 `synth://click`、`synth://bgm/menu`），不需要放任何音频文件，交由宿主在 `lgui.app({ platform: { audio } })` 或网页端 `host/main.ts` 的 `defineWebHost({ audio })` 里提供的自定义 `AudioService` 实时合成播放。工程里用了 `synth://` 却没提供自定义 `audio` 时，`lgui check` 报 `LGUI-UI-065` / `LGUI-MVC-004`，运行时落到后端默认声音出口报 `LGUI-RT-170`。`lgui test`（含 `--browser`）不需要真实发声，照常把 `synth://<名字>` 记进 `t.sounds()` 和 `t.music()`。
+
+分两个声道：背景音乐 `music`、音效 `sfx`（按钮音和 `lgui.sound.play`）。
 
 ### 15.1 背景音乐：`static music`
 
@@ -589,7 +629,7 @@ export class MainView extends View<MainViewUI> {
 
 | 写法 | 作用 |
 |---|---|
-| `lgui.sound.play('ui://Bag/coin', { volume: 0.8 })` | 放一次音效（只在 Controller 里用）；最终音量 = `volume` × 音效声道的音量 |
+| `lgui.sound.play('ui://Bag/coin', { volume: 0.8 })` | 放一次音效（也可写 `'synth://coin'`；只在 Controller 里用）；最终音量 = `volume` × 音效声道的音量 |
 | `lgui.sound.setVolume('music', 0.5)` | 设一个声道的音量（0–1） |
 | `lgui.sound.setMuted('sfx', true)` | 一个声道静音或取消静音 |
 | `pick(lgui.sound.settings, s => s.music.volume)` | 界面读当前设置：`{ music: { volume, muted }, sfx: { volume, muted } }` |
@@ -665,3 +705,71 @@ async onOpen() {
 **报错**（都是写错了：开发和测试里抛错，正式构建记 `error` 日志、这次调用不生效，不抛进 Controller——绑定开始放的动效和补间抢属性时这次不放，`roll` / `tick` 写错时照常显示、不滚、不定时重算，`itemsOf` 返回空数组）：`LGUI-RT-280` 参数不对，`LGUI-RT-281` 目标不对，`LGUI-RT-282` 属性还有别的主人，`LGUI-RT-283` 轴心是 (0, 0)，`LGUI-RT-284` `roll` / `tick` 写法不对。详见 [error-codes.md](error-codes.md)。
 
 **代价**（从便宜到贵）：`scale`、`rotation`、`alpha` 不重新排版；文字、图形的 `color` 只重画这一块；浏览器端图片着色每次换一个颜色滤镜，最贵，只用在少数几个上；`dx`、`dy` 带动关联它的控件；`width`、`height`、`fontSize` 会重新排版整棵子树。成片错开优先用 `scale`、`alpha`；滚动的数字、倒计时、打字机用定宽加对齐，不要用 Shrink 和自动宽度。没有补间时零开销（不订阅帧回调）；`lgui.debug.snapshot()` 里有每个界面的补间数。
+
+## 17. 三维画布与网页宿主（`host/main.ts`）
+
+网页三维游戏（比如底层用 `three.js` 画场景，上层用 LGUI 做摇杆、按键、面板、小地图）在工程根目录下新建可选的 `host/main.ts`，从 `lgui/host` 引入 `defineWebHost`：
+
+```ts
+// host/main.ts
+import * as THREE from 'three';
+import { defineWebHost } from 'lgui/host';
+import { hudModel } from '../src/modules/hud/HudModel';
+
+export default defineWebHost({
+  // 可选：在这里挂载网页端的 Web Audio 代码合成器、日志或三维联动 Service
+  // audio: createWebSynthAudio(),
+  // services: { scene: () => sceneService },
+  mount(stage) {
+    const renderer = new THREE.WebGLRenderer({ canvas: stage.canvas, antialias: true });
+    const camera = new THREE.PerspectiveCamera(60, 1, 0.1, 100);
+    camera.position.z = 3;
+    const scene = new THREE.Scene();
+    const cube = new THREE.Mesh(new THREE.BoxGeometry(), new THREE.MeshNormalMaterial());
+    scene.add(cube);
+
+    const syncSize = ({ width, height, pixelRatio }: ReturnType<typeof stage.size>) => {
+      renderer.setPixelRatio(pixelRatio);
+      renderer.setSize(width, height, false);
+      camera.aspect = width / Math.max(1, height);
+      camera.updateProjectionMatrix();
+    };
+    syncSize(stage.size());
+    const offResize = stage.onResize(syncSize);
+
+    const offPointer = stage.input.onPointer(ev => {
+      if (ev.type === 'move' && ev.buttons) cube.rotation.y += 0.02;
+    });
+    const offFrame = stage.onFrame(dt => {
+      cube.rotation.x += dt * 0.001 * hudModel.get().speed;
+      renderer.render(scene, camera);
+    });
+
+    return () => {
+      offResize();
+      offPointer();
+      offFrame();
+      renderer.dispose();
+    };
+  },
+});
+```
+
+- **职责分离：** `src/` 里的跨端游戏代码仍然 100% 不碰 `document`、`window` 或 `three`（`LGUI-MVC-001` 原样生效）。网页专属的渲染库、Web Audio 等只放在 `host/` 里；需要依赖包时在工程根目录执行 `npm install three @types/three`，esbuild 自动打进网页包。
+- **画布归属与叠放顺序：** 画布由框架创建（`<canvas class="lgui-canvas">`，`position: fixed; inset: 0; z-index: 0; touch-action: none`），垫在 LGUI 界面根节点（`<fgui-stage>`，`z-index: 1`，根与各层容器 `opaque = false`）正下方，再通过 `stage.canvas` 交给 `mount(stage)`。`src/` 和 `host/main.ts` 都不必直接访问 `document`。传 `renderer.setSize(width, height, false)`（第三个参数 `false`）让 CSS 宽高继续由框架保持铺满视口。
+- **尺寸、像素比和安全区：** `stage.size()` 返回 `{ width, height, pixelRatio, safeArea }`（单位均为视口 CSS 像素），`stage.safeArea()` 返回四边安全区内边距；窗口大小、横竖屏、设备像素比（DPR）或安全区变化时触发 `stage.onResize(size => …)`；`stage.onFrame(deltaMs => …)` 每帧回调一次。
+- **按 `inputMode` 分流输入（`stage.input`）：**
+  - **指针（`stage.input.onPointer`）：** 按 `pointerId` 逐个触点独立分流（坐标是视口 CSS 像素 `x` / `y`）：
+    - `'ui'`（弹窗、全屏面板默认）：全部由界面接管，不向 `onPointer` 派发；从 `'game'` / `'all'` 切进 `'ui'`（比如弹出背包）或窗口失焦时，正在拖场景的触点会立即收到一次 `type: 'cancel'`，避免镜头卡在拖拽态。
+    - `'game'`（`hud` 层默认）：按下点落在可见可交互的界面控件之外时，该 `pointerId` 归三维场景（`down` → `move` → `up` / `cancel`）；落在界面按钮或摇杆上的另一个 `pointerId` 归界面——天然支持左手按界面摇杆、右手同时拖三维镜头。
+    - `'all'`：所有触点同时发给界面和 `onPointer`。
+  - **滚轮（`stage.input.onWheel`）：** `'ui'` 不派发；`'game'` 跳过落在界面控件（如可滚动列表）上的滚轮，其余派发给场景缩放镜头；`'all'` 全部派发。
+  - **键盘（`stage.input.onKey`）：** 输入框（`UIInput`）聚焦或输入法组字时不向场景派发；`'ui'` 不派发（切入 `'ui'` 时已按下的场景键自动补发 `up`）；`'game'` 跳过已被当前激活界面的 `keys` 表（包括返回键 `Escape` 关闭弹窗那一下）消费的按键，其余按键（如 WASD）派发给场景；`'all'` 全部派发。
+- **HUD 组件透传（`LGUI-UI-070`）：** 工程存在 `host/main.ts` 时，`inputMode` 为 `'game'` 或 `'all'` 的界面（包括默认的 `hud` 层界面）在 `ui/` 里的横版和 `@portrait` 竖版根 `<component>` 必须写 `opaque="false"`（且不要铺可点击的全屏矩形背景），让没有摆控件的空白处透给底层画布；漏写时 `lgui check` 报 `LGUI-UI-070`。同时框架修好了 FairyGUI-dom 在 `opaque="false"` 容器设为 `touchable = false`（如被 `modal` 弹窗压住）时子孙按钮仍能点穿的问题（补丁 14）。
+- **界面与三维场景通信：** `mount(stage)` 在框架完成运行时、`lgui.log`、`lgui.sound`、`lgui.service` 初始化之后、`app.start()` 打开首个界面之前执行。`host/` 与 `src/` 之间通过共享 `Model`（`model.subscribe` / `model.get`）、事件广播（`lgui.defineEvent` / `lgui.emit`）或 `defineWebHost({ services })` 注册的 `Service` 通信。
+- **各命令怎么处理 `host/main.ts`：**
+  - `lgui dev`：一起打包 `host/main.ts` 和 `src/`，监视 `host/` 改动并自动刷新页面。
+  - `lgui test` / `lgui test --browser`：只跑 `tests/` 和 `src/`，不加载 `host/main.ts`——没有三维画布或 WebGL 环境时，界面逻辑和布局测试照常通过。
+  - `lgui verify`：默认加载 `host/main.ts`，把底层三维画布和界面合在一起按标准尺寸截图；传 `--no-host` 可跳过 `host/main.ts` 只截纯界面。
+  - `lgui check`：单独用带 DOM 类型库的严格配置检查 `host/`，识别 `defineWebHost({ audio })` 供 `synth://` 校验，并检查 `LGUI-UI-070`。
+  - `lgui unity export`：跳过网页专属的 `host/` 并在摘要里明确提示（Unity 里的三维场景和相机由 Unity 工程自行管理）。
