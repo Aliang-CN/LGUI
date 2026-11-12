@@ -49,9 +49,9 @@ export function mvcRules({ts, checker, root, files, model}) {
     const role = roleOf(rel);
 
     // MVC-017 文件位置和命名
-    if (rel !== 'src/main.ts') {
+    if (rel !== 'src/main.ts' && rel !== 'src/icons.ts') {
       if (!/^src\/modules\/[a-z][a-z0-9-]*\/[A-Z][A-Za-z0-9]*\.ts$/.test(rel) || !role) {
-        out.push(finding('LGUI-MVC-017', `${rel} 的位置或文件名不合规范：功能代码放在 src/modules/<功能>/，文件名以 Model、View、Controller、Service 结尾。`, '照 mvc-spec.md 第 2 节放文件、起名字。', {file: rel, line: 1, col: 1}));
+        out.push(finding('LGUI-MVC-017', `${rel} 的位置或文件名不合规范：功能代码放在 src/modules/<功能>/，文件名以 Model、View、Controller、Service 结尾（根目录只放 src/main.ts 和可选的 src/icons.ts）。`, '照 mvc-spec.md 第 2 节放文件、起名字。', {file: rel, line: 1, col: 1}));
       }
     }
     const views = viewClasses(ts, sf);
@@ -270,4 +270,111 @@ export function fullScreenViews({ts, root, files}) {
     }
   }
   return out;
+}
+
+const ICON_NAME_RE = /^[A-Za-z0-9][A-Za-z0-9._/-]*$/;
+
+function unwrapExpr(ts, expr) {
+  let e = expr;
+  while (e && (ts.isAsExpression(e) || ts.isParenthesizedExpression(e) || ts.isSatisfiesExpression?.(e))) e = e.expression;
+  return e;
+}
+
+/** 读出 src/ 里注册的代码图标名和写死的 icon:// 地址（给 UI-009 用）。 */
+export function codeIcons({ts, checker, root, files}) {
+  const names = new Set();
+  const urls = [];
+  const findings = [];
+  let dynamic = false;
+
+  const checkName = (key, node) => {
+    if (ICON_NAME_RE.test(key)) { names.add(key); return; }
+    if (key.startsWith('icon://')) {
+      const bare = key.slice(7) || 'play';
+      findings.push(finding('LGUI-UI-009', `注册代码图标时名字「${key}」带了 icon:// 前缀。`, `注册时只写名字 '${bare}'，用的时候地址写 'icon://${bare}'。`, where(root, node)));
+    } else {
+      findings.push(finding('LGUI-UI-009', `代码图标名「${key}」不合规范：要以字母或数字开头，只能用字母、数字和 . _ / -。`, "改成比如 'play'、'hud/sword'。", where(root, node)));
+    }
+  };
+
+  // 如果表达式（或它指向的 const 变量初始值）是纯对象字面量，直接逐项读出键名（避免被 : Record<string, IconDef> 抹成宽索引类型）。
+  const readLiteralObject = (obj, seen = new Set()) => {
+    const u = unwrapExpr(ts, obj);
+    if (!u || seen.has(u)) return false;
+    seen.add(u);
+    if (ts.isIdentifier(u)) {
+      const sym = checker.getSymbolAtLocation(u);
+      const target = sym && (sym.flags & ts.SymbolFlags.Alias) ? checker.getAliasedSymbol(sym) : sym;
+      const decl = target?.valueDeclaration;
+      if (decl && ts.isVariableDeclaration(decl) && decl.initializer) return readLiteralObject(decl.initializer, seen);
+      return false;
+    }
+    if (!ts.isObjectLiteralExpression(u)) return false;
+    let allStatic = true;
+    for (const p of u.properties) {
+      if (ts.isSpreadAssignment(p)) {
+        if (!readLiteralObject(p.expression, seen)) allStatic = false;
+      } else if (p.name && (ts.isIdentifier(p.name) || ts.isStringLiteral(p.name) || ts.isNoSubstitutionTemplateLiteral(p.name))) {
+        checkName(p.name.text, p.name);
+      } else {
+        allStatic = false;
+      }
+    }
+    return allStatic;
+  };
+
+  const registerFrom = (expr, typeNode) => {
+    if (expr && readLiteralObject(expr)) return;
+    const type = checker.getTypeAtLocation(typeNode);
+    if (checker.getIndexTypeOfType(type, ts.IndexKind.String)) {
+      dynamic = true;
+      return;
+    }
+    for (const prop of checker.getPropertiesOfType(type)) {
+      const key = prop.getName();
+      const decl = prop.valueDeclaration ?? typeNode;
+      checkName(key, decl.getSourceFile() ? decl : typeNode);
+    }
+  };
+
+  for (const sf of files) {
+    const rel = path.relative(root, sf.fileName).split(path.sep).join('/');
+    if (!rel.startsWith('src/')) continue;
+    const visit = node => {
+      if (ts.isCallExpression(node)) {
+        const callee = node.expression.getText(sf);
+        const first = node.arguments[0];
+        if (callee === 'lgui.registerIcons' && first) {
+          registerFrom(first, first);
+        } else if (callee === 'lgui.app' && first) {
+          const iconsProp = (objectProps(ts, first) ?? []).find(p => p.key === 'icons');
+          if (iconsProp) {
+            if (iconsProp.value) registerFrom(iconsProp.value, iconsProp.value);
+            else if (ts.isShorthandPropertyAssignment(iconsProp.node)) {
+              const sym = checker.getShorthandAssignmentValueSymbol(iconsProp.node);
+              const target = sym && (sym.flags & ts.SymbolFlags.Alias) ? checker.getAliasedSymbol(sym) : sym;
+              const decl = target?.valueDeclaration;
+              if (!(decl && ts.isVariableDeclaration(decl) && decl.initializer && readLiteralObject(decl.initializer))) {
+                const type = sym ? checker.getTypeOfSymbolAtLocation(sym, iconsProp.node) : checker.getTypeAtLocation(iconsProp.node);
+                if (checker.getIndexTypeOfType(type, ts.IndexKind.String)) dynamic = true;
+                else for (const prop of checker.getPropertiesOfType(type)) checkName(prop.getName(), iconsProp.node);
+              }
+            }
+          }
+        }
+      }
+      if ((ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) && node.text.startsWith('icon://')) {
+        const isPropName = ts.isPropertyAssignment(node.parent) && node.parent.name === node;
+        if (!isPropName) urls.push({url: node.text, loc: where(root, node)});
+      }
+      if (ts.isTemplateExpression(node) && node.head.text.startsWith('icon://')) {
+        if (node.head.text !== 'icon://' && !/^icon:\/\/[A-Za-z0-9][A-Za-z0-9._/-]*$/.test(node.head.text)) {
+          findings.push(finding('LGUI-UI-009', `代码图标地址模板「${node.getText(sf)}」前缀不合规范。`, "写成 `icon://${...}` 或 `icon://前缀/${...}`。", where(root, node)));
+        }
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(sf);
+  }
+  return {names, dynamic, urls, findings};
 }

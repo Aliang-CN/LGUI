@@ -1,7 +1,7 @@
 // h5 后端：FairyGUI-dom 加浏览器 API，是其他后端的基准实现。
 import * as fgui from './vendor/fairygui.module.js';
 import type {Backend, BackendConfig, Platform, UIComponent} from '../../core/index';
-import {LgRuntimeError} from '../../core/index';
+import {LgRuntimeError, iconSize, isIconUrl} from '../../core/index';
 import {createH5Platform} from './platform/index';
 import {loadFonts} from './fonts';
 import {installFairyGuiPatches} from './fairygui-patches/index';
@@ -67,6 +67,7 @@ export function createH5Backend(): Backend {
       return pkg !== undefined && pkg.getItemByName(componentName) !== undefined;
     },
     imageSize(url: string) {
+      if (isIconUrl(url)) return iconSize(url);
       const parts = parseUrl(url);
       const item = parts ? fgui.UIPackage.getByName(parts[0])?.getItemByName(parts[1]) : undefined;
       return item ? {width: item.width, height: item.height} : null;

@@ -39,7 +39,7 @@ export const fields = {
   uiCache: {check: value => isObject(value) && isInt(value.keepClosedViews) && Object.keys(value).length === 1, type: '{ keepClosedViews: 非负整数 }', default: {keepClosedViews: 0}},
   requestErrorToast: {check: value => typeof value === 'boolean', type: '布尔值', default: true},
   requestTimeoutMs: {check: value => isInt(value, 1), type: '正整数（毫秒）', default: 10000},
-  placeholder: {check: value => typeof value === 'string' && value.startsWith('ui://'), type: '图片地址，ui:// 开头', default: 'ui://Common/placeholder'},
+  placeholder: {check: value => typeof value === 'string' && (value.startsWith('ui://') || /^icon:\/\/[A-Za-z0-9][A-Za-z0-9._/-]*$/.test(value)), type: '图片地址，ui:// 或 icon:// 开头', default: 'ui://Common/placeholder'},
   sounds: {check: value => isObject(value) && (value.click === null || typeof value.click === 'string') && Object.keys(value).length === 1, type: '{ click: 音效地址 | null }', default: {click: null}},
   defaultFont: {check: value => value === null || (typeof value === 'string' && value.length > 0), type: 'ui/fonts/ 里的字体名 | null', default: null},
   devPort: {check: value => isInt(value, 1) && value <= 65535, type: '端口号 1–65535', default: 4173},

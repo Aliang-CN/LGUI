@@ -1,6 +1,6 @@
 // 绑定引擎：把 View 的绑定表接到控件上。每个绑定的订阅、手势识别都登记在 scope 里，解绑时一次清掉。
 // 词表和写法见 references/mvc-spec.md 第 6.4 节。
-import type {UIButton, UIComboBox, UIComponent, UIController, UIImage, UIInput, UIList, UILoader, UIMovieClip, UIObject, UIProgress, UISlider, UIText, UITransition, UITree} from '../../core/index';
+import type {UIButton, UIComboBox, UIComponent, UIController, UIImage, UIInput, UILabel, UIList, UILoader, UIMovieClip, UIObject, UIProgress, UISlider, UIText, UITransition, UITree} from '../../core/index';
 import {LgRuntimeError} from '../../core/index';
 import {isPicked} from '../pick';
 import {Scope} from '../scope';
@@ -206,8 +206,8 @@ function bindObject(component: UIComponent, key: string, target: UIObject, bindi
     if (!rolled) refreshes.push(watch<string>(binding.text, ctx, v => setText(target, String(v), ctx.where, key)));
   }
   if ('icon' in binding) {
-    if (!('url' in target) && !('icon' in target)) fail('LGUI-RT-063', `${ctx.where} 的 ${key} 不能绑定 icon（它不是加载器或按钮）。`, '换成加载器，或者去掉 icon。');
-    refreshes.push(watch<string>(binding.icon, ctx, v => applyIcon(target as UILoader | UIButton, v, binding.placeholder as string | undefined, ctx)));
+    if (!('url' in target) && !('icon' in target)) fail('LGUI-RT-063', `${ctx.where} 的 ${key} 不能绑定 icon（它不是加载器、按钮或标签）。`, '换成加载器、按钮或标签，或者去掉 icon。');
+    refreshes.push(watch<string>(binding.icon, ctx, v => applyIcon(target as UILoader | UIButton | UILabel, v, binding.placeholder as string | undefined, ctx)));
   }
   if ('progress' in binding) {
     if (!('max' in target)) fail('LGUI-RT-063', `${ctx.where} 的 ${key} 不能绑定 progress（它不是进度条）。`, '换成进度条组件，或者去掉 progress。');

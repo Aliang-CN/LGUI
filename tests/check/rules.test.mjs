@@ -364,3 +364,33 @@ test('跨包图片：<image pkg="…" src="…"> 引用别的包里导出的图�
   const json = JSON.parse((await run(['check', '--json'], root)).stdout);
   assert.ok(json.data.findings.some(f => f.code === 'LGUI-UI-009' && /没导出的图片 Common\/placeholder/.test(f.message)), JSON.stringify(json.data.findings));
 });
+
+test('代码图标检查：src/icons.ts 允许存在；未注册的 icon:// 在 XML、工程配置、代码里都报 LGUI-UI-009，注册后通过；按钮写了图标但无 icon 子控件报 LGUI-UI-066', async () => {
+  const root = await fresh();
+  // Common/Button 没有 icon 子控件：给按钮写 icon 先触发 LGUI-UI-066 + 未注册的 LGUI-UI-009
+  edit(root, MAIN_XML, '<Button title="点我"/>', '<Button title="点我" icon="icon://play"/>');
+  edit(root, '.lgui/project.json', '"placeholder": "ui://Common/placeholder"', '"placeholder": "icon://fallback"');
+  const before = await findings(root);
+  assert.ok(before.some(f => f.code === 'LGUI-UI-066' && /按钮 button 写了图标.*没有名为 icon 的子控件/.test(f.message)), JSON.stringify(before));
+  assert.ok(before.some(f => f.code === 'LGUI-UI-009' && f.file === MAIN_XML && /icon:\/\/play/.test(f.message)), JSON.stringify(before));
+  assert.ok(before.some(f => f.code === 'LGUI-UI-009' && f.file === '.lgui/project.json' && /icon:\/\/fallback/.test(f.message)), JSON.stringify(before));
+
+  // 给 Common/Button 补上名为 icon 的装载器，并在 src/icons.ts 注册 play + fallback，通过 lgui.app({ icons }) 挂载
+  edit(root, 'ui/assets/Common/Button.xml', '<displayList>', '<displayList>\n    <loader id="n9" name="icon" xy="16,12" size="48,48" fill="scale"/>');
+  write(root, 'src/icons.ts', [
+    "import type { IconDef } from 'lgui';",
+    'export const icons: Record<string, IconDef> = {',
+    "  play: { shapes: [{ type: 'polygon', points: [[16, 12], [16, 52], [50, 32]], fill: '#ffffff' }] },",
+    '  fallback: { width: 32, height: 32, draw(g, w, h) { g.fillStyle = "#667788"; g.fillRect(0, 0, w, h); } },',
+    '};',
+    ''
+  ].join('\n'));
+  edit(root, 'src/main.ts', "import { MainView } from './modules/main/MainView';", "import { MainView } from './modules/main/MainView';\nimport { icons } from './icons';");
+  edit(root, 'src/main.ts', "backend: 'h5',", "backend: 'h5',\n  icons,");
+  assert.deepEqual(await codes(root), []);
+
+  // 代码绑定表里写错成未注册的 'icon://paly'，即使 icons 声明了 Record<string, IconDef> 也照样拦住报 LGUI-UI-009
+  edit(root, VIEW, 'button: { click: () => mainController.click() },', "button: { icon: 'icon://paly', click: () => mainController.click() },");
+  const typo = await findings(root);
+  assert.ok(typo.some(f => f.code === 'LGUI-UI-009' && f.file === VIEW && /icon:\/\/paly/.test(f.message)), JSON.stringify(typo));
+});

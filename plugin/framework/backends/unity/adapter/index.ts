@@ -1,6 +1,6 @@
 // Unity 后端：用 PuerTS 调用 FairyGUI-unity；游戏代码只通过 core/MVC 接口使用它。
 import type {Backend, BackendConfig, Platform, UIComponent} from '../../../core/index';
-import {LgRuntimeError} from '../../../core/index';
+import {LgRuntimeError, isIconUrl, reportIconFault, unityIconError} from '../../../core/index';
 import {createObjectAdapter} from './objects';
 import {createUnityPlatform} from './platform';
 import type {NativeBridge, UnityGlobals} from './native-backend';
@@ -142,12 +142,17 @@ export function createUnityBackend(bridge?: NativeBridge): Backend {
       return pkg !== null && pkg.GetItemByName(componentName) !== null;
     },
     imageSize(url) {
+      if (isIconUrl(url)) return null;
       const item = ready().FairyGUI.UIPackage.GetItemByURL(url);
       return item ? {width: item.width, height: item.height} : null;
     },
     createImage(url) {
       const cs = ready();
       const loader = new cs.LGUI.LGUIResourceLoader();
+      if (isIconUrl(url)) {
+        reportIconFault(unityIconError(url), {url});
+        return objects!.wrap(loader);
+      }
       loader.url = url;
       const size = this.imageSize(url);
       if (size) loader.SetSize(size.width, size.height);

@@ -6,12 +6,14 @@ import {createHash} from 'node:crypto';
 import {LgCliError} from '../errors.mjs';
 import {frameworkDir} from '../paths.mjs';
 import {pluginVersion} from '../version.mjs';
-import {esbuild} from '../vendor.mjs';
+import {esbuild, typescript} from '../vendor.mjs';
 import {generateUnity, generateProjectTypes, uiProjectPath} from '../generate/index.mjs';
 import {generateTranslations} from '../generate/i18n.mjs';
 import {fontNames, generateFonts} from '../generate/fonts.mjs';
 import {runtimeConfig, readTexts, bundleErrors, webBuildOptions} from '../dev/bundle.mjs';
 import {readUnityPackage, writeUnityPackage} from '../unitypackage.mjs';
+import {collectUiIconUrls} from '../check/ui-rules.mjs';
+import {objectProps} from '../check/program.mjs';
 
 const originalHash = '318425f7f5eb857b5fc1f664e77b68ff569a99a62641c02ae4819261b0f03aaf';
 const patchedHash = '3e3b479159fdd56c94ed08f4a7e756dbbfa36b9b4c714e99a40e5fc8f6ec9b83';
@@ -181,6 +183,48 @@ function writeBootstrap(root, stage, project, deps, texts) {
   return entry;
 }
 
+const unityIconFix = '代码图标（icon://、lgui.app({ icons })、lgui.registerIcons）只在网页后端和 lgui test 支持；要导出到 Unity 请把图标改成登记在 package.xml 里的图片（ui://包名/图片名）。';
+
+function assertNoCodeIcons(projectRoot, project, model) {
+  const uiIcons = collectUiIconUrls(projectRoot, model, project.placeholder);
+  if (uiIcons.length) {
+    const first = uiIcons[0];
+    throw error('LGUI-CLI-144', `Unity 后端不支持代码图标：${first.where}用了 ${first.url}。`, path.join(projectRoot, first.file), unityIconFix);
+  }
+  const srcDir = path.join(projectRoot, 'src');
+  if (!fs.existsSync(srcDir)) return;
+  const ts = typescript();
+  const walk = dir => fs.readdirSync(dir, {withFileTypes: true}).sort((a, b) => a.name.localeCompare(b.name)).flatMap(e => e.isDirectory() ? walk(path.join(dir, e.name)) : e.name.endsWith('.ts') ? [path.join(dir, e.name)] : []);
+  for (const file of walk(srcDir)) {
+    const sf = ts.createSourceFile(file, fs.readFileSync(file, 'utf8'), ts.ScriptTarget.Latest, true);
+    let found = null;
+    const visit = node => {
+      if (found) return;
+      if (ts.isCallExpression(node)) {
+        const callee = node.expression.getText(sf);
+        const first = node.arguments[0];
+        if (callee === 'lgui.registerIcons') { found = '代码里调用了 lgui.registerIcons(...)'; return; }
+        if (callee === 'lgui.app' && first) {
+          const iconsProp = (objectProps(ts, first) ?? []).find(p => p.key === 'icons');
+          const isUndefined = iconsProp?.value && ts.isIdentifier(iconsProp.value) && iconsProp.value.text === 'undefined';
+          if (iconsProp && !isUndefined) { found = 'lgui.app({ icons }) 注册了代码图标'; return; }
+        }
+      }
+      if ((ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) && node.text.startsWith('icon://')) {
+        found = `代码里用了 ${node.text}`;
+        return;
+      }
+      if (ts.isTemplateExpression(node) && node.head.text.startsWith('icon://')) {
+        found = `代码里用了 ${node.getText(sf)}`;
+        return;
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(sf);
+    if (found) throw error('LGUI-CLI-144', `Unity 后端不支持代码图标：${found}。`, file, unityIconFix);
+  }
+}
+
 export async function unityExport({args, flags, cwd, projectRoot, project}) {
   if (!flags.to || !flags.to.trim() || args.length) {
     throw error('LGUI-CLI-006', '用法：lgui unity export --to <Unity 工程路径>，不接受额外位置参数。', undefined, '提供 --to 和已经创建的 Unity 6000.6 工程目录。');
@@ -243,6 +287,7 @@ export async function unityExport({args, flags, cwd, projectRoot, project}) {
   try {
     await esbuild().build({...webBuildOptions(projectRoot, entry, {dev: false, outfile: path.join(stageGame, 'game.js.txt')}), format: 'iife', platform: 'neutral', sourcemap: false});
   } catch (cause) { throw bundleErrors(cause, projectRoot); }
+  assertNoCodeIcons(projectRoot, project, model);
   for (const directory of [stageUi, stageGame]) fs.writeFileSync(path.join(directory, 'README.txt'), generatedNotice);
 
   // 只替换两个明确归属 LGUI 的生成物目录；用户场景和其余 Assets 不覆盖。

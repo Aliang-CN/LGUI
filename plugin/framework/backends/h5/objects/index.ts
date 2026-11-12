@@ -4,7 +4,7 @@ import type {
   PointerInput, Rect, UIObject, UIComponent, UIText, UIInput, UIButton, UIImage, UILoader, UIList, UIController, UITransition, UIProgress, UIGraph, Unsubscribe,
   UILabel, UISlider, UIComboBox, UIMovieClip, UITree, UITreeNode, WheelInput, TweenProp, TransitionTouch
 } from '../../../core/index';
-import {LgRuntimeError} from '../../../core/index';
+import {LgRuntimeError, hasIcon, isIconUrl, missingIconError, reportIconFault} from '../../../core/index';
 import {drivePress, scaleDownEffect} from '../fairygui-patches/button-press';
 import {pointerEventTypes, toPointerInput} from '../pointer';
 import {stage, toDesign} from '../scale';
@@ -249,15 +249,21 @@ class H5Image extends H5Object implements UIImage {
 class H5Loader extends H5Object implements UILoader {
   private loads = new Set<() => void>();
   private errors = new Set<(url: string) => void>();
-  private current = '';
+  private current: string | null = null;
   constructor(readonly native: fgui.GLoader) { super(native); }
-  get url(): string { return this.current; }
+  get url(): string { return this.current ?? (this.native.url ?? ''); }
   set url(value: string) {
     this.current = value;
+    if (isIconUrl(value) && !hasIcon(value)) {
+      this.native.url = '';
+      for (const handler of [...this.errors]) handler(value);
+      reportIconFault(missingIconError(value), {url: value});
+      return;
+    }
     this.native.url = value;
     if (!value) return;
-    // ui:// 是包里的图片，同步就绪；网络图片用一个探测 img 判断加载成功还是失败（FairyGUI-dom 的加载器不报失败）。
-    if (value.startsWith('ui://')) { for (const handler of [...this.loads]) handler(); return; }
+    // ui:// 和已注册的 icon:// 同步就绪；网络图片用一个探测 img 判断加载成功还是失败（FairyGUI-dom 的加载器不报失败）。
+    if (value.startsWith('ui://') || isIconUrl(value)) { for (const handler of [...this.loads]) handler(); return; }
     const probe = new Image();
     probe.onload = () => { if (this.current === value) for (const handler of [...this.loads]) handler(); };
     probe.onerror = () => { if (this.current === value) for (const handler of [...this.errors]) handler(value); };

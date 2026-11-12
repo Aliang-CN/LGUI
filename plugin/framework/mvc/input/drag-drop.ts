@@ -1,7 +1,7 @@
 // 拖放（游戏式）：原来的控件不动；拖起时框架在最上面放一个跟手的临时图标（不接收输入），松手就去掉；
 // 松在写了 drop 的控件上就调用 drop(data)（ItemView 里再带上这一项的数据），松在别处什么也不改，Model 一变界面跟着重画。
 // 落点由后端的命中测试决定（网页是浏览器自己的命中测试，headless 是模拟操作指到的控件）：只认激活界面里可用的控件，重叠时取最里面的。
-import type {UIButton, UIComponent, UILoader, UIObject} from '../../core/index';
+import type {UIButton, UIComponent, UILabel, UILoader, UIObject} from '../../core/index';
 import {LgRuntimeError} from '../../core/index';
 import {asActor} from '../actor';
 import {runtime} from '../runtime';
@@ -63,9 +63,9 @@ export function dragSource(object: UIObject, key: string, binding: Record<string
   let icon: string | null = null;
   if ('dragIcon' in binding) watch<string>(binding.dragIcon, ctx, value => { icon = value; });
   else if (!('url' in object) && !('icon' in object)) {
-    fail('LGUI-RT-220', `${ctx.where} 的 ${key} 写了 dragData，但它不是加载器或按钮，拖起时没有图标可以显示。`, '加上 dragIcon: 图片地址（ItemView 里写成 it => …）；或者把 dragData 写在加载器、按钮上。');
+    fail('LGUI-RT-220', `${ctx.where} 的 ${key} 写了 dragData，但它不是加载器、按钮或标签，拖起时没有图标可以显示。`, '加上 dragIcon: 图片地址（ItemView 里写成 it => …）；或者把 dragData 写在加载器、按钮、标签上。');
   }
-  const iconOf = (): string => icon ?? ('url' in object ? (object as UILoader).url : (object as UIButton).icon);
+  const iconOf = (): string => icon ?? ('url' in object ? (object as UILoader).url : (object as UIButton | UILabel).icon);
   let ghost: UIComponent | null = null;
   let carried: unknown;
   const removeGhost = (): void => { ghost?.dispose(); ghost = null; };

@@ -234,3 +234,27 @@ test('Unity export：管理路径链接即使指向工程内其他 Assets 也不
   assert.equal(hash(patchPath(c.unity)), puertsOriginalHash);
   assert.equal(read(c.root, '.lgui/project.json'), config);
 });
+
+test('Unity export：工程用了代码图标（icons / registerIcons / icon://）时明确报 LGUI-CLI-144，不改写 Unity 工程或 project.json', async () => {
+  for (const mutate of [
+    root => {
+      const main = path.join(root, 'src/main.ts');
+      fs.writeFileSync(main, fs.readFileSync(main, 'utf8').replace("backend: 'h5',", "backend: 'h5',\n  icons: { play: { shapes: [{ type: 'circle', cx: 16, cy: 16, r: 10, fill: '#fff' }] } },"));
+    },
+    root => {
+      for (const rel of ['ui/assets/Main/MainView.xml', 'ui/assets/Main/MainView@portrait.xml']) {
+        const xmlFile = path.join(root, rel);
+        fs.writeFileSync(xmlFile, fs.readFileSync(xmlFile, 'utf8').replace('</displayList>', '  <loader id="n9" name="ico" xy="0,0" size="48,48" url="icon://play"/>\n  </displayList>'));
+      }
+    }
+  ]) {
+    const c = await context();
+    mutate(c.root);
+    const before = files(c.unity);
+    const config = read(c.root, '.lgui/project.json');
+    const result = await exportTo(c);
+    assertFailure(result, 'LGUI-CLI-144');
+    assert.deepEqual(files(c.unity), before);
+    assert.equal(read(c.root, '.lgui/project.json'), config);
+  }
+});

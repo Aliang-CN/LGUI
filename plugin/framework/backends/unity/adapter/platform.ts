@@ -1,6 +1,6 @@
 // Unity 平台服务：原始输入来自 FairyGUI Stage，其余能力调用 LGUI.Platform。
 import type {Insets, KeyInput, LogLevel, Logger, NetResponse, Platform, PointerInput, Rect, Unsubscribe, WheelInput} from '../../../core/index';
-import {LgRuntimeError, notImplemented} from '../../../core/index';
+import {LgRuntimeError, isIconUrl, notImplemented, unityIconError} from '../../../core/index';
 import type {NativeEventContext, NativeLoader} from './native-ui';
 import type {NativePlatformHost, UnityPlatformOptions} from './native-platform';
 
@@ -158,6 +158,7 @@ export function createUnityPlatform(options: UnityPlatformOptions): {platform: P
       hasPackage(name) { alive(); return fgui.UIPackage.GetByName(name) !== null; },
       async loadImage(url) {
         alive();
+        if (isIconUrl(url)) throw unityIconError(url);
         if (url.startsWith('ui://')) {
           try { if (!fgui.UIPackage.GetItemAssetByURL(url)) throw imageError(url); }
           catch (error) { throw error instanceof LgRuntimeError ? error : imageError(url, String(error)); }

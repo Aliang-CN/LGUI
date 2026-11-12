@@ -1,6 +1,6 @@
 // lgui 对象：游戏代码用到的全部框架功能。写法见 references/mvc-spec.md。
-import type {ClipboardService, Logger, NetService, Rect, StorageService} from '../core/index';
-import {LgRuntimeError} from '../core/index';
+import type {ClipboardService, IconDef, Logger, NetService, Rect, StorageService} from '../core/index';
+import {LgRuntimeError, registerIcons} from '../core/index';
 import type {InputMode, InputType, Layer, Orientation, ParamsOf, Readable, ResultOf, ViewClass} from './types';
 import {todo} from './todo';
 import {createModel} from './model';
@@ -29,6 +29,8 @@ export interface AppDefinition {
   backend: 'h5' | 'headless' | 'unity';
   /** 注册服务：名字 → 创建函数。 */
   services?: Record<string, () => object>;
+  /** 注册代码图标：名字（不带 icon://）→ 矢量图元或 Canvas 2D 绘制定义。用的时候写 icon://<名字>。只在网页后端和 lgui test 支持。 */
+  icons?: Record<string, IconDef>;
   /** 换掉后端自带的平台服务，只换给出的几项：log（日志出口，形状和 Lumio 引擎的 Logger 一样）、audio（声音出口）、clipboard（剪贴板）。lgui test 里不生效。 */
   platform?: PlatformOverrides;
   /** 启动：通常是打开第一个界面。 */
@@ -182,6 +184,9 @@ const viewOf = (entry: Entry | undefined): object | undefined => entry?.state ==
 export const lgui = {
   /** 定义入口。 */
   app(definition: AppDefinition): AppDefinition { return definition; },
+
+  /** 注册一组代码图标（名字不带 icon://；用的时候写 icon://<名字>）。同名会覆盖。只在网页后端和 lgui test 支持。 */
+  registerIcons(icons: Record<string, IconDef>): void { registerIcons(icons); },
 
   /** 定义一个 Model：初始数据加规则。 */
   Model<State extends object, Rules extends object = Record<never, never>>(initial: State, rules?: (set: (partial: Partial<State>) => void, get: () => State) => Rules): Model<State, Rules> {

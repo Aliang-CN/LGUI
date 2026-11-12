@@ -25,6 +25,6 @@ license: MIT
 | 看效果 | `lgui dev`；截图 `lgui verify` |
 | 和人一起在编辑器里改 | `lgui editor`；编辑器开着时改已有控件的属性：`lgui editor props <组件> <控件> <属性>=<值> ...` |
 
-**要点：** 直接编辑 `ui/` 里的 XML；ID 和名字照规范第 3 节；横竖两版控件名和类型一致；文字都写 `autoSize`；图里不放字（带字图片按第 9 节，用装载器）；跨包引用（子组件、图片）写 `pkg` + `src`，子组件跨包不写 `fileName`（第 2 节）；按钮、标签、下拉框的文字叫 `title`，旋转缩放的控件设 `pivot`，动效要动整组就写高级组（`advanced="true"`），单行的文字写 `singleLine`（第 6、8 节）。动效在静态界面做好以后再加，见 [motion.md](references/motion.md)。
+**要点：** 直接编辑 `ui/` 里的 XML；ID 和名字照规范第 3 节；横竖两版控件名和类型一致；文字都写 `autoSize`；图里不放字（带字图片按第 9 节，用装载器）；不带图片文件时用 `icon://<名字>` 代码图标（第 5.2 节，只供网页端和 `lgui test`）；跨包引用（子组件、图片）写 `pkg` + `src`，子组件跨包不写 `fileName`（第 2 节）；按钮、标签、下拉框的文字叫 `title`、图标装载器叫 `icon`，旋转缩放的控件设 `pivot`，动效要动整组就写高级组（`advanced="true"`），单行的文字写 `singleLine`（第 6、8 节）。动效在静态界面做好以后再加，见 [motion.md](references/motion.md)。
 
 **产出：** `ui/` 里的组件和图片、`lgui check` 没有错误、横竖两张截图（文字没被截断、两版排得对）。

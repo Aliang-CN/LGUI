@@ -11,6 +11,7 @@ MyGame/
 │   └── art-src/               #   AI 生成的原始大图：只作来源，界面不引用，不进游戏包
 ├── src/                       # 游戏代码，按 MVC 开发规范写
 │   ├── main.ts                #   入口：选后端（默认 h5），启动游戏
+│   ├── icons.ts               #   代码图标定义（可选，见 UI 开发规范第 5.2 节）
 │   └── modules/               #   一个功能一个文件夹
 │       └── bag/
 │           ├── BagModel.ts    #     数据和规则
@@ -43,7 +44,7 @@ MyGame/
 | `uiCache` | `{ keepClosedViews: 非负整数 }` | `{ keepClosedViews: 0 }` | 最近关掉的几个界面不销毁，再打开时直接复用 |
 | `requestErrorToast` | 布尔值 | `true` | `lgui.request` 失败时，统一弹出提示 |
 | `requestTimeoutMs` | 正整数（毫秒） | `10000` | `lgui.request` 的超时时间 |
-| `placeholder` | `ui://` 开头的图片地址 | `"ui://Common/placeholder"` | 默认占位图 |
+| `placeholder` | `ui://` 或 `icon://` 开头的图片地址 | `"ui://Common/placeholder"` | 默认占位图 |
 | `sounds` | `{ click: 音效地址 \| null }` | `{ click: null }` | 按钮的默认点击音效（`ui://<包>/<声音名>`）：`ui/` 里按钮没写音效时用；`null` 表示不放 |
 | `defaultFont` | 字体名 \| `null` | `null` | 默认字体：写 `ui/fonts/` 里某个字体的名字（文件名去掉扩展名）；`null` 表示用系统默认字体。写了 `ui/fonts/` 里没有的名字（包括系统字体名）报 `LGUI-CLI-142` |
 | `devPort` | 端口号 1–65535 | `4173` | `lgui dev` 的端口 |

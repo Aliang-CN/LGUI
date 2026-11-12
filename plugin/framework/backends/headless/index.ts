@@ -1,6 +1,6 @@
 // headless 后端：在 Node 里跑，只模拟控件树和属性，不算布局、不渲染。lgui test 用它。
 import type {Backend, BackendConfig, Insets, KeyInput, LogLevel, Logger, Platform, PointerInput, UIComponent, WheelInput} from '../../core/index';
-import {LgRuntimeError, notImplemented} from '../../core/index';
+import {LgRuntimeError, hasIcon, iconSize, isIconUrl, missingIconError, notImplemented} from '../../core/index';
 import type {ComponentDescriptor, PackageDescriptor} from './descriptor';
 import {Handlers, HeadlessComponent, HeadlessLoader, HeadlessObject, HeadlessTransition, buildComponent, buildImage} from './objects';
 
@@ -123,6 +123,10 @@ export function createHeadlessBackend(packages: readonly PackageDescriptor[], tr
       releasePackage: name => { state.loaded.delete(name); },
       hasPackage: name => state.loaded.has(name),
       loadImage: async url => {
+        if (isIconUrl(url)) {
+          if (!hasIcon(url)) throw missingIconError(url);
+          return;
+        }
         if (HeadlessLoader.failExternal && !url.startsWith('ui://')) throw new LgRuntimeError('LGUI-RT-025', `图片 ${url} 加载失败。`, '确认地址对、文件存在。');
       }
     },
@@ -167,7 +171,11 @@ export function createHeadlessBackend(packages: readonly PackageDescriptor[], tr
       return buildComponent(lookup(`${packageName}/${componentName}`), lookup, undefined, undefined, undefined, {owners, translation}) as unknown as UIComponent<Name>;
     },
     async setLanguage(language) { translation = translations[language] ?? {}; },
-    imageSize: url => { const found = images.get(url); return found && state.loaded.has(url.slice(5).split('/')[0]) ? {width: found.width, height: found.height} : null; },
+    imageSize: url => {
+      if (isIconUrl(url)) return iconSize(url);
+      const found = images.get(url);
+      return found && state.loaded.has(url.slice(5).split('/')[0]) ? {width: found.width, height: found.height} : null;
+    },
     createImage(url) { return buildImage(url, this.imageSize(url)); },
     has: (packageName, componentName) => state.loaded.has(packageName) && components.has(`${packageName}/${componentName}`),
     createContainer: name => new HeadlessComponent(name, '', 'container')
