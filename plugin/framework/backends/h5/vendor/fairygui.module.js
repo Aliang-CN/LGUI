@@ -4753,7 +4753,7 @@ class UIPackage {
     static loadPackage(url) {
         if (!url.endsWith("/"))
             url += "/";
-        // LGUI patch: 6 加载失败时 reject：原来请求失败后 Promise 一直不结束，读包出错时异常抛在事件回调里。
+        // LGUI patch: 6 读 JSON 包描述（package.json { fui: base64 }），请求失败或读包出错时 reject。
         return new Promise((resolve, reject) => {
             let pkg = _instById[url];
             if (pkg) {
@@ -4761,21 +4761,28 @@ class UIPackage {
                 return;
             }
             let request = new HttpRequest();
-            request.send(url + "package.xml", null, "get", "arraybuffer");
+            request.send(url + "package.json", null, "get", "text");
             request.on("error", (evt) => {
-                reject(new Error("LGUI-RT-011  界面包 " + url + "package.xml 加载失败：" + (evt && evt.data !== undefined ? evt.data : evt) + "。  → 确认包名对，并重新运行 lgui dev 生成界面包。"));
+                reject(new Error("LGUI-RT-011  界面包 " + url + "package.json 加载失败：" + (evt && evt.data !== undefined ? evt.data : evt) + "。  → 确认包名对，并重新运行 lgui dev 或 lgui build 生成界面包。"));
             });
             request.on("complete", (evt) => {
               try {
+                let raw = JSON.parse(typeof evt.data === "string" ? evt.data : "");
+                if (!raw || typeof raw.fui !== "string")
+                    throw new Error("LGUI-RT-011  界面包 " + url + "package.json 格式不对（缺少 fui 字段）。  → 重新运行 lgui dev 或 lgui build 生成界面包。");
+                let bin = atob(raw.fui);
+                let bytes = new Uint8Array(bin.length);
+                for (let i = 0; i < bin.length; i++)
+                    bytes[i] = bin.charCodeAt(i);
                 let pkg = new UIPackage();
-                pkg.loadPackage(new ByteBuffer(evt.data), url);
+                pkg.loadPackage(new ByteBuffer(bytes.buffer), url);
                 _instById[pkg.id] = pkg;
                 _instByName[pkg.name] = pkg;
                 _instById[pkg.path] = pkg;
                 resolve(pkg);
               }
               catch (error) {
-                reject(error);
+                reject(error instanceof SyntaxError ? new Error("LGUI-RT-011  界面包 " + url + "package.json 不是合法的 JSON：" + error.message + "。  → 重新运行 lgui dev 或 lgui build 生成界面包。") : error);
               }
             });
         });

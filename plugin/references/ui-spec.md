@@ -10,7 +10,7 @@
 4. `lgui dev` 打开预览看效果。地址是 `http://127.0.0.1:<端口>/`：开发服务只监听、也只认 `127.0.0.1`，用 `localhost` 打不开（设计如此，挡住 DNS 重绑定）。改 `ui/`、`src/`、`i18n/` 会自动刷新；工程用到的别的目录（宿主代码、仓库根的 `Config/` 等）写进工程配置 `devWatch`（相对工程根目录，比如 `["../Config"]`），改了也会刷新。`devWatch` 写成工程根目录（`.`）或它的上级时不监视 `.lgui/build/`（生成物在这里，监视它会自己触发自己）。
 5. `lgui verify` 按标准尺寸横竖截图（同一个画面只截一次，按尺寸模拟刘海），逐张看一遍。只截一个界面写 `--view <View 名>`；它要参数就再写 `--params '<JSON 对象>'`（字段见这个 View 的 `static params`，比如 `--view ShopView --params '{"tab":"gift"}'`）。
 
-`lgui dev`、`lgui verify`、`lgui test` 各用各的生成目录（`.lgui/build/<命令>/`），`lgui dev` 开着时照样可以跑另外两个。
+`lgui dev`、`lgui verify`、`lgui test`、`lgui build` 各用各的中间目录（`.lgui/build/<命令>/`），`lgui dev` 开着时照样可以跑另外几个。
 
 编辑器开着时不要直接改 XML：同一时间只有一方修改 `ui/`。
 
@@ -416,7 +416,7 @@ ui/
 
 - **字体**：项目自带的字体文件放 `ui/fonts/<名字>.ttf` 或 `.otf`，文件名（去掉扩展名）就是字体名，以大写字母开头、只用字母和数字（比如 `NotoSansSC.otf`、`TitleBold.ttf`），不能和 CSS 的通用字体名或关键字同名（`Serif`、`Monospace`、`Cursive`、`Fantasy`、`Math`、`Emoji`、`Fangsong`、`Inherit`、`Initial`、`Unset`、`Default`、`Revert`，不分大小写；网页上会按系统字体画）。默认字体在工程配置 `defaultFont` 里写这个名字；某一处要用别的字体，XML 写 `font="<名字>"`，富文本写 `[font=<名字>]…[/font]`。`font` 只能写 `ui/fonts/` 里有的名字，系统字体名（各平台不一样）、包里的 `ui://` 字体资源都报 `LGUI-UI-080`。
   - **不带字体文件（`ui/fonts/` 为空、`defaultFont` 为 `null`）**：工程可以完全不放字体文件（`lgui init` 和 `lgui init --code-only` 默认就是这样）。`lgui check` 不查缺字（不报 `LGUI-CLI-141`），生成命令不产出字体子集文件。网页端统一使用跨平台无衬线系统字体栈（`system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif`），普通文字、输入框和 `autoSize="shrink"` 量宽口径一致；Unity 6 端在已导入 `TMP Settings` 时将设备系统字体（苹方 / Noto Sans CJK / 微软雅黑等）注册为动态 SDF `ProjectTMPFont`（保留描边、投影像素换算），未导入 `TMP Settings` 时按系统字体列表走 `Font.CreateDynamicFontFromOSFont`（避开 Unity 6 已移除的内置 `Arial.ttf`；注意 Unity 出微信小游戏或 WebGL 时沙箱读不到系统字体，仍要在 `ui/fonts/` 里带字体文件）。
-  - **自动精简**：`lgui dev`、`verify`、`test --browser`、`unity export` 按项目实际用到的字做子集（网页 WOFF2，Unity 原格式）：ASCII 可见字符、`ui/` 里写的文字、`i18n/` 全部语言的文案、框架自己显示的字（`format.compact` 的「万」「亿」等）。几 MB 的中文字体一般只剩几十 KB。
+  - **自动精简**：`lgui dev`、`build`、`verify`、`test --browser`、`unity export` 按项目实际用到的字做子集（网页 WOFF2，Unity 原格式）：ASCII 可见字符、`ui/` 里写的文字、`i18n/` 全部语言的文案、框架自己显示的字（`format.compact` 的「万」「亿」等）。几 MB 的中文字体一般只剩几十 KB。
   - **缺字报错**（`lgui check` 和上面这些命令都报 `LGUI-CLI-141`，写明是哪个字、在哪里）：`ui/` 里的每段固定文字按显示它的那个文字控件的字体查。文字控件看自己的 `font`；按钮、标签、下拉框、列表项的标题（`title`、`selectedTitle`、下拉框的选项、`<item title>`）看那个组件里名为 `title` 的文字控件的 `font`；`gearText` 的值跟着它所在的控件；没写 `font` 的是默认字体。`i18n/` 里和 `ui/` 文字同一个键的翻译跟着那个控件的字体，其余文案和框架自己显示的字查默认字体。表情符号这类字体里没有的字改用图片或 ArtText。
   - **多语言工程的默认字体要覆盖所有语言**：所有字体用同一个字集，`i18n/` 里全部语言的文案都按上面的规则查（代码里 `lgui.t` 用的文案查默认字体）。比如中文加韩文的工程，默认字体要同时有中文和韩文，否则报 `LGUI-CLI-141`。
   - **运行时才知道的文字**（玩家名、服务器下发的数据、输入框里打的字）不在子集里的字，按字换成系统字体显示，不报错。网页上由浏览器换；Unity 上每个项目字体后面挂一个系统字体做的 TMP 回退字体（iOS、macOS 用苹方，Android 用系统自带的 Noto Sans CJK 等，Windows 用微软雅黑）。这只对 iOS、Android、电脑的原生包有效：Unity 出微信小游戏或 WebGL 时读不到系统字体，子集外的字会显示成方框，到时要在 `ui/fonts/` 里带一个常用字字体。设备上一个候选的系统字体都没找到时，Unity 只记一次 `LGUI-RT-182` 错误日志，游戏照常运行，缺的字显示方框。

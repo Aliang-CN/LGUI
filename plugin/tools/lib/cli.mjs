@@ -17,6 +17,7 @@ import {artSplit} from './commands/art-split.mjs';
 import {artCut} from './commands/art-cut.mjs';
 import {newModule, newView} from './commands/new.mjs';
 import {editor, editorProps} from './commands/editor.mjs';
+import {build} from './commands/build.mjs';
 import {unityExport} from './commands/unity-export.mjs';
 
 // project：'none' 不需要在工程里；'required' 必须在工程里。
@@ -34,6 +35,7 @@ export const registry = [
   {name: 'check', usage: 'check', about: '规范检查（包括多语言检查）', project: 'required', versionCheck: true, flags: {}, run: check},
   {name: 'test', usage: 'test [文件或目录...] [--name 名字片段] [--browser]', about: '跑测试：默认用 headless 后端，--browser 在真浏览器里跑', project: 'required', versionCheck: true, flags: {name: 'string', browser: 'boolean'}, run: test},
   {name: 'verify', usage: 'verify [--size 名字] [--view View 名 [--params JSON]] [--lang 语言] [--no-host]', about: '在浏览器里按横竖两种方向的标准尺寸截图验证', project: 'required', versionCheck: true, flags: {size: 'string', view: 'string', params: 'string', lang: 'string', 'no-host': 'boolean'}, run: verify},
+  {name: 'build', usage: 'build [--out 目录] [--no-minify]', about: '打正式网页包，并打印包体与 LGUI 运行时字节数', project: 'required', versionCheck: true, flags: {out: 'string', 'no-minify': 'boolean'}, run: build},
   {name: 'ui list', usage: 'ui list', about: '列出 ui/ 里的组件和控件', project: 'required', versionCheck: true, flags: {}, run: uiList},
   {name: 'i18n extract', usage: 'i18n extract', about: '从 ui/ 提取需要翻译的文字', project: 'required', versionCheck: true, flags: {}, run: i18nExtract},
   {name: 'art split', usage: 'art split <大图> --grid 列x行 --size 宽x高 --pkg 包 --names 名字列表或文件', about: '把 AI 生成的网格大图拆成小图，并缩放到指定尺寸', project: 'required', versionCheck: true, flags: {grid: 'string', size: 'string', pkg: 'string', names: 'string'}, run: artSplit},

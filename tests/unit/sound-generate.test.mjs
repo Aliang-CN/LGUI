@@ -29,7 +29,8 @@ test('网页界面包：ui/ 里登记的声音输出成 <包>/<资源ID>.mp3，m
   assert.deepEqual(fs.readFileSync(path.join(out, 'Common/click001.mp3')), fs.readFileSync(path.join(root, 'ui/assets/Common/sfx/click.mp3')));
   assert.ok(result.files.includes(path.join(out, 'Common/bgm00002.mp3')));
   // OpenFairyGUI 0.7.0 把声音资源写进包里，文件名是 <资源ID>.mp3（FairyGUI-dom 按「包目录 + 文件名」找它）。
-  assert.match(fs.readFileSync(path.join(out, 'Common/package.xml')).toString('latin1'), /click001\.mp3/);
+  const pkgJson = JSON.parse(fs.readFileSync(path.join(out, 'Common/package.json'), 'utf8'));
+  assert.match(Buffer.from(pkgJson.fui, 'base64').toString('latin1'), /click001\.mp3/);
 });
 
 test('网页界面包：登记的声音文件不存在时，OpenFairyGUI 校验就报 LGUI-CLI-020', async () => {
