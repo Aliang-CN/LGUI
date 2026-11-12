@@ -335,6 +335,17 @@ export function uiRules({root, model, languages, redDots = [], texts = [], items
     if (child?.tag !== 'component' || !iconless(child.ref)) continue;
     out.push(finding('LGUI-UI-066', `${b.component} 的 ${b.key} 绑定了 icon，但它的${TITLED[child.ref.extension]}组件 ${child.ref.fullName} 里没有名为 icon 的子控件，图标显示不出来。`, iconFix(child.ref), b.loc));
   }
+  // UI-009 工程配置的默认占位图（ui://）：指向的图片存在且已导出；无图工程应写成 null 或 icon://
+  if (typeof placeholder === 'string' && placeholder.startsWith('ui://')) {
+    const found = resourceByUrl(model, placeholder);
+    if (!found || found.res.type !== 'image') {
+      if (common || !placeholder.startsWith('ui://Common/')) {
+        out.push(finding('LGUI-UI-009', `工程配置 placeholder 指向的图片 ${placeholder} 不存在。`, '在对应的 package.xml 里登记这张图片，或者在 .lgui/project.json 里把 placeholder 改成 null（无图工程不显示占位图）。', {file: '.lgui/project.json', line: 1, col: 1}));
+      }
+    } else if (!found.res.exported) {
+      out.push(finding('LGUI-UI-009', `工程配置 placeholder 指向的图片 ${placeholder} 没有导出。`, `在 ${found.pkg.name}/package.xml 里给它写 exported="true"，或者把 placeholder 改成 null。`, {file: '.lgui/project.json', line: 1, col: 1}));
+    }
+  }
   // UI-009 代码图标地址（icon://）：写法合法且在代码里已注册
   for (const entry of collectUiIconUrls(root, model, placeholder)) {
     const problem = iconUrlProblem(entry.url, codeIcons);

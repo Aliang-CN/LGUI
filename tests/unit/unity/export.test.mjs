@@ -258,3 +258,17 @@ test('Unity export：工程用了代码图标（icons / registerIcons / icon://�
     assert.equal(read(c.root, '.lgui/project.json'), config);
   }
 });
+
+test('Unity export：lgui init --code-only 无图工程（未用代码图标）可正常导出 .bytes，且不生成图集 PNG', async () => {
+  const parent = fs.mkdtempSync(path.join(os.tmpdir(), 'lgui-export-code-only-'));
+  const init = await run(['init', 'game', '--code-only'], parent);
+  assert.equal(init.code, 0, init.stderr);
+  const c = {parent, root: path.join(parent, 'game'), unity: createUnityProject(path.join(parent, 'UnityProject'))};
+  const result = await exportTo(c);
+  assert.equal(result.code, 0, result.stdout);
+  assert.equal(result.json.ok, true);
+  const uiFiles = fs.readdirSync(path.join(c.unity, 'Assets/LGUI/Resources/UI'));
+  assert.ok(uiFiles.includes('Common_fui.bytes'), uiFiles.join(', '));
+  assert.ok(uiFiles.includes('Main_fui.bytes'), uiFiles.join(', '));
+  assert.equal(uiFiles.some(name => name.endsWith('.png')), false, uiFiles.join(', '));
+});

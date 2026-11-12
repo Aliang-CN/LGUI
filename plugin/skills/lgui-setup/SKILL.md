@@ -15,7 +15,7 @@ license: MIT
 **步骤：**
 
 1. `lgui doctor`：检查 Node（24 或更高）、随插件带的工具、Chrome / Edge。报错就把原文告诉用户，按提示处理；Node 和浏览器要用户自己装。
-2. `lgui init <文件夹>`：建工程（`ui/`、`src/`、`tests/`、`i18n/`、`.lgui/`）。文件夹不是空的会报错，不会覆盖。
+2. `lgui init <文件夹>`：建工程（`ui/`、`src/`、`tests/`、`i18n/`、`.lgui/`；包里不放任何图片文件的纯代码工程用 `lgui init <文件夹> --code-only`）。文件夹不是空的会报错，不会覆盖。
 3. 进工程目录，`lgui dev`：打开网页预览，把网址告诉用户。它一直运行、不会自己退出——放到后台跑（不想自动开浏览器加 `--no-open`）；改 `ui/`、`src/`、`i18n/` 会自动刷新；Ctrl+C 停止。
 4. 已有工程：不要 `init`，直接 `lgui doctor` 和 `lgui dev`。提示版本不一致时运行 `lgui upgrade`，按它打印的更新记录改代码。
 

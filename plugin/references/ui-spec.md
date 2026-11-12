@@ -466,7 +466,7 @@ ui/
 | `Common/RedDot` | 红点 | `count`（文字，显示数字时用） |
 | `Common/HoldProgress` | 长按进度 | 本身是一个进度条组件（`extention="ProgressBar"`） |
 | `Common/ArtText` | 美术字的空容器（第 11 节） | 无 |
-| `Common/placeholder`（图片） | 默认占位图 | — |
+| `Common/placeholder`（图片，可选） | 默认占位图（`lgui init --code-only` 无图工程不带它，`placeholder` 设为 `null`） | — |
 
 **操作提示栏：** 框架把 `Common/ActionHintBar` 放在最上面的 toast 层（不收输入），贴着屏幕底部，宽度铺满。它列出激活界面里带 `hint` 的按键动作，每一项用 `Common/ActionHint` 显示按键名（`key`，比如 Esc、Enter）和提示文字（`label`）；返回键默认显示文本键 `lgui.back`（「返回」）。触屏上没有按键，输入类型是触摸时提示栏隐藏。提示栏高 64 设计像素，全屏界面底部要给它留位置（第 7.3 节）。
 
@@ -525,7 +525,7 @@ ui/
 | `LGUI-UI-005` | 控件、控制器、动效不能重名 | 控制器 `tabs`，控件 `tabBar` | 控制器 `tabs`，控件也叫 `tabs`；动效叫 `title`，控件也叫 `title` |
 | `LGUI-UI-006` | 包名、组件名是大写开头的驼峰；后缀只能是 `@portrait`（组件）或 `@<语言>`（图片） | `BagPanel@portrait.xml` | `bagPanel.xml`、`BagPanel_portrait.xml` |
 | `LGUI-UI-007` | 横竖两版的控件名、类型、控制器和页名完全一致 | 两版都有 `sellButton`（按钮） | 竖版少了 `sellButton`，或者竖版里它是文字 |
-| `LGUI-UI-009` | 引用的资源存在；跨包引用的资源（子组件、图片）已导出；`icon://<名字>` 格式正确且已在代码里注册 | `src="sword001"`（存在）；`<image pkg="cmn00001" src="placehd1">`（Common 里导出了）；`url="icon://play"`（已注册） | 引用了已删掉的资源；引用别的包里没导出的图片；`icon://` 名字没注册 |
+| `LGUI-UI-009` | 引用的资源存在；跨包引用的资源（子组件、图片）已导出；工程配置 `placeholder` 为 `ui://` 时指向的图片存在且已导出；`icon://<名字>` 格式正确且已在代码里注册 | `src="sword001"`（存在）；`<image pkg="cmn00001" src="placehd1">`（Common 里导出了）；无图工程写 `"placeholder": null`；`url="icon://play"`（已注册） | 引用了已删掉的资源；删了 `placeholder.png` 却没把 `placeholder` 改成 `null`；引用别的包里没导出的图片；`icon://` 名字没注册 |
 | `LGUI-UI-010` | 文字控件写了超长处理（`autoSize` 是 `shrink`、`height`、`ellipsis`、`both` 之一） | `autoSize="ellipsis" singleLine="true"` | 不写 `autoSize`，或写 `none` |
 | `LGUI-UI-011` | 字号不小于 20；没写 `fontSize` 按 FairyGUI 默认的 12 号算 | `fontSize="22"` | `fontSize="14"`、不写 `fontSize` |
 | `LGUI-UI-012` | 绑定了 `redDot` 的控件里有名为 `redDot` 的子控件 | 按钮里放了 `redDot` | 绑了 `redDot`，按钮里没有这个子控件 |

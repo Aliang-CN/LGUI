@@ -216,8 +216,8 @@ export interface ButtonBinding extends LabelBinding {
 export interface LoaderBinding extends CommonBinding {
   /** 图片地址。 */
   icon?: Value<string>;
-  /** 加载中和失败时显示的占位图，不写用工程配置的默认占位图。 */
-  placeholder?: string;
+  /** 加载中和失败时显示的占位图，不写用工程配置的默认占位图；null 表示不显示占位图。 */
+  placeholder?: string | null;
 }
 
 /** 进度条。 */

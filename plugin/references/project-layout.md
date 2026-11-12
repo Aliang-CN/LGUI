@@ -1,6 +1,6 @@
 # 用户工程目录
 
-用户对 Agent 说"帮我建一个 UI 工程"，Agent 执行 `lgui init`，得到下面的目录。文档里的 `lgui xxx` 都指 `node <插件目录>/tools/lgui.mjs xxx`。
+用户对 Agent 说"帮我建一个 UI 工程"，Agent 执行 `lgui init`（包里不带任何图片文件的纯代码工程加 `--code-only`），得到下面的目录。文档里的 `lgui xxx` 都指 `node <插件目录>/tools/lgui.mjs xxx`。
 
 ```
 MyGame/
@@ -44,7 +44,7 @@ MyGame/
 | `uiCache` | `{ keepClosedViews: 非负整数 }` | `{ keepClosedViews: 0 }` | 最近关掉的几个界面不销毁，再打开时直接复用 |
 | `requestErrorToast` | 布尔值 | `true` | `lgui.request` 失败时，统一弹出提示 |
 | `requestTimeoutMs` | 正整数（毫秒） | `10000` | `lgui.request` 的超时时间 |
-| `placeholder` | `ui://` 或 `icon://` 开头的图片地址 | `"ui://Common/placeholder"` | 默认占位图 |
+| `placeholder` | `ui://` 或 `icon://` 开头的图片地址 \| `null` | `"ui://Common/placeholder"` | 默认占位图；`null` 表示不显示占位图（`lgui init --code-only` 默认为 `null`） |
 | `sounds` | `{ click: 音效地址 \| null }` | `{ click: null }` | 按钮的默认点击音效（`ui://<包>/<声音名>`）：`ui/` 里按钮没写音效时用；`null` 表示不放 |
 | `defaultFont` | 字体名 \| `null` | `null` | 默认字体：写 `ui/fonts/` 里某个字体的名字（文件名去掉扩展名）；`null` 表示用系统默认字体。写了 `ui/fonts/` 里没有的名字（包括系统字体名）报 `LGUI-CLI-142` |
 | `devPort` | 端口号 1–65535 | `4173` | `lgui dev` 的端口 |

@@ -15,7 +15,7 @@ export function localized(url: string): string {
   return runtime().backend.imageSize(candidate) ? candidate : url;
 }
 
-export function applyIcon(target: UILoader | UIButton | UILabel, url: string, placeholder: string | undefined, ctx: BindContext): void {
+export function applyIcon(target: UILoader | UIButton | UILabel, url: string, placeholder: string | null | undefined, ctx: BindContext): void {
   const {backend, config} = runtime();
   if (isIconUrl(url)) {
     if (backend.name === 'unity') {
@@ -44,7 +44,7 @@ export function applyIcon(target: UILoader | UIButton | UILabel, url: string, pl
     loader.url = localized(url);
     return;
   }
-  const fallback = placeholder ?? config.placeholder;
+  const fallback = placeholder !== undefined ? placeholder : config.placeholder;
   if (fallback && isIconUrl(fallback)) {
     if (backend.name === 'unity') {
       fault(unityIconError(fallback), {url: fallback, where: ctx.where});
@@ -56,7 +56,7 @@ export function applyIcon(target: UILoader | UIButton | UILabel, url: string, pl
       loader.url = fallback;
     }
   } else {
-    loader.url = fallback;
+    loader.url = fallback ?? '';
   }
   backend.platform.resource.loadImage(url).then(
     () => { if (tokens.get(loader) === token && !ctx.scope.isClosed) loader.url = url; },

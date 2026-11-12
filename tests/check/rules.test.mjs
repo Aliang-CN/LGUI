@@ -394,3 +394,17 @@ test('代码图标检查：src/icons.ts 允许存在；未注册的 icon:// 在 
   const typo = await findings(root);
   assert.ok(typo.some(f => f.code === 'LGUI-UI-009' && f.file === VIEW && /icon:\/\/paly/.test(f.message)), JSON.stringify(typo));
 });
+
+test('无图工程检查：手动删掉 placeholder.png 却没改 project.json 时报 LGUI-UI-009；把 placeholder 设为 null 后检查全过', async () => {
+  const root = await fresh();
+  fs.rmSync(path.join(root, 'ui/assets/Common/placeholder.png'));
+  edit(root, 'ui/assets/Common/package.xml', /^\s*<image id="placehd1"[^>]*\/>\r?\n/m, '');
+  const before = await findings(root);
+  assert.equal(before.length, 1, JSON.stringify(before));
+  assert.equal(before[0].code, 'LGUI-UI-009');
+  assert.equal(before[0].file, '.lgui/project.json');
+  assert.match(before[0].message, /placeholder 指向的图片 ui:\/\/Common\/placeholder 不存在/);
+
+  edit(root, '.lgui/project.json', '"placeholder": "ui://Common/placeholder"', '"placeholder": null');
+  assert.deepEqual(await findings(root), []);
+});

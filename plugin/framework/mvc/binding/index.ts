@@ -207,7 +207,7 @@ function bindObject(component: UIComponent, key: string, target: UIObject, bindi
   }
   if ('icon' in binding) {
     if (!('url' in target) && !('icon' in target)) fail('LGUI-RT-063', `${ctx.where} 的 ${key} 不能绑定 icon（它不是加载器、按钮或标签）。`, '换成加载器、按钮或标签，或者去掉 icon。');
-    refreshes.push(watch<string>(binding.icon, ctx, v => applyIcon(target as UILoader | UIButton | UILabel, v, binding.placeholder as string | undefined, ctx)));
+    refreshes.push(watch<string>(binding.icon, ctx, v => applyIcon(target as UILoader | UIButton | UILabel, v, binding.placeholder as string | null | undefined, ctx)));
   }
   if ('progress' in binding) {
     if (!('max' in target)) fail('LGUI-RT-063', `${ctx.where} 的 ${key} 不能绑定 progress（它不是进度条）。`, '换成进度条组件，或者去掉 progress。');
