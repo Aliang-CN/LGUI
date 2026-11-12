@@ -12,6 +12,7 @@ import {installButtonPress, buttonFields} from './button-press';
 import {installTransitionStage, transitionAssigned} from './transition-stage';
 import {installNineSlice, nineSliceAssigned, nineSliceFields} from './nine-slice';
 import {installCodeIcons, loaderFields} from './code-icon';
+import {installTouchableOpaque, touchableOpaqueAssigned, touchableOpaqueFields} from './touchable-opaque';
 
 /** 装上全部钩子（装过就不再装）。要在创建任何 FairyGUI 对象之前调用。
  * 装不上时报 LGUI-RT-230 / 231；之后再调用原样再报，不会把已经装上的钩子再包一层。 */
@@ -26,11 +27,15 @@ export const installFairyGuiPatches: () => void = once(() => {
   installTransitionStage();
   installNineSlice();
   installCodeIcons();
+  installTouchableOpaque();
 });
 
 // 钩子里读的上游字段：构造函数里设的，各建一个对象查一遍；不在构造函数里设的，查上游设它的地方还在不在。
 function checkFields(): void {
   fields(2, new fgui.UIPackage(), 'UIPackage', ['_items']);
+  const comp = new fgui.GComponent();
+  fields(14, comp.element, 'UIElement', touchableOpaqueFields);
+  comp.dispose();
   const text = new fgui.GTextField();
   fields(4, text.element, 'TextField', textFields);
   fields(8, text.element, 'TextField', shrinkFields);
@@ -48,4 +53,5 @@ function checkFields(): void {
   for (const [member, name] of nineSliceAssigned) assigned(12, fgui.Image.prototype, 'Image', member, name);
   for (const [member, name] of shrinkAssigned) assigned(8, fgui.TextField.prototype, 'TextField', member, name);
   for (const [member, name] of transitionAssigned) assigned(10, fgui.Transition.prototype, 'Transition', member, name);
+  for (const [member, name] of touchableOpaqueAssigned) assigned(14, fgui.UIElement.prototype, 'UIElement', member, name);
 }

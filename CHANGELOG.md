@@ -1,5 +1,19 @@
 # 更新记录
 
+## 0.4.7（2026-11-12）
+
+**三维画布与网页宿主（`host/main.ts`、`lgui/host`）**
+
+- 网页三维画布与界面共存：工程根目录下新增可选的 `host/main.ts`（`import { defineWebHost } from 'lgui/host'`），用于挂载 `three.js` 等三维渲染和网页端平台服务；`src/` 里的跨端游戏代码继续保持无 DOM / 无引擎依赖（`LGUI-MVC-001` 不变）。
+- 框架托管画布与叠放顺序：H5 后端把 `<fgui-stage>`（`z-index: 1`）与各层容器设为 `opaque = false`；存在 `host/main.ts` 时，框架自动创建全屏 `<canvas class="lgui-canvas">`（`z-index: 0`）垫在界面正下方，并通过 `stage.canvas`、`stage.size()`、`stage.safeArea()`、`stage.onResize()`、`stage.onFrame()` 交给 `mount(stage)`，`src/` 与 `host/main.ts` 都不必直接访问 `document`。
+- 按激活界面 `inputMode` 分流输入（`stage.input`）：支持按 `pointerId` 逐触点独立分流（`'game'` 模式下左手点界面摇杆/按钮、右手同时拖三维画布互不干扰；切入 `'ui'` 模式或窗口失焦时自动向进行中的场景触点补发 `cancel`、向按住的场景键补发 `up`），并按同一规则分流滚轮（`onWheel`）与键盘（`onKey`，跳过聚焦输入框、输入法组字和已被界面 `keys` 消费的按键）；修好关闭最后一个打开的界面后 `inputMode` 未回到 `'game'` 的问题。
+- FairyGUI-dom 补丁 14：修好 `opaque = false` 容器在 `touchable = false`（如 HUD 被 `modal` 弹窗压住）时子孙控件仍保持 `pointer-events: auto`、能被点穿的问题。
+- 命令与检查：`lgui dev` 打包并热更新监视 `host/`；`lgui test`（含 `--browser`）不加载 `host/main.ts`，无三维画布时界面测试照常运行；`lgui verify` 默认连同三维画布一起截图，新增 `--no-host` 可只截纯界面；`lgui check` 带 DOM 类型库严格检查 `host/`、识别 `defineWebHost({ audio })` 供 `synth://` 校验，并新增 `LGUI-UI-070`（有 `host/main.ts` 时，有效 `inputMode` 为 `'game'` 或 `'all'` 的界面横竖两版根 `<component>` 必须写 `opaque="false"`）；`lgui unity export` 明确跳过 `host/` 并在摘要提示。
+
+**新错误码**
+
+- `LGUI-UI-070`：工程有 `host/main.ts` 时，`inputMode` 为 `'game'` 或 `'all'` 的界面组件根 `<component>` 未写 `opaque="false"`。
+
 ## 0.4.6（2026-11-12）
 
 **框架、检查与后端**

@@ -114,7 +114,7 @@ const SYNTH_URL_RE = /^synth:\/\/([A-Za-z0-9][A-Za-z0-9._/-]*)$/;
 export function soundProblem(model, url, {customAudio = false} = {}) {
   if (typeof url === 'string' && url.startsWith('synth://')) {
     if (!SYNTH_URL_RE.test(url)) return `合成声音地址「${url}」写法不对（要写成 synth://<名字>，名字以字母或数字开头，只能用字母、数字和 . _ / -）`;
-    if (!customAudio) return `用了代码合成声音 ${url}，但没有在 lgui.app({ platform: { audio } }) 里提供自定义的声音出口`;
+    if (!customAudio) return `用了代码合成声音 ${url}，但没有在 lgui.app({ platform: { audio } }) 或 host/main.ts 的 defineWebHost({ audio }) 里提供自定义的声音出口`;
     return null;
   }
   const found = resourceByUrl(model, url);
@@ -130,11 +130,11 @@ export function soundProblem(model, url, {customAudio = false} = {}) {
   return null;
 }
 
-export function uiRules({root, model, languages, redDots = [], texts = [], items = [], iconBindings = [], fullScreens = [], sounds = null, placeholder = null, codeIcons = null, customAudio = false}) {
+export function uiRules({root, model, languages, redDots = [], texts = [], items = [], iconBindings = [], fullScreens = [], sceneViews = [], hasHost = false, sounds = null, placeholder = null, codeIcons = null, customAudio = false}) {
   const out = [];
   const rel = file => path.relative(root, file).split(path.sep).join('/');
   const add = (code, message, fix, file, line) => out.push(finding(code, message, fix, {file: file ? rel(file) : undefined, line, col: 1}));
-  const soundFix = '音效用 mp3 放进包目录并登记进 package.xml（<sound id="…" name="click.mp3" path="/" exported="true"/>），地址写 ui://包名/音效名；或者用代码合成声音写 synth://<名字>（并在 lgui.app({ platform: { audio } }) 提供自定义声音出口）；不要声音就写 sound=""。';
+  const soundFix = '音效用 mp3 放进包目录并登记进 package.xml（<sound id="…" name="click.mp3" path="/" exported="true"/>），地址写 ui://包名/音效名；或者用代码合成声音写 synth://<名字>（并在 lgui.app({ platform: { audio } }) 或 host/main.ts 的 defineWebHost({ audio }) 提供自定义声音出口）；不要声音就写 sound=""。';
 
   // UI-001 包 ID
   const pkgIds = new Map();
@@ -306,7 +306,29 @@ export function uiRules({root, model, languages, redDots = [], texts = [], items
   }
 
   // UI-065 工程配置里的默认点击音效
-  if (sounds?.click) { const problem = soundProblem(model, sounds.click, {customAudio}); if (problem) out.push(finding('LGUI-UI-065', `工程配置 sounds.click 的音效不对：${problem}。`, '改成登记过的 mp3 音效地址（ui://包名/音效名），或者代码合成声音（synth://名字，并在 lgui.app({ platform: { audio } }) 提供自定义声音出口），或者写 null（不播）。', {file: '.lgui/project.json', line: 1, col: 1})); }
+  if (sounds?.click) { const problem = soundProblem(model, sounds.click, {customAudio}); if (problem) out.push(finding('LGUI-UI-065', `工程配置 sounds.click 的音效不对：${problem}。`, '改成登记过的 mp3 音效地址（ui://包名/音效名），或者代码合成声音（synth://名字，并在 lgui.app({ platform: { audio } }) 或 host/main.ts 的 defineWebHost({ audio }) 提供自定义声音出口），或者写 null（不播）。', {file: '.lgui/project.json', line: 1, col: 1})); }
+
+  // UI-070 有网页宿主（host/main.ts）时，inputMode 为 game 或 all 的界面组件（横竖两版）根 <component> 必须写 opaque="false"，空白处才能透给底层三维画布
+  if (hasHost) {
+    const checkedOpaque = new Set();
+    for (const v of sceneViews) {
+      const component = findComponent(model, v.component);
+      const portrait = component && findComponent(model, `${v.component}${PORTRAIT}`);
+      for (const c of [component, portrait].filter(Boolean)) {
+        if (checkedOpaque.has(c)) continue;
+        checkedOpaque.add(c);
+        if (c.root?.attrs.opaque !== 'false') {
+          add(
+            'LGUI-UI-070',
+            `界面 ${v.viewName} 的 inputMode 是 ${v.mode}（空白处要透给底层三维画布），但组件 ${c.fullName} 的根 <component> 没写 opaque="false"，整张界面会挡住底层画布的输入。`,
+            `在 ${rel(c.file)} 的 <component …> 上加 opaque="false"；若这个界面本来就要独占全部输入，在 ${v.viewName} 上写 static inputMode = 'ui' as const;。`,
+            c.file,
+            lineWith(c.file, ['<component']) ?? 1
+          );
+        }
+      }
+    }
+  }
 
   // UI-012 绑定了 redDot 的控件里有 redDot 子控件
   for (const b of redDots) {

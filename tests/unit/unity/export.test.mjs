@@ -296,3 +296,17 @@ test('Unity export：使用 synth:// 合成声音并配置自定义 platform.aud
   assert.match(bundle, /Main\/MainView#button/);
   assert.match(bundle, /synth:\/\/laser/);
 });
+
+test('Unity export：存在网页宿主 host/main.ts 时明确跳过 host/ 并在摘要中提示，不把它打进 game.js.txt', async () => {
+  const c = await context();
+  fs.mkdirSync(path.join(c.root, 'host'), {recursive: true});
+  fs.writeFileSync(path.join(c.root, 'host/main.ts'), "import { defineWebHost } from 'lgui/host';\nexport default defineWebHost({ mount(stage) { const marker = '__WEB_HOST_ONLY__'; void stage; void marker; } });\n");
+  const result = await exportTo(c);
+  assert.equal(result.code, 0, result.stdout);
+  assert.equal(result.json.data.webHostSkipped, true);
+  const plain = await run(['unity', 'export', '--to', c.unity], c.root);
+  assert.equal(plain.code, 0, plain.stdout + plain.stderr);
+  assert.match(plain.stdout, /跳过 host\//);
+  const bundle = fs.readFileSync(path.join(c.unity, 'Assets/LGUI/Resources/Game/game.js.txt'), 'utf8');
+  assert.doesNotMatch(bundle, /__WEB_HOST_ONLY__/);
+});

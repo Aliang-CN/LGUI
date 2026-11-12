@@ -177,7 +177,7 @@ export class BagView extends View<BagPanelUI> {
 | `fullScreen` | 否 | `false` | 是不是全屏 |
 | `params` | 否 | 不收参数 | 打开时能传的参数，写成带默认值的对象 |
 | `result` | 否 | 不交回 | 关闭时可以顺带交回什么，只写类型：`static result: { itemId: string };` |
-| `inputMode` | 否 | `hud` 层是 `'game'`，其余是 `'ui'` | `'ui'`：只有界面收输入；`'game'`：只有游戏场景收；`'all'`：两边都收 |
+| `inputMode` | 否 | `hud` 层是 `'game'`，其余是 `'ui'` | `'ui'`：只有界面收输入（切入时正在拖场景的触点和按住的场景键自动取消）；`'game'`：落在界面控件外的触点、滚轮和没被激活界面 `keys` 消费的按键送给底层场景；`'all'`：两边都收。网页三维画布分流见第 17 节 |
 | `bothOrientations` | 否 | `false` | 全屏界面没有竖版时写 `true`，表示两种方向共用这一版 |
 | `music` | 否 | 不放 | 背景音乐 `'ui://<包>/<声音名>'` 或代码合成声音 `'synth://<名字>'`，见第 15.1 节 |
 
@@ -516,7 +516,7 @@ beforeEach(() => bagModel.reset());
 | `LGUI-MVC-001` | 游戏代码只 import `lgui`、`lgui/ui` 和工程内的相对路径；不用 `document`、`window`、`globalThis`、`CS`、`localStorage`、`fetch` 等平台全局对象（工程里自己声明的同名变量、参数不算） | `lgui.platform.net.fetch(…)` | `fetch(…)`、`document.body` |
 | `LGUI-MVC-002` | View 写了必填的 `component` 和 `layer` | `static layer = 'page'` | 没写 `layer` |
 | `LGUI-MVC-003` | View 只写 6.2 表里列出的 static；`ItemView`、`PartView` 只写 `component` | — | `static cache = true` |
-| `LGUI-MVC-004` | static 的值合法：`layer` 是 5 层之一，`component` 是存在的导出组件，`inputMode` 是 `ui`/`game`/`all`，`music` 是登记在 `ui/` 里的 mp3 音效（`ui://包名/音效名`）或写法合法的 `synth://<名字>`（需配自定义 `platform.audio`） | `static layer = 'popup'`、`static music = 'ui://Bag/bgm'`、`static music = 'synth://bgm'` | `static layer = 'dialog'`、`static music = 'bgm.mp3'` |
+| `LGUI-MVC-004` | static 的值合法：`layer` 是 5 层之一，`component` 是存在的导出组件，`inputMode` 是 `ui`/`game`/`all`，`music` 是登记在 `ui/` 里的 mp3 音效（`ui://包名/音效名`）或写法合法的 `synth://<名字>`（需在 `lgui.app({ platform: { audio } })` 或 `host/main.ts` 的 `defineWebHost({ audio })` 配自定义音频出口） | `static layer = 'popup'`、`static music = 'ui://Bag/bgm'`、`static music = 'synth://bgm'` | `static layer = 'dialog'`、`static music = 'bgm.mp3'` |
 | `LGUI-MVC-005` | 绑定表的键是组件里真实存在的控件、控制器、动效或点号路径 | `'header.count'` | `'header.cnt'` |
 | `LGUI-MVC-006` | 绑定表只用词表里的词；控制器只用 `page`、`change`；动效只用 `playing`、`play`、`done` | `{ text: … }` | `{ label: … }`、控制器上写 `visible` |
 | `LGUI-MVC-007` | View 里显示类的值是固定值或 `pick(…)`；`ItemView` 里是函数 | `pick(bagModel, s => s.gold)` | `bagModel.get().gold` |
@@ -598,7 +598,7 @@ LGUI 不依赖 Lumio 引擎，只是日志接口照抄了引擎 `Logger` 的形�
 声音地址支持两种写法：
 
 - **mp3 文件（`ui://<包>/<声音名>`）：** 登记在 `ui/` 的包里（UI 开发规范第 5 节），由后端自带的声音出口加载播放。
-- **代码合成声音（`synth://<名字>`）：** 名字以字母或数字开头，由字母、数字和 `.`、`_`、`-`、`/` 组成（比如 `synth://click`、`synth://bgm/menu`），不需要放任何音频文件，交由宿主在 `lgui.app({ platform: { audio } })` 里提供的自定义 `AudioService` 实时合成播放。工程里用了 `synth://` 却没提供自定义 `audio` 时，`lgui check` 报 `LGUI-UI-065` / `LGUI-MVC-004`，运行时落到后端默认声音出口报 `LGUI-RT-170`。`lgui test`（含 `--browser`）不需要真实发声，照常把 `synth://<名字>` 记进 `t.sounds()` 和 `t.music()`。
+- **代码合成声音（`synth://<名字>`）：** 名字以字母或数字开头，由字母、数字和 `.`、`_`、`-`、`/` 组成（比如 `synth://click`、`synth://bgm/menu`），不需要放任何音频文件，交由宿主在 `lgui.app({ platform: { audio } })` 或网页端 `host/main.ts` 的 `defineWebHost({ audio })` 里提供的自定义 `AudioService` 实时合成播放。工程里用了 `synth://` 却没提供自定义 `audio` 时，`lgui check` 报 `LGUI-UI-065` / `LGUI-MVC-004`，运行时落到后端默认声音出口报 `LGUI-RT-170`。`lgui test`（含 `--browser`）不需要真实发声，照常把 `synth://<名字>` 记进 `t.sounds()` 和 `t.music()`。
 
 分两个声道：背景音乐 `music`、音效 `sfx`（按钮音和 `lgui.sound.play`）。
 
@@ -705,3 +705,71 @@ async onOpen() {
 **报错**（都是写错了：开发和测试里抛错，正式构建记 `error` 日志、这次调用不生效，不抛进 Controller——绑定开始放的动效和补间抢属性时这次不放，`roll` / `tick` 写错时照常显示、不滚、不定时重算，`itemsOf` 返回空数组）：`LGUI-RT-280` 参数不对，`LGUI-RT-281` 目标不对，`LGUI-RT-282` 属性还有别的主人，`LGUI-RT-283` 轴心是 (0, 0)，`LGUI-RT-284` `roll` / `tick` 写法不对。详见 [error-codes.md](error-codes.md)。
 
 **代价**（从便宜到贵）：`scale`、`rotation`、`alpha` 不重新排版；文字、图形的 `color` 只重画这一块；浏览器端图片着色每次换一个颜色滤镜，最贵，只用在少数几个上；`dx`、`dy` 带动关联它的控件；`width`、`height`、`fontSize` 会重新排版整棵子树。成片错开优先用 `scale`、`alpha`；滚动的数字、倒计时、打字机用定宽加对齐，不要用 Shrink 和自动宽度。没有补间时零开销（不订阅帧回调）；`lgui.debug.snapshot()` 里有每个界面的补间数。
+
+## 17. 三维画布与网页宿主（`host/main.ts`）
+
+网页三维游戏（比如底层用 `three.js` 画场景，上层用 LGUI 做摇杆、按键、面板、小地图）在工程根目录下新建可选的 `host/main.ts`，从 `lgui/host` 引入 `defineWebHost`：
+
+```ts
+// host/main.ts
+import * as THREE from 'three';
+import { defineWebHost } from 'lgui/host';
+import { hudModel } from '../src/modules/hud/HudModel';
+
+export default defineWebHost({
+  // 可选：在这里挂载网页端的 Web Audio 代码合成器、日志或三维联动 Service
+  // audio: createWebSynthAudio(),
+  // services: { scene: () => sceneService },
+  mount(stage) {
+    const renderer = new THREE.WebGLRenderer({ canvas: stage.canvas, antialias: true });
+    const camera = new THREE.PerspectiveCamera(60, 1, 0.1, 100);
+    camera.position.z = 3;
+    const scene = new THREE.Scene();
+    const cube = new THREE.Mesh(new THREE.BoxGeometry(), new THREE.MeshNormalMaterial());
+    scene.add(cube);
+
+    const syncSize = ({ width, height, pixelRatio }: ReturnType<typeof stage.size>) => {
+      renderer.setPixelRatio(pixelRatio);
+      renderer.setSize(width, height, false);
+      camera.aspect = width / Math.max(1, height);
+      camera.updateProjectionMatrix();
+    };
+    syncSize(stage.size());
+    const offResize = stage.onResize(syncSize);
+
+    const offPointer = stage.input.onPointer(ev => {
+      if (ev.type === 'move' && ev.buttons) cube.rotation.y += 0.02;
+    });
+    const offFrame = stage.onFrame(dt => {
+      cube.rotation.x += dt * 0.001 * hudModel.get().speed;
+      renderer.render(scene, camera);
+    });
+
+    return () => {
+      offResize();
+      offPointer();
+      offFrame();
+      renderer.dispose();
+    };
+  },
+});
+```
+
+- **职责分离：** `src/` 里的跨端游戏代码仍然 100% 不碰 `document`、`window` 或 `three`（`LGUI-MVC-001` 原样生效）。网页专属的渲染库、Web Audio 等只放在 `host/` 里；需要依赖包时在工程根目录执行 `npm install three @types/three`，esbuild 自动打进网页包。
+- **画布归属与叠放顺序：** 画布由框架创建（`<canvas class="lgui-canvas">`，`position: fixed; inset: 0; z-index: 0; touch-action: none`），垫在 LGUI 界面根节点（`<fgui-stage>`，`z-index: 1`，根与各层容器 `opaque = false`）正下方，再通过 `stage.canvas` 交给 `mount(stage)`。`src/` 和 `host/main.ts` 都不必直接访问 `document`。传 `renderer.setSize(width, height, false)`（第三个参数 `false`）让 CSS 宽高继续由框架保持铺满视口。
+- **尺寸、像素比和安全区：** `stage.size()` 返回 `{ width, height, pixelRatio, safeArea }`（单位均为视口 CSS 像素），`stage.safeArea()` 返回四边安全区内边距；窗口大小、横竖屏、设备像素比（DPR）或安全区变化时触发 `stage.onResize(size => …)`；`stage.onFrame(deltaMs => …)` 每帧回调一次。
+- **按 `inputMode` 分流输入（`stage.input`）：**
+  - **指针（`stage.input.onPointer`）：** 按 `pointerId` 逐个触点独立分流（坐标是视口 CSS 像素 `x` / `y`）：
+    - `'ui'`（弹窗、全屏面板默认）：全部由界面接管，不向 `onPointer` 派发；从 `'game'` / `'all'` 切进 `'ui'`（比如弹出背包）或窗口失焦时，正在拖场景的触点会立即收到一次 `type: 'cancel'`，避免镜头卡在拖拽态。
+    - `'game'`（`hud` 层默认）：按下点落在可见可交互的界面控件之外时，该 `pointerId` 归三维场景（`down` → `move` → `up` / `cancel`）；落在界面按钮或摇杆上的另一个 `pointerId` 归界面——天然支持左手按界面摇杆、右手同时拖三维镜头。
+    - `'all'`：所有触点同时发给界面和 `onPointer`。
+  - **滚轮（`stage.input.onWheel`）：** `'ui'` 不派发；`'game'` 跳过落在界面控件（如可滚动列表）上的滚轮，其余派发给场景缩放镜头；`'all'` 全部派发。
+  - **键盘（`stage.input.onKey`）：** 输入框（`UIInput`）聚焦或输入法组字时不向场景派发；`'ui'` 不派发（切入 `'ui'` 时已按下的场景键自动补发 `up`）；`'game'` 跳过已被当前激活界面的 `keys` 表（包括返回键 `Escape` 关闭弹窗那一下）消费的按键，其余按键（如 WASD）派发给场景；`'all'` 全部派发。
+- **HUD 组件透传（`LGUI-UI-070`）：** 工程存在 `host/main.ts` 时，`inputMode` 为 `'game'` 或 `'all'` 的界面（包括默认的 `hud` 层界面）在 `ui/` 里的横版和 `@portrait` 竖版根 `<component>` 必须写 `opaque="false"`（且不要铺可点击的全屏矩形背景），让没有摆控件的空白处透给底层画布；漏写时 `lgui check` 报 `LGUI-UI-070`。同时框架修好了 FairyGUI-dom 在 `opaque="false"` 容器设为 `touchable = false`（如被 `modal` 弹窗压住）时子孙按钮仍能点穿的问题（补丁 14）。
+- **界面与三维场景通信：** `mount(stage)` 在框架完成运行时、`lgui.log`、`lgui.sound`、`lgui.service` 初始化之后、`app.start()` 打开首个界面之前执行。`host/` 与 `src/` 之间通过共享 `Model`（`model.subscribe` / `model.get`）、事件广播（`lgui.defineEvent` / `lgui.emit`）或 `defineWebHost({ services })` 注册的 `Service` 通信。
+- **各命令怎么处理 `host/main.ts`：**
+  - `lgui dev`：一起打包 `host/main.ts` 和 `src/`，监视 `host/` 改动并自动刷新页面。
+  - `lgui test` / `lgui test --browser`：只跑 `tests/` 和 `src/`，不加载 `host/main.ts`——没有三维画布或 WebGL 环境时，界面逻辑和布局测试照常通过。
+  - `lgui verify`：默认加载 `host/main.ts`，把底层三维画布和界面合在一起按标准尺寸截图；传 `--no-host` 可跳过 `host/main.ts` 只截纯界面。
+  - `lgui check`：单独用带 DOM 类型库的严格配置检查 `host/`，识别 `defineWebHost({ audio })` 供 `synth://` 校验，并检查 `LGUI-UI-070`。
+  - `lgui unity export`：跳过网页专属的 `host/` 并在摘要里明确提示（Unity 里的三维场景和相机由 Unity 工程自行管理）。

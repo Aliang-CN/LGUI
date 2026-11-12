@@ -15,6 +15,15 @@ export function runtimeConfig(project) {
 /** 工程里的框架入口：import 'lgui' 指向它（esbuild alias）。 */
 export const frameworkEntry = root => path.join(root, '.lgui', 'framework', 'index.ts');
 
+/** 工程里的网页宿主类型与辅助入口：import 'lgui/host' 指向它（供 host/main.ts 使用）。 */
+export const frameworkHostEntry = root => path.join(root, '.lgui', 'framework', 'host.ts');
+
+/** 工程里可选的网页宿主入口：host/main.ts。 */
+export const hostEntry = root => path.join(root, 'host', 'main.ts');
+
+/** 工程是否定义了网页宿主（host/main.ts）。 */
+export const hasWebHost = root => fs.existsSync(hostEntry(root));
+
 /** 读 i18n/ 下全部文本表。 */
 export function readTexts(root, languages) {
   const texts = {};
@@ -38,14 +47,41 @@ function viewFiles(root) {
   return walk(dir);
 }
 
-/** 写网页端的启动入口 <dir>/boot.ts（dir 是命令自己的生成目录，比如 .lgui/build/dev/）。texts：不写就读 i18n/ 下的文本表（lgui verify 的伪翻译会传进来）。 */
-export function writeWebBootstrap(root, project, {texts, dir}) {
+/** 写网页端的启动入口 <dir>/boot.ts（dir 是命令自己的生成目录，比如 .lgui/build/dev/）。texts：不写就读 i18n/ 下的文本表（lgui verify 的伪翻译会传进来）。noHost：lgui verify --no-host 跳过 host/main.ts。 */
+export function writeWebBootstrap(root, project, {texts, dir, noHost = false}) {
   const fw = rel => JSON.stringify(path.join(root, '.lgui', 'framework', rel).split(path.sep).join('/'));
   const file = path.join(dir, 'boot.ts');
+  const withHost = !noHost && hasWebHost(root);
+  const skippedHost = noHost && hasWebHost(root);
   fs.mkdirSync(path.dirname(file), {recursive: true});
+  const hostImports = withHost
+    ? `import host from ${JSON.stringify(hostEntry(root).split(path.sep).join('/'))};\nimport {attachWebStage} from ${fw('backends/h5/web-stage.ts')};\n`
+    : '';
+  const bootStep = withHost
+    ? `  const platform = {
+    ...(app.platform ?? {}),
+    ...(host?.audio ? {audio: host.audio} : {}),
+    ...(host?.log ? {log: host.log} : {}),
+    ...(host?.clipboard ? {clipboard: host.clipboard} : {})
+  };
+  const ui = await boot(backend, app, config, deps, {texts, platform, services: host?.services, start: false});
+  const webStage = attachWebStage(backend, ui);
+  const disposeHost = await host?.mount?.(webStage);
+  if (typeof disposeHost === 'function') window.addEventListener('pagehide', () => disposeHost(), {once: true});
+  await app.start();`
+    : skippedHost
+      ? `  const baseAudio = backend.platform.audio;
+  const noHostAudio = {
+    play: (url: string, volume?: number) => { if (!url.startsWith('synth://')) baseAudio.play(url, volume); },
+    music: (url: string | null, volume?: number) => { baseAudio.music(url?.startsWith('synth://') ? null : url, volume); },
+    setPaused: (paused: boolean) => baseAudio.setPaused(paused)
+  };
+  const platform = app.platform?.audio ? app.platform : {...(app.platform ?? {}), audio: noHostAudio};
+  await boot(backend, app, config, deps, {texts, platform});`
+      : `  await boot(backend, app, config, deps, {texts});`;
   fs.writeFileSync(file, `// 由 lgui dev 生成，不要手改。
 import app from ${JSON.stringify(path.join(root, 'src', 'main.ts').split(path.sep).join('/'))};
-import {createH5Backend} from ${fw('backends/h5/index.ts')};
+${hostImports}import {createH5Backend} from ${fw('backends/h5/index.ts')};
 import {boot} from ${fw('mvc/boot.ts')};
 import {lgui} from ${fw('index.ts')};
 ${viewFiles(root).map((f, i) => `import * as views${i} from ${JSON.stringify(f.split(path.sep).join('/'))};`).join('\n')}
@@ -64,7 +100,7 @@ const texts = ${JSON.stringify(texts ?? readTexts(root, project.languages))};
   await backend.init({projectName: config.name, defaultFont: ${JSON.stringify(project.defaultFont)}, fonts: ${JSON.stringify(fontNames(root))}, uiBase: './ui', i18nBase: './i18n'});
   // 开发模式下给调试面板和端到端测试用；正式构建（LGUI_DEV = false）不挂。
   if (LGUI_DEV) (window as unknown as {__lgui: unknown}).__lgui = {snapshot: () => lgui.debug.snapshot(), lgui, views};
-  await boot(backend, app, config, deps, {texts});
+${bootStep}
   (window as unknown as {__lguiReady: boolean}).__lguiReady = true;
 })().catch(error => {
   const e = error as {code?: string; message?: string};
@@ -104,7 +140,7 @@ export function webBuildOptions(root, entry, {dev = true, outfile}) {
     target: 'es2020',
     sourcemap: true,
     outfile,
-    alias: {lgui: frameworkEntry(root)},
+    alias: {lgui: frameworkEntry(root), 'lgui/host': frameworkHostEntry(root)},
     define: {LGUI_DEV: String(dev)},
     keepNames: true, // 界面类名会出现在调试快照和报错里，不能被改名
     absWorkingDir: root,

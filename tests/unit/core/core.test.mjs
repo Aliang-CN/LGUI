@@ -11,16 +11,18 @@ const coreFiles = fs.readdirSync(core).filter(f => f.endsWith('.ts')).map(f => p
 
 test('接口层在 strict 下类型检查通过，假后端能完整实现它', () => {
   assert.deepEqual(typecheck([...coreFiles, path.join(here, 'fake-backend.ts')]), []);
+  assert.deepEqual(typecheck([path.resolve(here, '../../../plugin/framework/host.ts')], {lib: ['es2020', 'dom']}), []);
 });
 
 test('接口层不用 any，每个导出的接口成员都有一句说明', () => {
-  for (const file of coreFiles) {
+  const hostFile = path.resolve(here, '../../../plugin/framework/host.ts');
+  for (const file of [...coreFiles, hostFile]) {
     const text = fs.readFileSync(file, 'utf8');
     assert.doesNotMatch(text, /:\s*any\b|<any>|as any\b/, path.basename(file));
   }
-  // ui.ts、platform.ts 里每个成员上一行都是 /** … */ 说明。
-  for (const name of ['ui.ts', 'platform.ts']) {
-    const lines = fs.readFileSync(path.join(core, name), 'utf8').split('\n');
+  // ui.ts、platform.ts、host.ts 里每个成员上一行都是 /** … */ 说明。
+  for (const [dir, name] of [[core, 'ui.ts'], [core, 'platform.ts'], [path.dirname(hostFile), 'host.ts']]) {
+    const lines = fs.readFileSync(path.join(dir, name), 'utf8').split('\n');
     lines.forEach((line, i) => {
       if (/^ {2}(readonly )?[a-zA-Z]+[?(:]/.test(line)) assert.match(lines[i - 1], /\/\*\*.*\*\//, `${name}:${i + 1} 缺说明`);
     });

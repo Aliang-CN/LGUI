@@ -17,6 +17,8 @@ MyGame/
 │           ├── BagModel.ts    #     数据和规则
 │           ├── BagView.ts     #     对应 ui/ 里的一个组件，只负责显示和转发事件
 │           └── BagController.ts #   处理事件、改数据、调服务
+├── host/                      # 网页端宿主（可选，比如挂载 three.js 三维画布与 Web Audio，见 MVC 规范第 17 节）
+│   └── main.ts                #   defineWebHost({ mount(stage), audio?, services? })；不进 lgui test 和 Unity 导出
 ├── tests/                     # 单元测试：用测试后端在 Node 里跑，不需要浏览器
 ├── i18n/                      # 文本表：每种语言一个 <语言>.json
 ├── .lgui/                     # LGUI 自己的东西，用户不用管
@@ -48,7 +50,7 @@ MyGame/
 | `sounds` | `{ click: 音效地址 \| null }` | `{ click: null }` | 按钮的默认点击音效（`ui://<包>/<声音名>` 或代码合成声音 `synth://<名字>`）：`ui/` 里按钮没写音效时用；`null` 表示不放 |
 | `defaultFont` | 字体名 \| `null` | `null` | 默认字体：写 `ui/fonts/` 里某个字体的名字（文件名去掉扩展名）；`null` 表示用系统默认字体。写了 `ui/fonts/` 里没有的名字（包括系统字体名）报 `LGUI-CLI-142` |
 | `devPort` | 端口号 1–65535 | `4173` | `lgui dev` 的端口 |
-| `devWatch` | 路径数组 | `[]` | `lgui dev` 除了 `ui/`、`src/`、`i18n/` 以外还要监视的目录或文件，相对工程根目录（比如宿主代码、仓库根的 `["../Config"]`），改了就重新打包、刷新页面（不监视 `.lgui/build/`，写成工程根目录也不会自己触发自己）。路径不存在时报 `LGUI-CLI-116` |
+| `devWatch` | 路径数组 | `[]` | `lgui dev` 除了 `ui/`、`src/`、`host/`（存在时）、`i18n/` 以外还要监视的目录或文件，相对工程根目录（比如仓库根的 `["../Config"]`），改了就重新打包、刷新页面（不监视 `.lgui/build/`，写成工程根目录也不会自己触发自己）。路径不存在时报 `LGUI-CLI-116` |
 | `editorPort` | 端口号 1–65535 | `4174` | `lgui editor` 的端口。浏览器按地址（含端口）记住授权过的 `ui/` 文件夹，所以端口固定；改了端口要在编辑器里重新授权。被占用时报 `LGUI-CLI-110` |
 | `backend` | `"h5"` | `"h5"` | 默认后端 |
 | `unityProject` | 路径 \| `null` | `null` | 导出过的 Unity 工程路径，由 `lgui unity export` 写入 |
@@ -80,6 +82,6 @@ MyGame/
 
 全工程只用这一种办法，不需要 `node_modules`，也不需要 import map：
 
-- **类型检查：** `tsconfig.json` 的 `paths` 把 `lgui` 指向 `.lgui/framework/index.ts`，`lgui/ui` 指向 `.lgui/build/types/index.d.ts`（由 `ui/` 生成的控件类型）。
-- **网页预览、测试、导出 Unity：** 全部由随插件带的 esbuild 打包，用 esbuild 的 `alias` 把 `lgui` 指向 `.lgui/framework/index.ts`；`lgui/ui` 只有类型，打包时会被去掉。
+- **类型检查：** `tsconfig.json` 的 `paths` 把 `lgui` 指向 `.lgui/framework/index.ts`，`lgui/host` 指向 `.lgui/framework/host.ts`（供可选的 `host/main.ts` 使用），`lgui/ui` 指向 `.lgui/build/types/index.d.ts`（由 `ui/` 生成的控件类型）。`src/` 和 `tests/` 不开 DOM 类型库；`host/` 由 `lgui check` 带 DOM 类型库单独做严格类型检查。
+- **网页预览、测试、导出 Unity：** 全部由随插件带的 esbuild 打包，用 esbuild 的 `alias` 把 `lgui` 指向 `.lgui/framework/index.ts`、`lgui/host` 指向 `.lgui/framework/host.ts`；`lgui/ui` 只有类型，打包时会被去掉。
 - 测试文件里可以 `import` 的 Node 模块只有 `node:test` 和 `node:assert/strict`，它们的类型在 `.lgui/framework/env.d.ts`。
